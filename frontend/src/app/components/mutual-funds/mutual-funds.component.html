@@ -1,0 +1,158 @@
+<div class="page">
+  <div class="page-header">
+    <div>
+      <a routerLink="/" class="back-link">← Dashboard</a>
+      <h1>Mutual Fund Investments</h1>
+    </div>
+    <button class="btn btn-primary" (click)="openAddForm()">+ Add Entry</button>
+  </div>
+
+  <div class="filter-bar">
+    <button class="btn btn-secondary" (click)="toggleShowAll()">{{ showAll ? 'Show Current Holdings' : 'Show All Entries' }}</button>
+    <input type="text" class="search-input" placeholder="Search by name, category, type, year..." [(ngModel)]="searchQuery" (input)="onSearch()">
+    <span class="entry-count">Showing {{ entries.length }} of {{ allEntries.length }} entries</span>
+  </div>
+
+  <div class="toast-container">
+    <div *ngFor="let t of toasts" class="toast" [class.toast-success]="t.type === 'success'" [class.toast-error]="t.type === 'error'">{{ t.msg }}</div>
+  </div>
+
+  <div class="form-overlay" *ngIf="showForm" (click)="cancelForm()">
+    <div class="form-modal" (click)="$event.stopPropagation()">
+      <h2>{{ editingId ? 'Edit' : 'Add' }} Mutual Fund Entry</h2>
+      <form (ngSubmit)="saveEntry()">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Year *</label>
+            <select [(ngModel)]="form.year" name="year" required>
+              <option value="">Select FY...</option>
+              <option *ngFor="let fy of fyOptions" [value]="fy">{{ fy }}</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Category *</label>
+            <select [(ngModel)]="form.category" name="category" required>
+              <option value="">Select...</option>
+              <option value="Equity">Equity</option>
+              <option value="Debt">Debt</option>
+              <option value="Hybrid">Hybrid</option>
+              <option value="Index">Index</option>
+              <option value="ELSS">ELSS</option>
+              <option value="Sectoral">Sectoral</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Fund Type *</label>
+            <select [(ngModel)]="form.fund_type" name="fund_type" required>
+              <option value="">Select...</option>
+              <option value="SIP">SIP</option>
+              <option value="Lump Sum">Lump Sum</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Name *</label>
+            <input type="text" [(ngModel)]="form.name" name="name" placeholder="Fund name" required list="nameSuggestions" autocomplete="off">
+            <datalist id="nameSuggestions">
+              <option *ngFor="let s of nameSuggestions" [value]="s"></option>
+            </datalist>
+          </div>
+          <div class="form-group">
+            <label>Date *</label>
+            <input type="date" [(ngModel)]="form.date" name="date" required>
+          </div>
+          <div class="form-group">
+            <label>Buy Quantity</label>
+            <input type="number" [(ngModel)]="form.buy_quantity" name="buy_quantity" step="1" min="0" placeholder="0" [disabled]="form.buy_sell === 'Sell'">
+          </div>
+          <div class="form-group">
+            <label>Buy Value (₹)</label>
+            <input type="number" [(ngModel)]="form.buy_value" name="buy_value" step="0.01" min="0" placeholder="0.00" [disabled]="form.buy_sell === 'Sell'">
+          </div>
+          <div class="form-group">
+            <label>Sell Quantity</label>
+            <input type="number" [(ngModel)]="form.sell_quantity" name="sell_quantity" step="1" min="0" placeholder="0" [disabled]="form.buy_sell === 'Buy'">
+          </div>
+          <div class="form-group">
+            <label>Sell Value (₹)</label>
+            <input type="number" [(ngModel)]="form.sell_value" name="sell_value" step="0.01" min="0" placeholder="0.00" [disabled]="form.buy_sell === 'Buy'">
+          </div>
+          <div class="form-group">
+            <label>Buy / Sell *</label>
+            <select [(ngModel)]="form.buy_sell" name="buy_sell" required (ngModelChange)="onBuySellChange()">
+              <option value="Buy">Buy</option>
+              <option value="Sell">Sell</option>
+            </select>
+          </div>
+          <div class="form-group full-width">
+            <label>Remarks</label>
+            <input type="text" [(ngModel)]="form.remarks" name="remarks" placeholder="Optional notes">
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" (click)="cancelForm()">Cancel</button>
+          <button type="submit" class="btn btn-primary">{{ editingId ? 'Update' : 'Add' }}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="skeleton-table" *ngIf="loading">
+    <div class="skeleton-row" *ngFor="let i of [1,2,3,4,5]"><div class="skeleton-cell" *ngFor="let j of [1,2,3,4,5,6]"></div></div>
+  </div>
+
+  <div class="table-wrapper" *ngIf="!loading">
+    <table *ngIf="entries.length > 0">
+      <thead>
+        <tr>
+          <th class="sortable" (click)="sort('year')">Year <span class="sort-icon">{{ sortIcon('year') }}</span></th>
+          <th class="sortable" (click)="sort('category')">Category <span class="sort-icon">{{ sortIcon('category') }}</span></th>
+          <th class="sortable" (click)="sort('fund_type')">Fund Type <span class="sort-icon">{{ sortIcon('fund_type') }}</span></th>
+          <th class="sortable" (click)="sort('name')">Name <span class="sort-icon">{{ sortIcon('name') }}</span></th>
+          <th class="sortable" (click)="sort('date')">Date <span class="sort-icon">{{ sortIcon('date') }}</span></th>
+          <th class="sortable" (click)="sort('buy_quantity')">Buy Qty <span class="sort-icon">{{ sortIcon('buy_quantity') }}</span></th>
+          <th class="sortable" (click)="sort('buy_value')">Buy Value <span class="sort-icon">{{ sortIcon('buy_value') }}</span></th>
+          <th class="sortable" (click)="sort('sell_quantity')">Sell Qty <span class="sort-icon">{{ sortIcon('sell_quantity') }}</span></th>
+          <th class="sortable" (click)="sort('sell_value')">Sell Value <span class="sort-icon">{{ sortIcon('sell_value') }}</span></th>
+          <th>Buy/Sell</th>
+          <th>Remarks</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let entry of entries">
+          <td><span class="badge year-badge">{{ entry.year }}</span></td>
+          <td><span class="badge category">{{ entry.category }}</span></td>
+          <td><span class="badge fund-type">{{ entry.fund_type }}</span></td>
+          <td class="name-cell">{{ entry.name }}</td>
+          <td>{{ entry.date }}</td>
+          <td class="number">{{ entry.buy_quantity ?? '-' }}</td>
+          <td class="number">{{ entry.buy_value !== null ? '₹' + (entry.buy_value | number:'1.2-2') : '-' }}</td>
+          <td class="number">{{ entry.sell_quantity ?? '-' }}</td>
+          <td class="number">{{ entry.sell_value !== null ? '₹' + (entry.sell_value | number:'1.2-2') : '-' }}</td>
+          <td><span class="badge" [class.buy]="entry.buy_sell === 'Buy'" [class.sell]="entry.buy_sell === 'Sell'">{{ entry.buy_sell }}</span></td>
+          <td class="remarks">{{ entry.remarks }}</td>
+          <td class="actions">
+            <button class="btn-icon edit" (click)="openEditForm(entry)" title="Edit">✏️</button>
+            <button class="btn-icon delete" (click)="deleteEntry(entry.id!)" title="Delete">🗑️</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="card-list" *ngIf="entries.length > 0">
+      <div class="entry-card" *ngFor="let entry of entries">
+        <div class="card-header"><span class="badge year-badge">{{ entry.year }}</span><strong>{{ entry.name }}</strong><span class="badge" [class.buy]="entry.buy_sell === 'Buy'" [class.sell]="entry.buy_sell === 'Sell'">{{ entry.buy_sell }}</span></div>
+        <div class="card-body">
+          <div class="card-row"><span>Category:</span><span>{{ entry.category }} / {{ entry.fund_type }}</span></div>
+          <div class="card-row"><span>Date:</span><span>{{ entry.date }}</span></div>
+          <div class="card-row" *ngIf="entry.buy_quantity"><span>Buy:</span><span>{{ entry.buy_quantity }} &#64; ₹{{ entry.buy_value | number:'1.2-2' }}</span></div>
+          <div class="card-row" *ngIf="entry.sell_quantity"><span>Sell:</span><span>{{ entry.sell_quantity }} &#64; ₹{{ entry.sell_value | number:'1.2-2' }}</span></div>
+        </div>
+        <div class="card-actions">
+          <button class="btn-icon edit" (click)="openEditForm(entry)" title="Edit">✏️</button>
+          <button class="btn-icon delete" (click)="deleteEntry(entry.id!)" title="Delete">🗑️</button>
+        </div>
+      </div>
+    </div>
+    <div class="empty" *ngIf="entries.length === 0">No mutual fund entries yet. Click <strong>+ Add Entry</strong> to get started.</div>
+  </div>
+</div>

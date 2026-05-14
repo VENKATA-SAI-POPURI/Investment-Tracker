@@ -1,0 +1,287 @@
+<div class="page">
+  <div class="page-header">
+    <div>
+      <a routerLink="/" class="back-link">← Dashboard</a>
+      <h1>P2P Lending</h1>
+    </div>
+    <button class="btn btn-primary" (click)="openAddForm()">+ New Lending</button>
+  </div>
+
+  <!-- Summary Cards -->
+  <div class="forex-summary">
+    <div class="forex-stat">
+      <span class="stat-label">Total Lent</span>
+      <span class="stat-value">₹{{ totalLent | number:'1.2-2' }}</span>
+    </div>
+    <div class="forex-stat">
+      <span class="stat-label">Total Repaid</span>
+      <span class="stat-value">₹{{ totalRepaid | number:'1.2-2' }}</span>
+    </div>
+    <div class="forex-stat">
+      <span class="stat-label">Total Pending</span>
+      <span class="stat-value" [style.color]="totalPending > 0 ? '#f59e0b' : '#4caf50'">₹{{ totalPending | number:'1.2-2' }}</span>
+    </div>
+    <div class="forex-stat">
+      <span class="stat-label">Total Return</span>
+      <span class="stat-value" style="color: #4caf50">₹{{ totalReturns | number:'1.2-2' }}</span>
+    </div>
+    <div class="forex-stat">
+      <span class="stat-label">Expected Return</span>
+      <span class="stat-value" style="color: #2196f3">₹{{ expectedReturn | number:'1.2-2' }}</span>
+    </div>
+    <div class="forex-stat">
+      <span class="stat-label">Active Lendings</span>
+      <span class="stat-value">{{ activeLendings }} (₹{{ activeLentAmount | number:'1.2-2' }})</span>
+    </div>
+    <div class="forex-stat">
+      <span class="stat-label">Avg Interest Rate (p.a.)</span>
+      <span class="stat-value">{{ avgInterestRate }}</span>
+    </div>
+    <div class="forex-stat">
+      <span class="stat-label">Defaulted</span>
+      <span class="stat-value" [style.color]="defaultedCount > 0 ? '#f44336' : 'inherit'">{{ defaultedCount }} (₹{{ defaultedAmount | number:'1.2-2' }})</span>
+    </div>
+    <div class="forex-stat">
+      <span class="stat-label">Recovery Rate</span>
+      <span class="stat-value">{{ recoveryRate }}</span>
+    </div>
+    <div class="forex-stat">
+      <span class="stat-label">This Month Inflow</span>
+      <span class="stat-value" style="color: #4caf50">₹{{ thisMonthInflow | number:'1.2-2' }}</span>
+    </div>
+  </div>
+
+  <!-- Platform Breakdown -->
+  <div class="platform-breakdown" *ngIf="platformBreakdown.length > 0">
+    <div class="platform-chip" *ngFor="let p of platformBreakdown">
+      <span class="platform-name">{{ p.platform }}</span>
+      <span class="platform-amount">₹{{ p.lent | number:'1.0-0' }}</span>
+      <span class="platform-active">{{ p.active }} active</span>
+    </div>
+  </div>
+
+  <div class="filter-bar">
+    <button class="btn btn-secondary" (click)="statusFilter = statusFilter === 'Active' ? 'All' : 'Active'; applyFilter()">
+      {{ statusFilter === 'Active' ? 'Show All Entries' : 'Show Active Only' }}
+    </button>
+    <input type="text" class="search-input" placeholder="Search by name, platform, status..." [(ngModel)]="searchQuery" (input)="onSearch()">
+    <span class="entry-count">Showing {{ entries.length }} of {{ allEntries.length }} entries</span>
+  </div>
+
+  <div class="toast-container">
+    <div *ngFor="let t of toasts" class="toast" [class.toast-success]="t.type === 'success'" [class.toast-error]="t.type === 'error'">{{ t.msg }}</div>
+  </div>
+
+  <!-- Lending Form Modal -->
+  <div class="form-overlay" *ngIf="showForm" (click)="cancelForm()">
+    <div class="form-modal" (click)="$event.stopPropagation()">
+      <h2>{{ editingId ? 'Edit' : 'New' }} Lending</h2>
+      <form (ngSubmit)="saveEntry()">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Platform *</label>
+            <input type="text" [(ngModel)]="form.platform" name="platform" placeholder="e.g. Faircent, LenDenClub" required>
+          </div>
+          <div class="form-group">
+            <label>Name *</label>
+            <input type="text" [(ngModel)]="form.name" name="name" placeholder="Borrower / Pool name" required>
+          </div>
+          <div class="form-group">
+            <label>Date *</label>
+            <input type="date" [(ngModel)]="form.date" name="date" required (change)="onDateOrTenureChange()">
+          </div>
+          <div class="form-group">
+            <label>Amount (₹) *</label>
+            <input type="number" [(ngModel)]="form.amount" name="amount" step="0.01" min="0" placeholder="Principal amount" required>
+          </div>
+          <div class="form-group">
+            <label>Tenure (months) *</label>
+            <input type="number" [(ngModel)]="form.tenure" name="tenure" step="1" min="1" placeholder="e.g. 6, 12" required (change)="onDateOrTenureChange()">
+          </div>
+          <div class="form-group">
+            <label>Maturity Date</label>
+            <input type="text" [value]="form.maturity_date || computeMaturityDate() || '-'" disabled class="computed-field">
+          </div>
+          <div class="form-group">
+            <label>Status *</label>
+            <select [(ngModel)]="form.status" name="status" required>
+              <option value="Active">Active</option>
+              <option value="Closed">Closed</option>
+              <option value="Defaulted">Defaulted</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Remarks</label>
+            <input type="text" [(ngModel)]="form.remarks" name="remarks" placeholder="Optional notes">
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" (click)="cancelForm()">Cancel</button>
+          <button type="submit" class="btn btn-primary">{{ editingId ? 'Update' : 'Add' }}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Repayment Form Modal -->
+  <div class="form-overlay" *ngIf="showRepaymentForm" (click)="cancelRepaymentForm()">
+    <div class="form-modal" (click)="$event.stopPropagation()">
+      <h2>{{ editingRepaymentId ? 'Edit' : 'Add' }} Repayment — {{ repaymentForm.lending_id }}</h2>
+      <form (ngSubmit)="saveRepayment()">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Date *</label>
+            <input type="date" [(ngModel)]="repaymentForm.date" name="rep_date" required>
+          </div>
+          <div class="form-group">
+            <label>Amount (₹) *</label>
+            <input type="number" [(ngModel)]="repaymentForm.amount" name="rep_amount" step="0.01" min="0" placeholder="Repayment amount" required>
+          </div>
+          <div class="form-group full-width">
+            <label>Remarks</label>
+            <input type="text" [(ngModel)]="repaymentForm.remarks" name="rep_remarks" placeholder="Optional notes">
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" (click)="cancelRepaymentForm()">Cancel</button>
+          <button type="submit" class="btn btn-primary">{{ editingRepaymentId ? 'Update' : 'Add' }}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div class="skeleton-table" *ngIf="loading">
+    <div class="skeleton-row" *ngFor="let i of [1,2,3,4,5]"><div class="skeleton-cell" *ngFor="let j of [1,2,3,4,5,6]"></div></div>
+  </div>
+
+  <!-- Data Table -->
+  <div class="table-wrapper" *ngIf="!loading">
+    <table *ngIf="entries.length > 0">
+      <thead>
+        <tr>
+          <th></th>
+          <th class="sortable" (click)="sort('platform')">Platform <span class="sort-icon">{{ sortIcon('platform') }}</span></th>
+          <th class="sortable" (click)="sort('name')">Name <span class="sort-icon">{{ sortIcon('name') }}</span></th>
+          <th class="sortable" (click)="sort('date')">Date <span class="sort-icon">{{ sortIcon('date') }}</span></th>
+          <th class="sortable" (click)="sort('amount')">Amount <span class="sort-icon">{{ sortIcon('amount') }}</span></th>
+          <th class="sortable" (click)="sort('tenure')">Tenure <span class="sort-icon">{{ sortIcon('tenure') }}</span></th>
+          <th>Received</th>
+          <th>Pending</th>
+          <th>Interest Amt</th>
+          <th>Interest %</th>
+          <th>Maturity</th>
+          <th class="sortable" (click)="sort('nextInstallment')">Next Installment <span class="sort-icon">{{ sortIcon('nextInstallment') }}</span></th>
+          <th class="sortable" (click)="sort('status')">Status <span class="sort-icon">{{ sortIcon('status') }}</span></th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <ng-container *ngFor="let entry of entries">
+          <tr [class.expanded]="expandedLendingId === entry.lending_id" [class.overdue]="isOverdue(entry)">
+            <td class="expand-toggle" (click)="toggleExpand(entry.lending_id)">
+              <span class="expand-icon">{{ expandedLendingId === entry.lending_id ? '▼' : '▶' }}</span>
+            </td>
+            <td><span class="badge platform">{{ entry.platform }}</span></td>
+            <td class="name-cell">{{ entry.name }}</td>
+            <td>{{ entry.date }}</td>
+            <td class="number">₹{{ entry.amount | number:'1.2-2' }}</td>
+            <td class="number">{{ entry.tenure }} mo</td>
+            <td class="number">₹{{ getTotalRepaid(entry.lending_id) | number:'1.2-2' }}</td>
+            <td class="number" [style.color]="getPendingAmount(entry) > 0 ? '#f59e0b' : '#4caf50'">₹{{ getPendingAmount(entry) | number:'1.2-2' }}</td>
+            <td class="number" style="color: #4caf50">₹{{ getTotalInterest(entry.lending_id) | number:'1.2-2' }}</td>
+            <td class="number">{{ getInterestRate(entry) != null ? (getInterestRate(entry)! | number:'1.2-2') + '%' : '-' }}</td>
+            <td>{{ entry.maturity_date }}</td>
+            <td>{{ getNextInstallmentDate(entry) }}</td>
+            <td><span class="badge" [class.buy]="entry.status === 'Active'" [class.sell]="entry.status === 'Defaulted'" [class.completed]="entry.status === 'Closed'">{{ entry.status }}</span></td>
+            <td class="actions">
+              <button class="btn-icon" (click)="openRepaymentForm(entry.lending_id)" title="Add Repayment">💰</button>
+              <button class="btn-icon edit" (click)="openEditForm(entry)" title="Edit">✏️</button>
+              <button class="btn-icon delete" (click)="deleteEntry(entry.id!)" title="Delete">🗑️</button>
+            </td>
+          </tr>
+          <!-- Expanded repayment rows -->
+          <tr class="repayment-header" *ngIf="expandedLendingId === entry.lending_id">
+            <td></td>
+            <td colspan="13">
+              <div class="repayment-section">
+                <div class="repayment-title">
+                  <span>Repayment History ({{ getRepayments(entry.lending_id).length }})</span>
+                  <button class="btn btn-sm" (click)="openRepaymentForm(entry.lending_id)">+ Add</button>
+                </div>
+                <table class="repayment-table" *ngIf="getRepayments(entry.lending_id).length > 0">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Amount</th>
+                      <th>Principal</th>
+                      <th>Interest</th>
+                      <th>Remarks</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr *ngFor="let rep of getRepayments(entry.lending_id)">
+                      <td>{{ rep.date }}</td>
+                      <td class="number">₹{{ rep.amount | number:'1.2-2' }}</td>
+                      <td class="number">₹{{ getRepaymentPrincipal(rep.amount || 0, entry) | number:'1.2-2' }}</td>
+                      <td class="number" style="color: #4caf50">₹{{ getRepaymentInterest(rep.amount || 0, entry) | number:'1.2-2' }}</td>
+                      <td class="remarks">{{ rep.remarks }}</td>
+                      <td class="actions">
+                        <button class="btn-icon edit" (click)="openEditRepaymentForm(rep)" title="Edit">✏️</button>
+                        <button class="btn-icon delete" (click)="deleteRepayment(rep.id!)" title="Delete">🗑️</button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div class="empty-repayments" *ngIf="getRepayments(entry.lending_id).length === 0">
+                  No repayments recorded yet.
+                </div>
+              </div>
+            </td>
+          </tr>
+        </ng-container>
+      </tbody>
+    </table>
+
+    <!-- Mobile card view -->
+    <div class="card-list" *ngIf="entries.length > 0">
+      <div class="entry-card" *ngFor="let entry of entries">
+        <div class="card-header">
+          <strong>{{ entry.name }}</strong>
+          <span class="badge platform">{{ entry.platform }}</span>
+          <span class="badge" [class.buy]="entry.status === 'Active'" [class.sell]="entry.status === 'Defaulted'" [class.completed]="entry.status === 'Closed'">{{ entry.status }}</span>
+        </div>
+        <div class="card-body">
+          <div class="card-row"><span>Date:</span><span>{{ entry.date }}</span></div>
+          <div class="card-row"><span>Amount:</span><span>₹{{ entry.amount | number:'1.2-2' }}</span></div>
+          <div class="card-row"><span>Tenure:</span><span>{{ entry.tenure }} months</span></div>
+          <div class="card-row"><span>Received:</span><span>₹{{ getTotalRepaid(entry.lending_id) | number:'1.2-2' }}</span></div>
+          <div class="card-row"><span>Pending:</span><span [style.color]="getPendingAmount(entry) > 0 ? '#f59e0b' : '#4caf50'">₹{{ getPendingAmount(entry) | number:'1.2-2' }}</span></div>
+          <div class="card-row" *ngIf="getInterestRate(entry) != null"><span>Interest:</span><span>{{ getInterestRate(entry)! | number:'1.2-2' }}%</span></div>
+          <div class="card-row"><span>Maturity:</span><span>{{ entry.maturity_date }}</span></div>
+          <div class="card-row"><span>Next Installment:</span><span>{{ getNextInstallmentDate(entry) }}</span></div>
+        </div>
+        <div class="card-actions">
+          <button class="btn-icon" (click)="openRepaymentForm(entry.lending_id)" title="Add Repayment">💰</button>
+          <button class="btn-icon edit" (click)="openEditForm(entry)" title="Edit">✏️</button>
+          <button class="btn-icon delete" (click)="deleteEntry(entry.id!)" title="Delete">🗑️</button>
+        </div>
+        <!-- Mobile repayment toggle -->
+        <div class="card-repayments" *ngIf="getRepayments(entry.lending_id).length > 0">
+          <button class="btn btn-sm" (click)="toggleExpand(entry.lending_id)">
+            {{ expandedLendingId === entry.lending_id ? 'Hide' : 'Show' }} Repayments ({{ getRepayments(entry.lending_id).length }})
+          </button>
+          <div *ngIf="expandedLendingId === entry.lending_id" class="repayment-list">
+            <div class="repayment-item" *ngFor="let rep of getRepayments(entry.lending_id)">
+              <span>{{ rep.date }}</span>
+              <span>₹{{ rep.amount | number:'1.2-2' }}</span>
+              <span class="remarks">{{ rep.remarks }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="empty" *ngIf="entries.length === 0">No P2P lending entries yet. Click <strong>+ New Lending</strong> to log your first loan.</div>
+  </div>
+</div>

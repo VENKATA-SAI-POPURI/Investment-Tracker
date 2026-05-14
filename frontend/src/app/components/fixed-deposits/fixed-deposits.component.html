@@ -1,0 +1,130 @@
+<div class="page">
+  <div class="page-header">
+    <div>
+      <a routerLink="/" class="back-link">← Dashboard</a>
+      <h1>Fixed Deposits</h1>
+    </div>
+    <button class="btn btn-primary" (click)="openAddForm()">+ Add Entry</button>
+  </div>
+
+  <div class="filter-bar">
+    <input type="text" class="search-input" placeholder="Search by bank, platform, year..." [(ngModel)]="searchQuery" (input)="onSearch()">
+    <span class="entry-count">{{ entries.length }} entries</span>
+  </div>
+
+  <div class="toast-container">
+    <div *ngFor="let t of toasts" class="toast" [class.toast-success]="t.type === 'success'" [class.toast-error]="t.type === 'error'">{{ t.msg }}</div>
+  </div>
+
+  <div class="form-overlay" *ngIf="showForm" (click)="cancelForm()">
+    <div class="form-modal" (click)="$event.stopPropagation()">
+      <h2>{{ editingId ? 'Edit' : 'Add' }} Fixed Deposit Entry</h2>
+      <form (ngSubmit)="saveEntry()">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Year *</label>
+            <select [(ngModel)]="form.year" name="year" required>
+              <option value="">Select FY...</option>
+              <option *ngFor="let fy of fyOptions" [value]="fy">{{ fy }}</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Platform *</label>
+            <input type="text" [(ngModel)]="form.platform" name="platform" placeholder="e.g. Bank App, Broker" required>
+          </div>
+          <div class="form-group">
+            <label>Bank Name *</label>
+            <input type="text" [(ngModel)]="form.bank_name" name="bank_name" placeholder="Bank name" required list="bankNameSuggestions" autocomplete="off">
+            <datalist id="bankNameSuggestions">
+              <option *ngFor="let s of bankNameSuggestions" [value]="s"></option>
+            </datalist>
+          </div>
+          <div class="form-group">
+            <label>Date *</label>
+            <input type="date" [(ngModel)]="form.date" name="date" required>
+          </div>
+          <div class="form-group">
+            <label>FD Value (₹)</label>
+            <input type="number" [(ngModel)]="form.fd_value" name="fd_value" step="0.01" min="0" placeholder="0.00">
+          </div>
+          <div class="form-group">
+            <label>Interest (%)</label>
+            <input type="number" [(ngModel)]="form.interest" name="interest" step="0.01" min="0" placeholder="0.00">
+          </div>
+          <div class="form-group">
+            <label>Maturity Date</label>
+            <input type="date" [(ngModel)]="form.maturity_date" name="maturity_date">
+          </div>
+          <div class="form-group">
+            <label>Return (₹)</label>
+            <input type="number" [(ngModel)]="form.return_value" name="return_value" step="0.01" min="0" placeholder="0.00">
+          </div>
+          <div class="form-group full-width">
+            <label>Remarks</label>
+            <input type="text" [(ngModel)]="form.remarks" name="remarks" placeholder="Optional notes">
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" (click)="cancelForm()">Cancel</button>
+          <button type="submit" class="btn btn-primary">{{ editingId ? 'Update' : 'Add' }}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="skeleton-table" *ngIf="loading">
+    <div class="skeleton-row" *ngFor="let i of [1,2,3,4,5]"><div class="skeleton-cell" *ngFor="let j of [1,2,3,4,5,6]"></div></div>
+  </div>
+
+  <div class="table-wrapper" *ngIf="!loading">
+    <table *ngIf="entries.length > 0">
+      <thead>
+        <tr>
+          <th class="sortable" (click)="sort('year')">Year <span class="sort-icon">{{ sortIcon('year') }}</span></th>
+          <th class="sortable" (click)="sort('platform')">Platform <span class="sort-icon">{{ sortIcon('platform') }}</span></th>
+          <th class="sortable" (click)="sort('bank_name')">Bank Name <span class="sort-icon">{{ sortIcon('bank_name') }}</span></th>
+          <th class="sortable" (click)="sort('date')">Date <span class="sort-icon">{{ sortIcon('date') }}</span></th>
+          <th class="sortable" (click)="sort('fd_value')">FD Value <span class="sort-icon">{{ sortIcon('fd_value') }}</span></th>
+          <th class="sortable" (click)="sort('interest')">Interest <span class="sort-icon">{{ sortIcon('interest') }}</span></th>
+          <th class="sortable" (click)="sort('maturity_date')">Maturity <span class="sort-icon">{{ sortIcon('maturity_date') }}</span></th>
+          <th class="sortable" (click)="sort('return_value')">Return <span class="sort-icon">{{ sortIcon('return_value') }}</span></th>
+          <th>Remarks</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let entry of entries">
+          <td><span class="badge year-badge">{{ entry.year }}</span></td>
+          <td><span class="badge platform">{{ entry.platform }}</span></td>
+          <td class="name-cell">{{ entry.bank_name }}</td>
+          <td>{{ entry.date }}</td>
+          <td class="number">{{ entry.fd_value !== null ? '₹' + (entry.fd_value | number:'1.2-2') : '-' }}</td>
+          <td class="number">{{ entry.interest !== null ? (entry.interest | number:'1.2-2') + '%' : '-' }}</td>
+          <td>{{ entry.maturity_date || '-' }}</td>
+          <td class="number">{{ entry.return_value !== null ? '₹' + (entry.return_value | number:'1.2-2') : '-' }}</td>
+          <td class="remarks">{{ entry.remarks }}</td>
+          <td class="actions">
+            <button class="btn-icon edit" (click)="openEditForm(entry)" title="Edit">✏️</button>
+            <button class="btn-icon delete" (click)="deleteEntry(entry.id!)" title="Delete">🗑️</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="card-list" *ngIf="entries.length > 0">
+      <div class="entry-card" *ngFor="let entry of entries">
+        <div class="card-header"><span class="badge year-badge">{{ entry.year }}</span><strong>{{ entry.bank_name }}</strong><span class="badge platform">{{ entry.platform }}</span></div>
+        <div class="card-body">
+          <div class="card-row"><span>Date:</span><span>{{ entry.date }}</span></div>
+          <div class="card-row" *ngIf="entry.fd_value"><span>FD Value:</span><span>₹{{ entry.fd_value | number:'1.2-2' }}</span></div>
+          <div class="card-row" *ngIf="entry.interest"><span>Interest:</span><span>{{ entry.interest }}%</span></div>
+          <div class="card-row" *ngIf="entry.maturity_date"><span>Maturity:</span><span>{{ entry.maturity_date }}</span></div>
+        </div>
+        <div class="card-actions">
+          <button class="btn-icon edit" (click)="openEditForm(entry)" title="Edit">✏️</button>
+          <button class="btn-icon delete" (click)="deleteEntry(entry.id!)" title="Delete">🗑️</button>
+        </div>
+      </div>
+    </div>
+    <div class="empty" *ngIf="entries.length === 0">No fixed deposit entries yet. Click <strong>+ Add Entry</strong> to get started.</div>
+  </div>
+</div>

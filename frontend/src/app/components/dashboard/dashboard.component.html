@@ -1,0 +1,278 @@
+<div class="dashboard" *ngIf="!loading">
+  <div class="dashboard-header">
+    <h1>Investment Tracker</h1>
+    <div class="header-actions">
+      <button class="forex-btn" (click)="toggleForexPopup()" title="Forex Analysis">
+        💱 Forex
+      </button>
+      <button class="dark-mode-toggle" (click)="toggleDarkMode()" [title]="darkMode ? 'Light Mode' : 'Dark Mode'">
+        {{ darkMode ? '☀️' : '🌙' }}
+      </button>
+    </div>
+  </div>
+
+  <!-- Forex Analysis Popup -->
+  <div class="form-overlay" *ngIf="showForexPopup" (click)="toggleForexPopup()">
+    <div class="forex-popup" (click)="$event.stopPropagation()">
+      <div class="forex-popup-header">
+        <h2>💱 Forex Analysis (US Equity)</h2>
+        <button class="close-btn" (click)="toggleForexPopup()">✕</button>
+      </div>
+      <div class="forex-popup-body">
+        <div class="forex-row">
+          <span class="forex-label">Total Invested</span>
+          <span class="forex-value">${{ forexTotalBuyUSD | number:'1.2-2' }}</span>
+        </div>
+        <div class="forex-row">
+          <span class="forex-label">Total Sales</span>
+          <span class="forex-value">${{ forexTotalSalesUSD | number:'1.2-2' }}</span>
+        </div>
+        <div class="forex-row">
+          <span class="forex-label">Current Holdings</span>
+          <span class="forex-value">${{ forexCurrentHoldingsUSD | number:'1.2-2' }} (≈ ₹{{ forexCurrentHoldingsINR | number:'1.2-2' }})</span>
+        </div>
+        <hr>
+        <div class="forex-row">
+          <span class="forex-label">Net P&L Before Forex</span>
+          <span class="forex-value" [class.positive]="forexPnLBeforeForex >= 0" [class.negative]="forexPnLBeforeForex < 0">
+            {{ forexPnLBeforeForex >= 0 ? '' : '-' }}₹{{ abs(forexPnLBeforeForex) | number:'1.2-2' }}
+          </span>
+        </div>
+        <div class="forex-row">
+          <span class="forex-label">Impact of Forex</span>
+          <span class="forex-value" [class.positive]="forexImpact >= 0" [class.negative]="forexImpact < 0">
+            {{ forexImpact >= 0 ? '+' : '-' }}₹{{ abs(forexImpact) | number:'1.2-2' }}
+          </span>
+        </div>
+        <div class="forex-row total">
+          <span class="forex-label">Net P&L After Forex</span>
+          <span class="forex-value" [class.positive]="forexPnLAfterForex >= 0" [class.negative]="forexPnLAfterForex < 0">
+            {{ forexPnLAfterForex >= 0 ? '' : '-' }}₹{{ abs(forexPnLAfterForex) | number:'1.2-2' }}
+          </span>
+        </div>
+        <hr>
+        <div class="forex-row">
+          <span class="forex-label">Avg Rate (Last 3 Deposits)</span>
+          <span class="forex-value">{{ forexAvgLast3DepositRate !== null ? '₹' + (forexAvgLast3DepositRate! | number:'1.4-4') : 'No data' }}</span>
+        </div>
+        <div class="forex-row">
+          <span class="forex-label">Wallet Balance</span>
+          <span class="forex-value">${{ forexWalletBalanceUSD | number:'1.2-2' }} (≈ ₹{{ forexWalletBalanceINR | number:'1.2-2' }})</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PART 1: Category Allocation + KPI Cards side by side -->
+  <section class="top-section">
+    <div class="allocation-panel">
+      <div class="pie-card allocation-pie">
+        <h3>{{ categoryAllocationPie.title }}</h3>
+        <div class="pie-content">
+          <div class="pie-chart" [style.background]="categoryAllocationPie.gradient"></div>
+          <div class="pie-legend">
+            <div class="legend-item" *ngFor="let slice of categoryAllocationPie.slices">
+              <span class="legend-color" [style.background-color]="slice.color"></span>
+              <span class="legend-label">{{ slice.label }}</span>
+              <span class="legend-pct">{{ slice.pct }}%</span>
+              <span class="legend-target" *ngIf="getTargetAllocation(slice.label) != null">({{ getTargetAllocation(slice.label) }}%)</span>
+              <span class="legend-flag" [style.color]="getAllocationFlagColor(slice)">{{ getAllocationFlag(slice) }}</span>
+              <span class="legend-value">₹{{ slice.value | number:'1.2-2' }}</span>
+            </div>
+            <div class="legend-item legend-total" *ngIf="categoryAllocationPie.slices.length > 0">
+              <span class="legend-color" style="background: transparent;"></span>
+              <span class="legend-label"><strong>Total</strong></span>
+              <span class="legend-pct"></span>
+              <span class="legend-target"></span>
+              <span class="legend-flag"></span>
+              <span class="legend-value"><strong>₹{{ categoryAllocationPie.total | number:'1.2-2' }}</strong></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi-card holdings">
+        <div class="kpi-icon">💼</div>
+        <div class="kpi-content">
+          <div class="kpi-label">Total Investment</div>
+          <div class="kpi-value">₹{{ totalInvestment | number:'1.2-2' }}</div>
+        </div>
+      </div>
+      <div class="kpi-card invested">
+        <div class="kpi-icon">💰</div>
+        <div class="kpi-content">
+          <div class="kpi-label">Current Investment</div>
+          <div class="kpi-value">₹{{ currentInvestment | number:'1.2-2' }}</div>
+          <div class="kpi-sub" *ngIf="forexWalletBalanceUSD > 0">Wallet: ${{ forexWalletBalanceUSD | number:'1.2-2' }} (≈ ₹{{ forexWalletBalanceINR | number:'1.2-2' }})</div>
+        </div>
+      </div>
+      <div class="kpi-card returns">
+        <div class="kpi-icon">💸</div>
+        <div class="kpi-content">
+          <div class="kpi-label">Total Sale Value</div>
+          <div class="kpi-value">₹{{ totalSaleValue | number:'1.2-2' }}</div>
+        </div>
+      </div>
+      <div class="kpi-card" [class.profit]="netPnL >= 0" [class.loss]="netPnL < 0">
+        <div class="kpi-icon">{{ netPnL >= 0 ? '📈' : '📉' }}</div>
+        <div class="kpi-content">
+          <div class="kpi-label">Net P&L</div>
+          <div class="kpi-value" [class.pnl-positive]="netPnL >= 0" [class.pnl-negative]="netPnL < 0">
+            {{ netPnL >= 0 ? '' : '-' }}₹{{ (netPnL >= 0 ? netPnL : -netPnL) | number:'1.2-2' }}
+            <span class="pnl-pct">({{ netPnLPct >= 0 ? '+' : '' }}{{ netPnLPct | number:'1.2-2' }}%)</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PART 2: Category Navigation Buttons -->
+  <section class="category-section">
+    <div class="category-buttons">
+      <a *ngFor="let cat of categories" class="category-btn" [routerLink]="cat.route">
+        <span class="cat-icon">{{ cat.icon }}</span>
+        <span class="cat-name">{{ cat.key }}</span>
+        <span class="cat-count" *ngIf="summary[cat.key]">{{ summary[cat.key].count }} entries</span>
+      </a>
+    </div>
+  </section>
+
+  <!-- PART 3: Investment Analysis -->
+  <section class="analysis-section">
+    <div class="analysis-header">
+      <h2>Investment Analysis</h2>
+
+      <!-- Category Tabs -->
+      <div class="analysis-tabs">
+        <button
+          *ngFor="let cat of categories"
+          class="analysis-tab"
+          [class.active]="selectedCategory === cat.key"
+          (click)="selectCategory(cat.key)"
+        >
+          {{ cat.icon }} {{ cat.key }}
+        </button>
+      </div>
+
+      <!-- Year filter -->
+      <div class="year-filter">
+        <span class="year-filter-label">📅 Filter by Year</span>
+        <div class="year-pills">
+          <button
+            *ngFor="let yr of availableYears"
+            class="year-pill"
+            [class.active]="selectedYear === yr"
+            (click)="selectYear(yr)"
+          >
+            {{ yr }}
+          </button>
+        </div>
+      </div>
+
+      <!-- Category-level KPIs -->
+      <div class="cat-kpis">
+        <div class="cat-kpi">
+          <span class="cat-kpi-label">Total Invested</span>
+          <span class="cat-kpi-value">₹{{ catTotalInvested | number:'1.2-2' }}</span>
+        </div>
+        <div class="cat-kpi">
+          <span class="cat-kpi-label">Current Holdings</span>
+          <span class="cat-kpi-value">₹{{ catCurrentInvestment | number:'1.2-2' }}</span>
+        </div>
+        <div class="cat-kpi">
+          <span class="cat-kpi-label">Total Sales</span>
+          <span class="cat-kpi-value">₹{{ catTotalSales | number:'1.2-2' }}</span>
+        </div>
+        <div class="cat-kpi">
+          <span class="cat-kpi-label">Net P&L</span>
+          <span class="cat-kpi-value" [class.positive]="catNetPnL >= 0" [class.negative]="catNetPnL < 0">
+            {{ catNetPnL >= 0 ? '' : '-' }}₹{{ abs(catNetPnL) | number:'1.2-2' }}
+            <span class="pnl-pct">({{ catNetPnLPct >= 0 ? '+' : '' }}{{ catNetPnLPct | number:'1.2-2' }}%)</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- Metric Selector -->
+      <div class="metric-tabs">
+        <span class="metric-label">Analyse by:</span>
+        <button
+          *ngFor="let m of metrics"
+          class="metric-tab"
+          [class.active]="selectedMetric === m"
+          (click)="selectMetric(m)"
+        >
+          {{ m }}
+        </button>
+      </div>
+    </div>
+
+    <!-- Pie Charts (for non-P&L metrics) -->
+    <div class="pie-grid" *ngIf="selectedMetric !== 'Net P&L'">
+      <div class="pie-card" *ngFor="let chart of pieCharts">
+        <h3>{{ chart.title }}</h3>
+        <div class="pie-content">
+          <div class="pie-chart" [style.background]="chart.gradient"></div>
+          <div class="pie-legend">
+            <div class="legend-item" *ngFor="let slice of chart.slices">
+              <span class="legend-color" [style.background-color]="slice.color"></span>
+              <span class="legend-label">{{ slice.label }}</span>
+              <span class="legend-pct">{{ slice.pct }}%</span>
+              <span class="legend-value">₹{{ abs(slice.value) | number:'1.2-2' }}</span>
+            </div>
+            <div class="legend-item legend-total" *ngIf="chart.slices.length > 0">
+              <span class="legend-color" style="background: transparent;"></span>
+              <span class="legend-label"><strong>Total</strong></span>
+              <span class="legend-pct"></span>
+              <span class="legend-value"><strong>₹{{ chart.total | number:'1.2-2' }}</strong></span>
+            </div>
+          </div>
+        </div>
+        <div class="analysis-empty" *ngIf="chart.slices.length === 0">No data available</div>
+      </div>
+    </div>
+
+    <!-- Bar Charts (for Net P&L) -->
+    <div class="bar-grid" *ngIf="selectedMetric === 'Net P&L'">
+      <div class="bar-card" *ngFor="let chart of barCharts">
+        <h3>{{ chart.title }}</h3>
+        <div class="bar-items" *ngIf="chart.items.length > 0">
+          <div class="bar-row" *ngFor="let item of chart.items">
+            <span class="bar-label">{{ item.label }}</span>
+            <div class="bar-track">
+              <div class="bar-fill"
+                   [class.bar-profit]="item.isPositive"
+                   [class.bar-loss]="!item.isPositive"
+                   [style.width.%]="item.pct">
+              </div>
+            </div>
+            <span class="bar-value" [class.positive]="item.isPositive" [class.negative]="!item.isPositive">
+              {{ item.isPositive ? '+' : '-' }}₹{{ abs(item.value) | number:'1.2-2' }}
+              <span class="pnl-pct">({{ item.pnlPct >= 0 ? '+' : '' }}{{ item.pnlPct | number:'1.2-2' }}%)</span>
+            </span>
+          </div>
+        </div>
+        <div class="bar-totals" *ngIf="chart.items.length > 0">
+          <span class="bar-total-item positive">Profit: +₹{{ chart.totalProfit | number:'1.2-2' }}</span>
+          <span class="bar-total-item negative">Loss: -₹{{ abs(chart.totalLoss) | number:'1.2-2' }}</span>
+          <span class="bar-total-item" [class.positive]="chart.netTotal >= 0" [class.negative]="chart.netTotal < 0">
+            Net: {{ chart.netTotal >= 0 ? '+' : '-' }}₹{{ abs(chart.netTotal) | number:'1.2-2' }}
+            <span class="pnl-pct">({{ chart.netPnLPct >= 0 ? '+' : '' }}{{ chart.netPnLPct | number:'1.2-2' }}%)</span>
+          </span>
+        </div>
+        <div class="analysis-empty" *ngIf="chart.items.length === 0">No data available</div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- Skeleton Loading -->
+<div class="dashboard-skeleton" *ngIf="loading">
+  <div class="skeleton-kpi-row">
+    <div class="skeleton-kpi" *ngFor="let i of [1,2,3,4]"></div>
+  </div>
+  <div class="skeleton-chart"></div>
+  <div class="skeleton-chart"></div>
+</div>
+

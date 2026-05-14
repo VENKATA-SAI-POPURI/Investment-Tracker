@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: investment-tracker-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
+    envVars:
+      - key: DATABASE_PATH
+        value: /opt/render/project/data/investments.db
+    disk:
+      name: data
+      mountPath: /opt/render/project/data
+      sizeGB: 1

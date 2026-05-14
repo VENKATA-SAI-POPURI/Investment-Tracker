@@ -1,0 +1,153 @@
+<div class="page">
+  <div class="page-header">
+    <div>
+      <a routerLink="/" class="back-link">← Dashboard</a>
+      <h1>Forex (INR ↔ USD)</h1>
+    </div>
+    <button class="btn btn-primary" (click)="openAddForm()">+ Add Entry</button>
+  </div>
+
+  <!-- Summary Cards -->
+  <div class="forex-summary">
+    <div class="forex-stat">
+      <span class="stat-label">Total Deposited</span>
+      <span class="stat-value">₹{{ totalDepositsINR | number:'1.2-2' }} → ${{ totalDepositsUSD | number:'1.2-2' }}</span>
+    </div>
+    <div class="forex-stat">
+      <span class="stat-label">Total Invested</span>
+      <span class="stat-value">${{ totalInvestedUSD | number:'1.2-2' }} (₹{{ totalInvestedUSD * avgDepositRateNum | number:'1.2-2' }})</span>
+    </div>
+    <div class="forex-stat">
+      <span class="stat-label">Total Withdrawn</span>
+      <span class="stat-value">${{ totalWithdrawalsUSD | number:'1.2-2' }} → ₹{{ totalWithdrawalsINR | number:'1.2-2' }}</span>
+    </div>
+    <div class="forex-stat">
+      <span class="stat-label">Wallet Balance</span>
+      <span class="stat-value">${{ walletBalanceUSD | number:'1.2-2' }} (₹{{ walletBalanceUSD * avgDepositRateNum | number:'1.2-2' }})</span>
+    </div>
+    <div class="forex-stat">
+      <span class="stat-label">Avg Deposit Rate</span>
+      <span class="stat-value">₹{{ avgDepositRate }}</span>
+    </div>
+    <div class="forex-stat">
+      <span class="stat-label">Avg Withdrawal Rate</span>
+      <span class="stat-value">₹{{ avgWithdrawalRate }}</span>
+    </div>
+    <div class="forex-stat">
+      <span class="stat-label">Forex Impact on Withdrawals</span>
+      <span class="stat-value" [style.color]="forexWithdrawalImpact >= 0 ? '#4caf50' : '#f44336'">₹{{ (forexWithdrawalImpact < 0 ? -forexWithdrawalImpact : forexWithdrawalImpact) | number:'1.2-2' }}</span>
+    </div>
+    <div class="forex-stat">
+      <span class="stat-label">Forex Impact on Deposits</span>
+      <span class="stat-value" [style.color]="forexDepositImpact >= 0 ? '#f44336' : '#4caf50'">₹{{ (forexDepositImpact < 0 ? -forexDepositImpact : forexDepositImpact) | number:'1.2-2' }}</span>
+    </div>
+  </div>
+
+  <div class="filter-bar">
+    <input type="text" class="search-input" placeholder="Search by date, type, remarks..." [(ngModel)]="searchQuery" (input)="onSearch()">
+    <span class="entry-count">{{ entries.length }} entries</span>
+  </div>
+
+  <div class="toast-container">
+    <div *ngFor="let t of toasts" class="toast" [class.toast-success]="t.type === 'success'" [class.toast-error]="t.type === 'error'">{{ t.msg }}</div>
+  </div>
+
+  <!-- Form Modal -->
+  <div class="form-overlay" *ngIf="showForm" (click)="cancelForm()">
+    <div class="form-modal" (click)="$event.stopPropagation()">
+      <h2>{{ editingId ? 'Edit' : 'Add' }} Forex Entry</h2>
+      <form (ngSubmit)="saveEntry()">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Date *</label>
+            <input type="date" [(ngModel)]="form.date" name="date" required>
+          </div>
+          <div class="form-group">
+            <label>Type *</label>
+            <select [(ngModel)]="form.type" name="type" required>
+              <option value="Deposit">Deposit (INR → USD)</option>
+              <option value="Withdrawal">Withdrawal (USD → INR)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>INR Amount *</label>
+            <input type="number" [(ngModel)]="form.inr_amount" name="inr_amount" step="0.01" min="0" placeholder="0.00" required>
+          </div>
+          <div class="form-group">
+            <label>USD Amount *</label>
+            <input type="number" [(ngModel)]="form.usd_amount" name="usd_amount" step="0.01" min="0" placeholder="0.00" required>
+          </div>
+          <div class="form-group">
+            <label>Rate (₹/$) — Auto</label>
+            <input type="text" [value]="computedRate" disabled class="computed-field">
+          </div>
+          <div class="form-group full-width">
+            <label>Remarks</label>
+            <input type="text" [(ngModel)]="form.remarks" name="remarks" placeholder="Optional notes">
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" (click)="cancelForm()">Cancel</button>
+          <button type="submit" class="btn btn-primary">{{ editingId ? 'Update' : 'Add' }}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div class="skeleton-table" *ngIf="loading">
+    <div class="skeleton-row" *ngFor="let i of [1,2,3,4,5]"><div class="skeleton-cell" *ngFor="let j of [1,2,3,4,5]"></div></div>
+  </div>
+
+  <!-- Data Table -->
+  <div class="table-wrapper" *ngIf="!loading">
+    <table *ngIf="entries.length > 0">
+      <thead>
+        <tr>
+          <th class="sortable" (click)="sort('date')">Date <span class="sort-icon">{{ sortIcon('date') }}</span></th>
+          <th class="sortable" (click)="sort('type')">Type <span class="sort-icon">{{ sortIcon('type') }}</span></th>
+          <th class="sortable" (click)="sort('inr_amount')">INR Amount <span class="sort-icon">{{ sortIcon('inr_amount') }}</span></th>
+          <th class="sortable" (click)="sort('usd_amount')">USD Amount <span class="sort-icon">{{ sortIcon('usd_amount') }}</span></th>
+          <th class="sortable" (click)="sort('rate')">Rate (₹/$) <span class="sort-icon">{{ sortIcon('rate') }}</span></th>
+          <th>Remarks</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let entry of entries">
+          <td>{{ entry.date }}</td>
+          <td><span class="badge" [class.buy]="entry.type === 'Deposit'" [class.sell]="entry.type === 'Withdrawal'">{{ entry.type }}</span></td>
+          <td class="number">₹{{ entry.inr_amount | number:'1.2-2' }}</td>
+          <td class="number">${{ entry.usd_amount | number:'1.2-2' }}</td>
+          <td class="number">₹{{ entry.rate | number:'1.4-4' }}</td>
+          <td class="remarks">{{ entry.remarks }}</td>
+          <td class="actions">
+            <button class="btn-icon edit" (click)="openEditForm(entry)" title="Edit">✏️</button>
+            <button class="btn-icon delete" (click)="deleteEntry(entry.id!)" title="Delete">🗑️</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <!-- Mobile card view -->
+    <div class="card-list" *ngIf="entries.length > 0">
+      <div class="entry-card" *ngFor="let entry of entries">
+        <div class="card-header">
+          <span class="badge" [class.buy]="entry.type === 'Deposit'" [class.sell]="entry.type === 'Withdrawal'">{{ entry.type }}</span>
+          <strong>{{ entry.date }}</strong>
+        </div>
+        <div class="card-body">
+          <div class="card-row"><span>INR:</span><span>₹{{ entry.inr_amount | number:'1.2-2' }}</span></div>
+          <div class="card-row"><span>USD:</span><span>${{ entry.usd_amount | number:'1.2-2' }}</span></div>
+          <div class="card-row"><span>Rate:</span><span>₹{{ entry.rate | number:'1.4-4' }}</span></div>
+        </div>
+        <div class="card-actions">
+          <button class="btn-icon edit" (click)="openEditForm(entry)" title="Edit">✏️</button>
+          <button class="btn-icon delete" (click)="deleteEntry(entry.id!)" title="Delete">🗑️</button>
+        </div>
+      </div>
+    </div>
+    <div class="empty" *ngIf="entries.length === 0">
+      No forex entries yet. Click <strong>+ Add Entry</strong> to log your first INR ↔ USD conversion.
+    </div>
+  </div>
+</div>

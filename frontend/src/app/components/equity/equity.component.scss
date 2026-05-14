@@ -1,0 +1,8 @@
+@use '../shared';
+
+.computed-field {
+  background: var(--bg-muted, #f1f5f9) !important;
+  color: var(--text-secondary, #64748b) !important;
+  font-weight: 600;
+  font-size: 0.85rem;
+}

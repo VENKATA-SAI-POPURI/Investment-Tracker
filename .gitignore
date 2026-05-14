@@ -1,0 +1,21 @@
+# Backend
+backend/__pycache__/
+backend/*.pyc
+backend/investments.db
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+
+# Data
+*.xlsx
+backups/
+
+# IDE
+.vscode/
+*.code-workspace
+
+# OS
+Thumbs.db
+.DS_Store
