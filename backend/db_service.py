@@ -70,7 +70,19 @@ class _TursoRow:
     def __init__(self, cols, row_data):
         self._data = {}
         for i, col in enumerate(cols):
-            val = row_data[i].get("value") if isinstance(row_data[i], dict) else row_data[i]
+            cell = row_data[i]
+            if isinstance(cell, dict):
+                ctype = cell.get("type", "text")
+                if ctype == "null":
+                    val = None
+                elif ctype == "integer":
+                    val = int(cell["value"])
+                elif ctype == "float":
+                    val = float(cell["value"])
+                else:
+                    val = cell.get("value")
+            else:
+                val = cell
             self._data[col] = val
 
     def __getitem__(self, key):
