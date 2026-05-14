@@ -1,0 +1,10 @@
+git add .
+git commit -m "description of changes"
+git push
+
+
+
+
+https://github.com/VENKATA-SAI-POPURI/Investment-Tracker
+https://dashboard.render.com/web/srv-d8308kjtqb8s73a1fio0/deploys/dep-d8308krtqb8s73a1fj00?r=2026-05-14%4017%3A19%3A19%7E2026-05-14%4017%3A24%3A24
+https://app.netlify.com/projects/relaxed-biscuit-766f5f/overview

@@ -10,8 +10,10 @@ CORS(app)
 
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("DATABASE_PATH", os.path.join(_BASE_DIR, "investments.db"))
+TURSO_URL = os.environ.get("TURSO_DATABASE_URL")
+TURSO_TOKEN = os.environ.get("TURSO_AUTH_TOKEN")
 
-db_service = DbService(DB_PATH)
+db_service = DbService(DB_PATH, turso_url=TURSO_URL, turso_token=TURSO_TOKEN)
 
 
 def _handle_add(sheet_name):

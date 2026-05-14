@@ -2,6 +2,13 @@ import os
 import sqlite3
 import threading
 
+# Try to import libsql for Turso support (available on Linux/Render)
+try:
+    import libsql_experimental as libsql
+    HAS_LIBSQL = True
+except ImportError:
+    HAS_LIBSQL = False
+
 TABLES = {
     "equity": {
         "columns": ["year", "market", "market_cap", "sector", "name", "date", "buy_quantity", "buy_value", "sell_quantity", "sell_value", "buy_sell", "remarks"],
@@ -68,12 +75,18 @@ def _col_type(col):
 
 
 class DbService:
-    def __init__(self, db_path):
+    def __init__(self, db_path, turso_url=None, turso_token=None):
         self.db_path = db_path
+        self.turso_url = turso_url
+        self.turso_token = turso_token
         self._lock = threading.Lock()
         self._init_db()
 
     def _connect(self):
+        if self.turso_url and HAS_LIBSQL:
+            conn = libsql.connect(self.turso_url, auth_token=self.turso_token)
+            conn.row_factory = sqlite3.Row
+            return conn
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
