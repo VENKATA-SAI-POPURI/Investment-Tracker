@@ -1,9 +1,9 @@
 <div class="dashboard" *ngIf="!loading">
   <div class="dashboard-header">
-    <h1>Investment Tracker</h1>
+    <h1><img src="profit.png" alt="" class="app-logo">Investment Tracker</h1>
     <div class="header-actions">
       <button class="forex-btn" (click)="toggleForexPopup()" title="Forex Analysis">
-        💱 Forex
+        💱 <span class="forex-label">Forex</span>
       </button>
       <button class="dark-mode-toggle" (click)="toggleDarkMode()" [title]="darkMode ? 'Light Mode' : 'Dark Mode'">
         {{ darkMode ? '☀️' : '🌙' }}

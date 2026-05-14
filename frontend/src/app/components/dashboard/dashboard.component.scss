@@ -18,6 +18,13 @@
   margin-bottom: 0.5rem;
 }
 
+.app-logo {
+  width: 36px;
+  height: 36px;
+  vertical-align: middle;
+  margin-right: 0.5rem;
+}
+
 .header-actions {
   position: absolute;
   right: 0;
@@ -725,49 +732,93 @@
 
 // ── Responsive ──
 @media (max-width: 768px) {
-  .dashboard { padding: 1rem; }
+  .dashboard { padding: 1rem 0.75rem; }
+
+  // Header: keep horizontal, just shrink
   .dashboard-header {
-    flex-direction: column;
-    gap: 0.75rem;
-    h1 { font-size: 1.35rem; }
+    h1 { font-size: 1.25rem; }
   }
   .header-actions {
-    position: static;
-    justify-content: center;
+    gap: 0.35rem;
+    .forex-btn { padding: 0.35rem 0.7rem; font-size: 0.8rem; }
+    .forex-label { display: none; }
   }
-  .kpi-grid { grid-template-columns: 1fr; }
+  .dark-mode-toggle { padding: 0.35rem 0.5rem; font-size: 1rem; }
+
+  // Top section: stack pie above KPIs, but keep KPIs in 2-col grid
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 0.6rem; }
   .kpi-card {
-    padding: 1rem;
-    .kpi-value { font-size: 1.1rem; }
+    padding: 0.75rem;
+    gap: 0.6rem;
+    .kpi-icon { font-size: 1.35rem; }
+    .kpi-label { font-size: 0.7rem; }
+    .kpi-value { font-size: 1rem; }
+    .kpi-sub { font-size: 0.65rem; }
   }
-  .category-buttons { flex-direction: column; }
-  .category-btn { min-width: 100%; }
-  .pie-grid, .bar-grid { grid-template-columns: 1fr; }
-  .pie-content { flex-direction: column; align-items: center; }
-  .pie-chart { width: 120px; height: 120px; }
+  .pnl-pct { font-size: 0.65em; }
+
+  // Pie chart: smaller but keep legend intact
+  .pie-chart { width: 100px; height: 100px; }
+  .pie-card { padding: 0.75rem; }
+  .pie-card h3 { font-size: 0.85rem; margin-bottom: 0.6rem; }
   .legend-item {
-    grid-template-columns: 10px 1fr auto;
-    gap: 0.3rem;
-    font-size: 0.75rem;
-    .legend-target, .legend-flag { display: none; }
-    .legend-pct { text-align: right; }
-    .legend-value { display: none; }
+    grid-template-columns: 10px 1fr 36px 30px 16px 70px;
+    gap: 0.25rem;
+    font-size: 0.7rem;
   }
-  .legend-item.legend-total {
-    grid-template-columns: 10px 1fr auto;
-    .legend-value { display: inline; }
-    .legend-pct { display: none; }
+  .legend-value { font-size: 0.7rem; }
+
+  // Category buttons: horizontal wrap, 3 per row
+  .category-buttons { gap: 0.5rem; }
+  .category-btn {
+    min-width: 0;
+    flex: 1 1 28%;
+    padding: 0.6rem 0.4rem;
+    .cat-icon { font-size: 1.15rem; }
+    .cat-name { font-size: 0.75rem; }
+    .cat-count { font-size: 0.65rem; }
   }
+
+  // Analysis section: compact
+  .analysis-section { padding: 1rem 0.75rem; }
+  .analysis-header {
+    h2 { font-size: 1.05rem; }
+    .analysis-tabs {
+      overflow-x: auto;
+      flex-wrap: nowrap;
+      -webkit-overflow-scrolling: touch;
+      gap: 0.35rem;
+    }
+    .analysis-tab { white-space: nowrap; flex-shrink: 0; padding: 0.35rem 0.7rem; font-size: 0.78rem; }
+  }
+
+  // Year filter
+  .year-filter { padding: 0.5rem 0.75rem; gap: 0.5rem; }
+  .year-pill { padding: 0.3rem 0.75rem; font-size: 0.75rem; }
+
+  // Category KPIs: keep 4 columns, just smaller
+  .cat-kpis { grid-template-columns: repeat(4, 1fr); gap: 0.4rem; }
+  .cat-kpi {
+    padding: 0.5rem;
+    .cat-kpi-label { font-size: 0.6rem; letter-spacing: 0.2px; }
+    .cat-kpi-value { font-size: 0.8rem; }
+  }
+
+  // Metric tabs: horizontal scroll
+  .metric-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    .metric-label { font-size: 0.78rem; white-space: nowrap; }
+    .metric-tab { white-space: nowrap; flex-shrink: 0; font-size: 0.72rem; padding: 0.3rem 0.65rem; }
+  }
+
+  // Pie & bar charts
+  .pie-grid, .bar-grid { grid-template-columns: 1fr; gap: 0.75rem; }
   .bar-row { grid-template-columns: 70px 1fr 90px; font-size: 0.75rem; }
   .bar-totals { flex-direction: column; gap: 0.5rem; }
-  .analysis-header {
-    .analysis-tabs { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }
-    .analysis-tab { white-space: nowrap; flex-shrink: 0; }
-  }
-  .year-filter { flex-direction: column; gap: 0.5rem; }
-  .cat-kpis { grid-template-columns: repeat(2, 1fr); }
-  .cat-kpi .cat-kpi-value { font-size: 0.95rem; }
-  .metric-tabs { overflow-x: auto; flex-wrap: nowrap; .metric-tab { white-space: nowrap; flex-shrink: 0; } }
+
+  // Skeleton & misc
   .skeleton-kpi-row { grid-template-columns: repeat(2, 1fr); }
   .forex-popup { max-width: 95vw; margin: 0 0.5rem; }
 }
