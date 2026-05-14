@@ -1,13 +1,85 @@
 import os
 import sqlite3
 import threading
+import requests
 
-# Try to import libsql for Turso support (available on Linux/Render)
-try:
-    import libsql_experimental as libsql
-    HAS_LIBSQL = True
-except ImportError:
-    HAS_LIBSQL = False
+
+class TursoConnection:
+    """Minimal sqlite3-compatible wrapper around Turso HTTP API."""
+
+    def __init__(self, url, token):
+        # Convert libsql:// to https://
+        self._url = url.replace("libsql://", "https://") + "/v2/pipeline"
+        self._headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+    def execute(self, sql, params=None):
+        stmt = {"sql": sql}
+        if params:
+            stmt["args"] = [{"type": "null", "value": None} if v is None
+                            else {"type": "float", "value": str(v)} if isinstance(v, (int, float))
+                            else {"type": "text", "value": str(v)}
+                            for v in params]
+        body = {"requests": [{"type": "execute", "stmt": stmt}, {"type": "close"}]}
+        resp = requests.post(self._url, json=body, headers=self._headers, timeout=15)
+        data = resp.json()
+        result = data["results"][0]
+        if result["type"] == "error":
+            raise Exception(result["error"]["message"])
+        res = result["response"]["result"]
+        return TursoCursor(res)
+
+    def commit(self):
+        pass  # Turso auto-commits
+
+    def close(self):
+        pass
+
+
+class TursoCursor:
+    """Wraps Turso HTTP response to look like sqlite3 cursor."""
+
+    def __init__(self, result):
+        self._cols = [c["name"] for c in result.get("cols", [])]
+        self._rows = result.get("rows", [])
+        self._idx = 0
+        self.lastrowid = result.get("last_insert_rowid")
+        self.rowcount = result.get("affected_row_count", 0)
+
+    def fetchone(self):
+        if self._idx >= len(self._rows):
+            return None
+        row = self._rows[self._idx]
+        self._idx += 1
+        return _TursoRow(self._cols, row)
+
+    def fetchall(self):
+        rows = []
+        while self._idx < len(self._rows):
+            rows.append(_TursoRow(self._cols, self._rows[self._idx]))
+            self._idx += 1
+        return rows
+
+    def __iter__(self):
+        for i in range(len(self._rows)):
+            yield _TursoRow(self._cols, self._rows[i])
+
+
+class _TursoRow:
+    """Dict-like row to mimic sqlite3.Row."""
+
+    def __init__(self, cols, row_data):
+        self._data = {}
+        for i, col in enumerate(cols):
+            val = row_data[i].get("value") if isinstance(row_data[i], dict) else row_data[i]
+            self._data[col] = val
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return list(self._data.values())[key]
+        return self._data[key]
+
+    def keys(self):
+        return self._data.keys()
 
 TABLES = {
     "equity": {
@@ -83,10 +155,8 @@ class DbService:
         self._init_db()
 
     def _connect(self):
-        if self.turso_url and HAS_LIBSQL:
-            conn = libsql.connect(self.turso_url, auth_token=self.turso_token)
-            conn.row_factory = sqlite3.Row
-            return conn
+        if self.turso_url and self.turso_token:
+            return TursoConnection(self.turso_url, self.turso_token)
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
