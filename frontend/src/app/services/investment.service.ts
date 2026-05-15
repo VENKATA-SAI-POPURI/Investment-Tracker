@@ -133,4 +133,9 @@ export class InvestmentService {
   deleteForex(id: number): Observable<any> {
     return this.http.delete(`${this.baseUrl}/forex/${id}`);
   }
+
+  // ── AI Analysis ──
+  getAIAnalysis(): Observable<{ analysis: string }> {
+    return this.http.post<{ analysis: string }>(`${this.baseUrl}/ai/analyze`, {});
+  }
 }

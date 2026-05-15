@@ -531,4 +531,41 @@ export class DashboardComponent implements OnInit {
     if (avgRate <= 0) return 0;
     return Math.round((totalSellINR / avgRate) * 100) / 100;
   }
+
+  // ── AI Analysis ──
+  aiAnalysis = '';
+  aiAnalysisHtml = '';
+  aiLoading = false;
+  aiError = '';
+
+  getAIAnalysis(): void {
+    this.aiLoading = true;
+    this.aiError = '';
+    this.investmentService.getAIAnalysis().subscribe({
+      next: (res) => {
+        this.aiAnalysis = res.analysis;
+        this.aiAnalysisHtml = this.markdownToHtml(res.analysis);
+        this.aiLoading = false;
+      },
+      error: (err) => {
+        this.aiError = err.error?.error || 'Failed to get AI analysis. Please try again.';
+        this.aiLoading = false;
+      }
+    });
+  }
+
+  private markdownToHtml(md: string): string {
+    return md
+      .replace(/^### (.+)$/gm, '<h4>$1</h4>')
+      .replace(/^## (.+)$/gm, '<h3>$1</h3>')
+      .replace(/^# (.+)$/gm, '<h2>$1</h2>')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/^- (.+)$/gm, '<li>$1</li>')
+      .replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>')
+      .replace(/\n\n/g, '</p><p>')
+      .replace(/\n/g, '<br>')
+      .replace(/^/, '<p>')
+      .replace(/$/, '</p>');
+  }
 }

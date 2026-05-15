@@ -306,6 +306,174 @@ def delete_forex(row_id):
     return jsonify({"error": "Row not found"}), 404
 
 
+# ── AI Analysis Endpoint ──
+
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+
+@app.route("/api/ai/analyze", methods=["POST"])
+def ai_analyze():
+    api_key = GEMINI_API_KEY
+    if not api_key:
+        return jsonify({"error": "AI service not configured"}), 503
+
+    # Gather all portfolio data
+    summary = db_service.get_summary()
+    equity = db_service.get_all("Equity")
+    commodity = db_service.get_all("Commodity")
+    mutual_funds = db_service.get_all("Mutual Funds")
+    p2p = db_service.get_all("P2P")
+    fixed_deposits = db_service.get_all("Fixed Deposits")
+
+    # Build portfolio context
+    portfolio_context = f"""
+PORTFOLIO SUMMARY:
+{_format_summary(summary)}
+
+EQUITY HOLDINGS ({len(equity)} entries):
+{_format_equity(equity)}
+
+MUTUAL FUNDS ({len(mutual_funds)} entries):
+{_format_mf(mutual_funds)}
+
+COMMODITY ({len(commodity)} entries):
+{_format_commodity(commodity)}
+
+P2P LENDING ({len(p2p)} entries):
+{_format_p2p(p2p)}
+
+FIXED DEPOSITS ({len(fixed_deposits)} entries):
+{_format_fd(fixed_deposits)}
+
+TARGET ALLOCATION: Equity India 35%, Equity USA 30%, Mutual Funds 20%, Commodity 10%, P2P 5%
+"""
+
+    prompt = f"""You are an expert investment advisor. Analyze the following portfolio and provide actionable insights.
+
+{portfolio_context}
+
+Provide your analysis in the following sections (use markdown formatting):
+
+## Portfolio Health Score
+Give a score out of 10 with brief justification.
+
+## Asset Allocation Analysis
+Compare current allocation vs target. Identify over/under-allocated categories.
+
+## Risk Assessment
+Identify concentration risks, sector overexposure, and diversification gaps.
+
+## Recommendations
+Provide 3-5 specific, actionable suggestions (rebalancing, new sectors to explore, positions to trim/add).
+
+## Key Metrics
+- Total Portfolio Value
+- Diversification Score (1-10)
+- Risk Level (Low/Medium/High)
+
+Keep the response concise and actionable. Use bullet points."""
+
+    # Call Gemini API
+    try:
+        gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+        resp = requests.post(gemini_url, json={
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"temperature": 0.7, "maxOutputTokens": 2048}
+        }, timeout=30)
+
+        if resp.status_code != 200:
+            return jsonify({"error": f"Gemini API error: {resp.status_code}"}), 502
+
+        data = resp.json()
+        text = data["candidates"][0]["content"]["parts"][0]["text"]
+        return jsonify({"analysis": text})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+def _format_summary(summary):
+    lines = []
+    for cat, data in summary.items():
+        lines.append(f"  {cat}: Invested ₹{data['total_buy']:,.0f}, Sold ₹{data['total_sell']:,.0f}, Net ₹{data['net']:,.0f}")
+    return "\n".join(lines)
+
+
+def _format_equity(entries):
+    if not entries:
+        return "  No entries"
+    holdings = {}
+    for e in entries:
+        name = e.get("name", "Unknown")
+        if name not in holdings:
+            holdings[name] = {"market": e.get("market", ""), "sector": e.get("sector", ""), "market_cap": e.get("market_cap", ""), "buy_qty": 0, "buy_val": 0, "sell_qty": 0, "sell_val": 0}
+        holdings[name]["buy_qty"] += (e.get("buy_quantity") or 0)
+        holdings[name]["buy_val"] += (e.get("buy_value") or 0)
+        holdings[name]["sell_qty"] += (e.get("sell_quantity") or 0)
+        holdings[name]["sell_val"] += (e.get("sell_value") or 0)
+    lines = []
+    for name, h in holdings.items():
+        net_qty = h["buy_qty"] - h["sell_qty"]
+        if net_qty > 0:
+            lines.append(f"  {name} ({h['market']}/{h['market_cap']}/{h['sector']}): Qty {net_qty:.4f}, Invested ₹{h['buy_val'] - h['sell_val']:,.0f}")
+    return "\n".join(lines) or "  No current holdings"
+
+
+def _format_mf(entries):
+    if not entries:
+        return "  No entries"
+    holdings = {}
+    for e in entries:
+        name = e.get("name", "Unknown")
+        if name not in holdings:
+            holdings[name] = {"category": e.get("category", ""), "fund_type": e.get("fund_type", ""), "buy_val": 0, "sell_val": 0}
+        holdings[name]["buy_val"] += (e.get("buy_value") or 0)
+        holdings[name]["sell_val"] += (e.get("sell_value") or 0)
+    lines = []
+    for name, h in holdings.items():
+        net = h["buy_val"] - h["sell_val"]
+        if net > 0:
+            lines.append(f"  {name} ({h['category']}/{h['fund_type']}): Invested ₹{net:,.0f}")
+    return "\n".join(lines) or "  No current holdings"
+
+
+def _format_commodity(entries):
+    if not entries:
+        return "  No entries"
+    holdings = {}
+    for e in entries:
+        name = e.get("name", "Unknown")
+        if name not in holdings:
+            holdings[name] = {"commodity": e.get("commodity", ""), "buy_qty": 0, "buy_val": 0, "sell_qty": 0, "sell_val": 0}
+        holdings[name]["buy_qty"] += (e.get("buy_quantity") or 0)
+        holdings[name]["buy_val"] += (e.get("buy_value") or 0)
+        holdings[name]["sell_qty"] += (e.get("sell_quantity") or 0)
+        holdings[name]["sell_val"] += (e.get("sell_value") or 0)
+    lines = []
+    for name, h in holdings.items():
+        net_qty = h["buy_qty"] - h["sell_qty"]
+        if net_qty > 0:
+            lines.append(f"  {name} ({h['commodity']}): Qty {net_qty:.4f}, Invested ₹{h['buy_val'] - h['sell_val']:,.0f}")
+    return "\n".join(lines) or "  No current holdings"
+
+
+def _format_p2p(entries):
+    if not entries:
+        return "  No entries"
+    lines = []
+    for e in entries:
+        if e.get("status") == "Active":
+            lines.append(f"  {e.get('name', 'Unknown')} ({e.get('platform', '')}): ₹{e.get('amount', 0):,.0f}, Tenure {e.get('tenure', 0)}mo, Maturity {e.get('maturity_date', 'N/A')}")
+    return "\n".join(lines) or "  No active lendings"
+
+
+def _format_fd(entries):
+    if not entries:
+        return "  No entries"
+    lines = []
+    for e in entries:
+        lines.append(f"  {e.get('bank_name', 'Unknown')} ({e.get('platform', '')}): ₹{e.get('fd_value', 0):,.0f}, Interest {e.get('interest', 0)}%, Maturity {e.get('maturity_date', 'N/A')}")
+    return "\n".join(lines) or "  No entries"
+
+
 # â”€â”€ Shutdown Endpoint â”€â”€
 
 @app.route("/api/shutdown", methods=["POST"])

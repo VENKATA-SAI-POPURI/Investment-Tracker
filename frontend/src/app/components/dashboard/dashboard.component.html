@@ -265,6 +265,26 @@
       </div>
     </div>
   </section>
+
+  <!-- AI Insights Section -->
+  <section class="ai-section">
+    <div class="ai-card">
+      <div class="ai-header">
+        <h3>🤖 AI Portfolio Advisor</h3>
+        <button class="btn btn-primary ai-btn" (click)="getAIAnalysis()" [disabled]="aiLoading">
+          {{ aiLoading ? 'Analyzing...' : (aiAnalysis ? 'Refresh Analysis' : 'Analyze Portfolio') }}
+        </button>
+      </div>
+      <div class="ai-loading" *ngIf="aiLoading">
+        <div class="ai-spinner"></div>
+        <p>Analyzing your portfolio...</p>
+      </div>
+      <div class="ai-error" *ngIf="aiError">
+        <p>{{ aiError }}</p>
+      </div>
+      <div class="ai-content" *ngIf="aiAnalysis && !aiLoading" [innerHTML]="aiAnalysisHtml"></div>
+    </div>
+  </section>
 </div>
 
 <!-- Skeleton Loading -->
