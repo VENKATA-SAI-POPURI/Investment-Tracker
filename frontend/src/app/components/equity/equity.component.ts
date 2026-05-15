@@ -188,6 +188,16 @@ export class EquityComponent implements OnInit {
     this.editingId = null;
   }
 
+  onNameChange(): void {
+    if (this.editingId) return;
+    const match = this.allEntries.find(e => e.name?.toLowerCase() === this.form.name?.toLowerCase().trim());
+    if (match) {
+      this.form.market = match.market;
+      this.form.market_cap = match.market_cap;
+      this.form.sector = match.sector;
+    }
+  }
+
   onBuySellChange(): void {
     if (this.form.buy_sell === 'Buy') {
       this.form.sell_quantity = null;

@@ -116,6 +116,15 @@ export class MutualFundsComponent implements OnInit {
   openEditForm(entry: MutualFundEntry): void { this.form = { ...entry }; this.editingId = entry.id!; this.showForm = true; }
   cancelForm(): void { this.showForm = false; this.editingId = null; }
 
+  onNameChange(): void {
+    if (this.editingId) return;
+    const match = this.allEntries.find(e => e.name?.toLowerCase() === this.form.name?.toLowerCase().trim());
+    if (match) {
+      this.form.category = match.category;
+      this.form.fund_type = match.fund_type;
+    }
+  }
+
   onBuySellChange(): void {
     if (this.form.buy_sell === 'Buy') { this.form.sell_quantity = null; this.form.sell_value = null; }
     else { this.form.buy_quantity = null; this.form.buy_value = null; }

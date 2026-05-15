@@ -110,6 +110,14 @@ export class FixedDepositsComponent implements OnInit {
   openEditForm(entry: FixedDepositEntry): void { this.form = { ...entry }; this.editingId = entry.id!; this.showForm = true; }
   cancelForm(): void { this.showForm = false; this.editingId = null; }
 
+  onBankNameChange(): void {
+    if (this.editingId) return;
+    const match = this.allEntries.find(e => e.bank_name?.toLowerCase() === this.form.bank_name?.toLowerCase().trim());
+    if (match) {
+      this.form.platform = match.platform;
+    }
+  }
+
   saveEntry(): void {
     if (!this.form.bank_name?.trim()) { this.toast('Bank name is required', 'error'); return; }
     if (this.editingId) {

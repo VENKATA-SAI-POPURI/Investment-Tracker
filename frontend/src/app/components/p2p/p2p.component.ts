@@ -335,6 +335,14 @@ export class P2PComponent implements OnInit {
     this.showForm = true;
   }
 
+  onNameChange(): void {
+    if (this.editingId) return;
+    const match = this.allEntries.find(e => e.name?.toLowerCase() === this.form.name?.toLowerCase().trim());
+    if (match) {
+      this.form.platform = match.platform;
+    }
+  }
+
   openEditForm(entry: P2PEntry): void {
     this.form = { ...entry };
     this.editingId = entry.id!;
