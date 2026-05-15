@@ -1,6 +1,7 @@
 ﻿import os
 import signal
 import subprocess
+import requests
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from db_service import DbService
