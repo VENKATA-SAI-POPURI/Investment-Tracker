@@ -8,6 +8,11 @@ from db_service import DbService
 app = Flask(__name__)
 CORS(app)
 
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    return jsonify({"error": str(e)}), 500
+
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("DATABASE_PATH", os.path.join(_BASE_DIR, "investments.db"))
 TURSO_URL = os.environ.get("TURSO_DATABASE_URL")
