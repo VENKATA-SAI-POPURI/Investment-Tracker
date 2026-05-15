@@ -20,9 +20,9 @@ class TursoConnection:
                 if v is None:
                     args.append({"type": "null"})
                 elif isinstance(v, bool):
-                    args.append({"type": "integer", "value": int(v)})
+                    args.append({"type": "integer", "value": str(int(v))})
                 elif isinstance(v, int):
-                    args.append({"type": "integer", "value": v})
+                    args.append({"type": "integer", "value": str(v)})
                 elif isinstance(v, float):
                     args.append({"type": "float", "value": v})
                 else:
