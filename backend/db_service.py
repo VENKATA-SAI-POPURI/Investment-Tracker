@@ -30,7 +30,11 @@ class TursoConnection:
             stmt["args"] = args
         body = {"requests": [{"type": "execute", "stmt": stmt}, {"type": "close"}]}
         resp = requests.post(self._url, json=body, headers=self._headers, timeout=15)
+        if resp.status_code != 200:
+            raise Exception(f"Turso HTTP {resp.status_code}: {resp.text}")
         data = resp.json()
+        if "results" not in data:
+            raise Exception(f"Turso unexpected response: {data}")
         result = data["results"][0]
         if result["type"] == "error":
             raise Exception(result["error"]["message"])
