@@ -15,10 +15,19 @@ class TursoConnection:
     def execute(self, sql, params=None):
         stmt = {"sql": sql}
         if params:
-            stmt["args"] = [{"type": "null", "value": None} if v is None
-                            else {"type": "float", "value": str(v)} if isinstance(v, (int, float))
-                            else {"type": "text", "value": str(v)}
-                            for v in params]
+            args = []
+            for v in params:
+                if v is None:
+                    args.append({"type": "null"})
+                elif isinstance(v, bool):
+                    args.append({"type": "integer", "value": str(int(v))})
+                elif isinstance(v, int):
+                    args.append({"type": "integer", "value": str(v)})
+                elif isinstance(v, float):
+                    args.append({"type": "float", "value": str(v)})
+                else:
+                    args.append({"type": "text", "value": str(v)})
+            stmt["args"] = args
         body = {"requests": [{"type": "execute", "stmt": stmt}, {"type": "close"}]}
         resp = requests.post(self._url, json=body, headers=self._headers, timeout=15)
         data = resp.json()
@@ -265,11 +274,14 @@ class DbService:
                 vals = []
                 for col in columns:
                     val = data.get(col, "")
-                    if col in NUMERIC_FIELDS and val not in (None, ""):
-                        try:
-                            val = float(val)
-                        except (ValueError, TypeError):
-                            pass
+                    if col in NUMERIC_FIELDS:
+                        if val not in (None, ""):
+                            try:
+                                val = float(val)
+                            except (ValueError, TypeError):
+                                val = None
+                        else:
+                            val = None
                     cols_present.append(col)
                     vals.append(val)
                 placeholders = ", ".join("?" for _ in cols_present)

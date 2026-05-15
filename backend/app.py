@@ -20,7 +20,10 @@ def _handle_add(sheet_name):
     data = request.get_json()
     if not data:
         return jsonify({"error": "No data provided"}), 400
-    result = db_service.add_row(sheet_name, data)
+    try:
+        result = db_service.add_row(sheet_name, data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
     if result["upserted"]:
         return jsonify({"message": "Existing entry updated", "id": result["id"], "upserted": True}), 200
     return jsonify({"message": "Entry added", "id": result["id"], "upserted": False}), 201
