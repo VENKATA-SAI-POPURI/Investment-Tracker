@@ -382,7 +382,8 @@ Keep the response concise and actionable. Use bullet points."""
         }, timeout=30)
 
         if resp.status_code != 200:
-            return jsonify({"error": f"Gemini API error: {resp.status_code}"}), 502
+            error_detail = resp.text[:500] if resp.text else "No details"
+            return jsonify({"error": f"Gemini API error: {resp.status_code} - {error_detail}"}), 502
 
         data = resp.json()
         text = data["candidates"][0]["content"]["parts"][0]["text"]
