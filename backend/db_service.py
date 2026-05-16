@@ -349,10 +349,12 @@ class DbService:
 
     def get_summary(self):
         summary = {}
+        # Skip sub-tables that aren't standalone investment categories
+        skip = {"Forex", "P2P Repayments", "P2P Escrow"}
         with self._lock:
             conn = self._connect()
             for sheet_name, table in SHEET_TO_TABLE.items():
-                if sheet_name == "Forex":
+                if sheet_name in skip:
                     continue
                 config = TABLES[table]
                 buy_col = config["buy_col"]
@@ -377,5 +379,30 @@ class DbService:
                     "total_sell": round(total_sell, 2),
                     "net": round(total_sell - total_buy, 2),
                 }
+
+            # Add P2P repayments as P2P's total_sell, and compute pending
+            if "P2P" in summary:
+                cursor = conn.execute("SELECT COALESCE(SUM(amount), 0) as total FROM p2p_repayments")
+                p2p_received = cursor.fetchone()["total"]
+                summary["P2P"]["total_sell"] = round(p2p_received, 2)
+                summary["P2P"]["net"] = round(p2p_received - summary["P2P"]["total_buy"], 2)
+
+                # Pending = sum of (amount - repaid) for entries with outstanding balance
+                cursor = conn.execute("""
+                    SELECT COALESCE(SUM(p2p.amount - COALESCE(r.repaid, 0)), 0) as pending
+                    FROM p2p
+                    LEFT JOIN (SELECT lending_id, SUM(amount) as repaid FROM p2p_repayments GROUP BY lending_id) r
+                    ON p2p.lending_id = r.lending_id
+                    WHERE p2p.amount > COALESCE(r.repaid, 0)
+                """)
+                summary["P2P"]["current_invested"] = round(cursor.fetchone()["pending"], 2)
+
+                # Escrow balance
+                cursor = conn.execute("""
+                    SELECT COALESCE(SUM(CASE WHEN type IN ('Deposit', 'Repayment') THEN amount ELSE -amount END), 0) as balance
+                    FROM p2p_escrow
+                """)
+                summary["P2P"]["escrow_balance"] = round(cursor.fetchone()["balance"], 2)
+
             conn.close()
         return summary

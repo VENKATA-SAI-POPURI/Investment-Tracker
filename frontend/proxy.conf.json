@@ -1,0 +1,7 @@
+{
+  "/api": {
+    "target": "https://investment-tracker-nrm5.onrender.com",
+    "secure": false,
+    "changeOrigin": true
+  }
+}

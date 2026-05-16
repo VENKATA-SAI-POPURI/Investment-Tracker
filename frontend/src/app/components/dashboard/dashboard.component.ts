@@ -175,7 +175,11 @@ export class DashboardComponent implements OnInit {
     total += this.equityData.reduce((sum, e) => sum + this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value), 0);
     total += this.mfData.reduce((sum, e) => sum + this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value), 0);
     total += this.commodityData.reduce((sum, e) => sum + this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value), 0);
-    total += this.p2pData.filter(e => e.status === 'Active').reduce((sum, e) => sum + (e.amount || 0), 0);
+    // P2P: use backend-computed pending (amount - repaid)
+    const p2pSummary = this.summary['P2P'];
+    if (p2pSummary) {
+      total += (p2pSummary as any).current_invested || 0;
+    }
     total += this.fdData.reduce((sum, e) => sum + (e.fd_value || 0), 0);
     return Math.round(total * 100) / 100;
   }
@@ -218,13 +222,19 @@ export class DashboardComponent implements OnInit {
     const otherCats = [
       { label: 'Mutual Funds', data: this.mfData, fn: (e: MutualFundEntry) => this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value) },
       { label: 'Commodity', data: this.commodityData, fn: (e: CommodityEntry) => this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value) },
-      { label: 'P2P', data: this.p2pData.filter(e => e.status === 'Active'), fn: (e: P2PEntry) => (e.amount || 0) },
       { label: 'Fixed Deposits', data: this.fdData, fn: (e: FixedDepositEntry) => (e.fd_value || 0) },
     ];
     otherCats.forEach(c => {
       const val = (c.data as any[]).reduce((sum, e) => sum + c.fn(e), 0);
       if (val > 0) catData.push({ label: c.label, value: Math.round(val * 100) / 100 });
     });
+
+    // P2P: use backend-computed pending
+    const p2pSummary = this.summary['P2P'];
+    if (p2pSummary) {
+      const p2pVal = (p2pSummary as any).current_invested || 0;
+      if (p2pVal > 0) catData.push({ label: 'P2P', value: Math.round(p2pVal * 100) / 100 });
+    }
 
     const total = catData.reduce((s, d) => s + d.value, 0);
     const slices: PieSlice[] = catData.map((d, i) => ({
@@ -463,8 +473,8 @@ export class DashboardComponent implements OnInit {
     const usaEquity = this.equityData.filter(e => e.market === 'USA');
     const totalBuyINR = usaEquity.reduce((s, e) => s + (e.buy_value || 0), 0);
     const totalSellINR = usaEquity.reduce((s, e) => s + (e.sell_value || 0), 0);
-    const avgRate = this.forexAvgDepositRate;
-    if (avgRate <= 0) return 0;
+    const avgRate = this.forexAvgLast3DepositRate || this.forexAvgDepositRate;
+    if (!avgRate || avgRate <= 0) return 0;
     return Math.round(((totalBuyINR - totalSellINR) / avgRate) * 100) / 100;
   }
 
