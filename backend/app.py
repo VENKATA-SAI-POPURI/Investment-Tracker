@@ -309,13 +309,14 @@ def delete_forex(row_id):
 
 # ── AI Analysis Endpoint ──
 
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+AI_API_KEY = os.environ.get("GROQ_API_KEY") or os.environ.get("GEMINI_API_KEY")
+AI_PROVIDER = "groq" if os.environ.get("GROQ_API_KEY") else "gemini"
 
 @app.route("/api/ai/analyze", methods=["POST"])
 def ai_analyze():
-    api_key = GEMINI_API_KEY
+    api_key = AI_API_KEY
     if not api_key:
-        return jsonify({"error": "AI service not configured"}), 503
+        return jsonify({"error": "AI service not configured. Set GROQ_API_KEY in environment."}), 503
 
     # Gather all portfolio data
     summary = db_service.get_summary()
@@ -373,20 +374,32 @@ Provide 3-5 specific, actionable suggestions (rebalancing, new sectors to explor
 
 Keep the response concise and actionable. Use bullet points."""
 
-    # Call Gemini API
+    # Call AI API
     try:
-        gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key={api_key}"
-        resp = requests.post(gemini_url, json={
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": 0.7, "maxOutputTokens": 2048}
-        }, timeout=30)
+        if AI_PROVIDER == "groq":
+            resp = requests.post("https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={
+                    "model": "llama-3.3-70b-versatile",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.7,
+                    "max_tokens": 2048
+                }, timeout=30)
+        else:
+            resp = requests.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key={api_key}",
+                json={"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"temperature": 0.7, "maxOutputTokens": 2048}},
+                timeout=30)
 
         if resp.status_code != 200:
             error_detail = resp.text[:500] if resp.text else "No details"
-            return jsonify({"error": f"Gemini API error: {resp.status_code} - {error_detail}"}), 502
+            return jsonify({"error": f"AI API error: {resp.status_code} - {error_detail}"}), 502
 
         data = resp.json()
-        text = data["candidates"][0]["content"]["parts"][0]["text"]
+        if AI_PROVIDER == "groq":
+            text = data["choices"][0]["message"]["content"]
+        else:
+            text = data["candidates"][0]["content"]["parts"][0]["text"]
         return jsonify({"analysis": text})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
