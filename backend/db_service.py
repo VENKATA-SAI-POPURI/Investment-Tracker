@@ -132,6 +132,11 @@ TABLES = {
         "buy_col": None,
         "sell_col": "amount",
     },
+    "p2p_escrow": {
+        "columns": ["date", "type", "amount", "platform", "remarks"],
+        "buy_col": "amount",
+        "sell_col": None,
+    },
     "fixed_deposits": {
         "columns": ["year", "platform", "bank_name", "date", "fd_value", "interest", "maturity_date", "return_value", "remarks"],
         "buy_col": "fd_value",
@@ -151,6 +156,7 @@ SHEET_TO_TABLE = {
     "Mutual Funds": "mutual_funds",
     "P2P": "p2p",
     "P2P Repayments": "p2p_repayments",
+    "P2P Escrow": "p2p_escrow",
     "Fixed Deposits": "fixed_deposits",
     "Forex": "forex",
 }

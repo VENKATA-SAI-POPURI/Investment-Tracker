@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { InvestmentService } from '../../services/investment.service';
-import { P2PEntry, P2PRepayment } from '../../models/investment.model';
+import { P2PEntry, P2PRepayment, P2PEscrow } from '../../models/investment.model';
 
 @Component({
   selector: 'app-p2p',
@@ -16,11 +16,15 @@ export class P2PComponent implements OnInit {
   entries: P2PEntry[] = [];
   allEntries: P2PEntry[] = [];
   repayments: P2PRepayment[] = [];
+  escrowTransactions: P2PEscrow[] = [];
   loading = true;
   showForm = false;
   showRepaymentForm = false;
+  showEscrowForm = false;
+  showEscrowPanel = false;
   editingId: number | null = null;
   editingRepaymentId: number | null = null;
+  editingEscrowId: number | null = null;
   expandedLendingId: string | null = null;
   searchQuery = '';
   statusFilter: 'All' | 'Active' = 'Active';
@@ -30,6 +34,7 @@ export class P2PComponent implements OnInit {
 
   form: P2PEntry = this.emptyForm();
   repaymentForm: P2PRepayment = this.emptyRepaymentForm();
+  escrowForm: P2PEscrow = this.emptyEscrowForm();
 
   constructor(private investmentService: InvestmentService) {}
 
@@ -54,6 +59,16 @@ export class P2PComponent implements OnInit {
       lending_id: '',
       date: new Date().toISOString().split('T')[0],
       amount: null,
+      remarks: ''
+    };
+  }
+
+  emptyEscrowForm(): P2PEscrow {
+    return {
+      date: new Date().toISOString().split('T')[0],
+      type: 'Deposit',
+      amount: null,
+      platform: '',
       remarks: ''
     };
   }
@@ -89,32 +104,70 @@ export class P2PComponent implements OnInit {
     return entry.amount / entry.tenure;
   }
 
-  // For a single repayment: principal = min(repayment, lent/tenure)
-  getRepaymentPrincipal(repAmount: number, entry: P2PEntry): number {
+  // For a single repayment: principal = min(repayment, lent/tenure) OR remaining pending if final settlement
+  getRepaymentPrincipal(repAmount: number, entry: P2PEntry, repIndex?: number): number {
     const pp = this.getPrincipalPerInstallment(entry);
+    if (repIndex !== undefined) {
+      // Calculate cumulative principal before this repayment
+      const reps = this.getRepayments(entry.lending_id);
+      let cumulativePrincipal = 0;
+      for (let i = 0; i < repIndex; i++) {
+        cumulativePrincipal += Math.min(reps[i].amount || 0, pp);
+      }
+      const remaining = (entry.amount || 0) - cumulativePrincipal;
+      // Final settlement: repayment covers remaining principal
+      if (repAmount >= remaining) {
+        return remaining;
+      }
+    }
     return Math.min(repAmount, pp);
   }
 
-  // For a single repayment: interest = max(0, repayment - principal)
-  getRepaymentInterest(repAmount: number, entry: P2PEntry): number {
-    const pp = this.getPrincipalPerInstallment(entry);
-    return Math.max(0, repAmount - pp);
+  // For a single repayment: interest = repayment - principal
+  getRepaymentInterest(repAmount: number, entry: P2PEntry, repIndex?: number): number {
+    return repAmount - this.getRepaymentPrincipal(repAmount, entry, repIndex);
   }
 
   // Received = sum of principal portions only
   getTotalRepaid(lendingId: string): number {
     const entry = this.allEntries.find(e => e.lending_id === lendingId);
     if (!entry) return 0;
+    const reps = this.getRepayments(lendingId);
     const pp = this.getPrincipalPerInstallment(entry);
-    return this.getRepayments(lendingId).reduce((s, r) => s + Math.min(r.amount || 0, pp), 0);
+    let cumPrincipal = 0;
+    for (let i = 0; i < reps.length; i++) {
+      const repAmount = reps[i].amount || 0;
+      const remaining = (entry.amount || 0) - cumPrincipal;
+      if (repAmount >= remaining) {
+        cumPrincipal += remaining;
+      } else {
+        cumPrincipal += Math.min(repAmount, pp);
+      }
+    }
+    return cumPrincipal;
   }
 
   // Total interest earned for a lending
   getTotalInterest(lendingId: string): number {
     const entry = this.allEntries.find(e => e.lending_id === lendingId);
     if (!entry) return 0;
+    const reps = this.getRepayments(lendingId);
     const pp = this.getPrincipalPerInstallment(entry);
-    return this.getRepayments(lendingId).reduce((s, r) => s + Math.max(0, (r.amount || 0) - pp), 0);
+    let cumPrincipal = 0;
+    let totalInterest = 0;
+    for (let i = 0; i < reps.length; i++) {
+      const repAmount = reps[i].amount || 0;
+      const remaining = (entry.amount || 0) - cumPrincipal;
+      if (repAmount >= remaining) {
+        cumPrincipal += remaining;
+        totalInterest += repAmount - remaining;
+      } else {
+        const principal = Math.min(repAmount, pp);
+        cumPrincipal += principal;
+        totalInterest += repAmount - principal;
+      }
+    }
+    return totalInterest;
   }
 
   getReturns(entry: P2PEntry): number | null {
@@ -124,10 +177,30 @@ export class P2PComponent implements OnInit {
   }
 
   getInterestRate(entry: P2PEntry): number | null {
-    const received = this.getTotalRepaid(entry.lending_id);
     const interest = this.getTotalInterest(entry.lending_id);
-    if (received === 0 || interest === 0) return null;
-    return (interest / received) * 100;
+    if (!entry.amount || interest === 0 || !entry.date) return null;
+    const start = new Date(entry.date);
+    const reps = this.getRepayments(entry.lending_id);
+    const end = reps.length > 0 ? new Date(reps[reps.length - 1].date) : new Date();
+    const daysElapsed = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+    // Annualized: (interest / principal) * (365 / days) * 100
+    return (interest / entry.amount) * (365 / daysElapsed) * 100;
+  }
+
+  getRepaymentAnnualizedRate(entry: P2PEntry, repIndex: number): number | null {
+    if (!entry.amount || !entry.date) return null;
+    const reps = this.getRepayments(entry.lending_id);
+    if (repIndex >= reps.length) return null;
+    // Cumulative interest up to this repayment
+    let cumulativeInterest = 0;
+    for (let i = 0; i <= repIndex; i++) {
+      cumulativeInterest += this.getRepaymentInterest(reps[i].amount || 0, entry, i);
+    }
+    if (cumulativeInterest <= 0) return null;
+    const start = new Date(entry.date);
+    const end = new Date(reps[repIndex].date);
+    const daysElapsed = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+    return (cumulativeInterest / entry.amount) * (365 / daysElapsed) * 100;
   }
 
   getPendingAmount(entry: P2PEntry): number {
@@ -176,7 +249,22 @@ export class P2PComponent implements OnInit {
   }
 
   get expectedReturn(): number {
-    return this.totalPending * (this.activeAvgInterestRateNum / 100);
+    const fallbackRate = this.activeAvgInterestRateNum || this.avgInterestRateNum;
+    return this.allEntries
+      .filter(e => e.status === 'Active')
+      .reduce((sum, e) => {
+        const pending = (e.amount || 0) - this.getTotalRepaid(e.lending_id);
+        if (pending <= 0 || !e.tenure) return sum;
+        const rate = this.getInterestRate(e) ?? fallbackRate;
+        const repsDone = this.getRepayments(e.lending_id).length;
+        const remainingInstallments = Math.max(0, e.tenure - repsDone);
+        if (remainingInstallments === 0) return sum;
+        // Declining balance: interest on average outstanding across remaining installments
+        // Each installment repays pending/remaining principal, so avg outstanding = pending * (n+1) / (2*n)
+        // Expected interest = avg_outstanding * rate/100 * remaining_months/12
+        const avgOutstanding = pending * (remainingInstallments + 1) / (2 * remainingInstallments);
+        return sum + avgOutstanding * (rate / 100) * (remainingInstallments / 12);
+      }, 0);
   }
 
   get totalPending(): number {
@@ -215,17 +303,131 @@ export class P2PComponent implements OnInit {
     return new Date(nextDate) < new Date();
   }
 
+  get overdueCount(): number {
+    return this.allEntries.filter(e => this.isOverdue(e)).length;
+  }
+
+  get overdueAmount(): number {
+    return this.allEntries.filter(e => this.isOverdue(e)).reduce((s, e) => s + this.getPendingAmount(e), 0);
+  }
+
+  // ── Feature: Foreclosure check ──
+  isForeclosed(entry: P2PEntry): boolean {
+    if (entry.status !== 'Closed') return false;
+    const reps = this.getRepayments(entry.lending_id);
+    return reps.length < (entry.tenure || 0);
+  }
+
+  get foreclosedCount(): number {
+    return this.allEntries.filter(e => this.isForeclosed(e)).length;
+  }
+
   // ── Feature: Platform breakdown ──
-  get platformBreakdown(): { platform: string; lent: number; active: number }[] {
-    const map = new Map<string, { lent: number; active: number }>();
+  get platformBreakdown(): { platform: string; lent: number; active: number; avgRate: string }[] {
+    const map = new Map<string, { lent: number; active: number; rates: number[] }>();
     this.allEntries.forEach(e => {
       const p = e.platform || 'Unknown';
-      const existing = map.get(p) || { lent: 0, active: 0 };
+      const existing = map.get(p) || { lent: 0, active: 0, rates: [] };
       existing.lent += (e.amount || 0);
       if (e.status === 'Active') existing.active++;
+      const rate = this.getInterestRate(e);
+      if (rate != null) existing.rates.push(rate);
       map.set(p, existing);
     });
-    return Array.from(map.entries()).map(([platform, data]) => ({ platform, ...data }));
+    return Array.from(map.entries()).map(([platform, data]) => ({
+      platform,
+      lent: data.lent,
+      active: data.active,
+      avgRate: data.rates.length > 0 ? (data.rates.reduce((s, r) => s + r, 0) / data.rates.length).toFixed(1) + '%' : '-'
+    }));
+  }
+
+  // ── Feature: Monthly Return % trend (last 6 months) ──
+  get monthlyReturnTrend(): { month: string; returnPct: number }[] {
+    const now = new Date();
+    const months: { month: string; returnPct: number }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthLabel = d.toLocaleString('default', { month: 'short', year: '2-digit' });
+      const m = d.getMonth();
+      const y = d.getFullYear();
+      let interest = 0;
+      let principal = 0;
+      this.repayments.forEach(rep => {
+        const repDate = new Date(rep.date);
+        if (repDate.getMonth() === m && repDate.getFullYear() === y) {
+          const entry = this.allEntries.find(e => e.lending_id === rep.lending_id);
+          if (entry) {
+            const idx = this.getRepayments(entry.lending_id).indexOf(rep);
+            const intAmt = this.getRepaymentInterest(rep.amount || 0, entry, idx >= 0 ? idx : undefined);
+            interest += intAmt;
+            principal += (rep.amount || 0) - intAmt;
+          }
+        }
+      });
+      // Return % = interest earned / principal repaid that month
+      const pct = principal > 0 ? (interest / principal) * 100 : 0;
+      months.push({ month: monthLabel, returnPct: pct });
+    }
+    return months;
+  }
+
+  // ── Feature: IRR per lending ──
+  getIRR(entry: P2PEntry): number | null {
+    if (!entry.date || !entry.amount) return null;
+    const reps = this.getRepayments(entry.lending_id);
+    if (reps.length === 0) return null;
+
+    // Cash flows: initial outflow (negative), then repayments (positive)
+    const startDate = new Date(entry.date);
+    const cashFlows: { amount: number; days: number }[] = [{ amount: -entry.amount, days: 0 }];
+    reps.forEach(rep => {
+      const repDate = new Date(rep.date);
+      const days = Math.round((repDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+      cashFlows.push({ amount: rep.amount || 0, days });
+    });
+
+    // If still active, add pending as future cash flow at maturity
+    if (entry.status === 'Active') {
+      const pending = this.getPendingAmount(entry);
+      if (pending > 0 && entry.maturity_date) {
+        const matDate = new Date(entry.maturity_date);
+        const days = Math.round((matDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+        cashFlows.push({ amount: pending, days });
+      }
+    }
+
+    // Newton's method to find daily rate, then annualize
+    let rate = 0.0001; // initial guess (daily)
+    for (let iter = 0; iter < 100; iter++) {
+      let npv = 0;
+      let dnpv = 0;
+      for (const cf of cashFlows) {
+        const pv = cf.amount / Math.pow(1 + rate, cf.days);
+        npv += pv;
+        dnpv -= cf.days * cf.amount / Math.pow(1 + rate, cf.days + 1);
+      }
+      if (Math.abs(npv) < 0.01) break;
+      if (dnpv === 0) break;
+      rate = rate - npv / dnpv;
+      if (rate <= -1) return null; // diverged
+    }
+    // Annualize: (1 + daily_rate)^365 - 1
+    const annualRate = (Math.pow(1 + rate, 365) - 1) * 100;
+    return isFinite(annualRate) ? annualRate : null;
+  }
+
+  get portfolioIRR(): number | null {
+    // Aggregate IRR across all lendings with data
+    const irrs = this.allEntries
+      .map(e => this.getIRR(e))
+      .filter((r): r is number => r != null);
+    if (irrs.length === 0) return null;
+    return irrs.reduce((s, r) => s + r, 0) / irrs.length;
+  }
+
+  get maxMonthlyReturnPct(): number {
+    return Math.max(...this.monthlyReturnTrend.map(m => m.returnPct), 1);
   }
 
   // ── Feature: This month's expected inflow ──
@@ -268,8 +470,10 @@ export class P2PComponent implements OnInit {
       const d = new Date(r.date);
       if (d.getMonth() === targetMonth && d.getFullYear() === targetYear) {
         const entry = this.allEntries.find(e => e.lending_id === r.lending_id);
-        const pp = entry ? this.getPrincipalPerInstallment(entry) : r.amount;
-        return sum + Math.min(r.amount, pp);
+        if (!entry) return sum + r.amount;
+        const reps = this.getRepayments(entry.lending_id);
+        const idx = reps.indexOf(r);
+        return sum + this.getRepaymentPrincipal(r.amount, entry, idx >= 0 ? idx : undefined);
       }
       return sum;
     }, 0);
@@ -306,7 +510,13 @@ export class P2PComponent implements OnInit {
       next: (data) => {
         this.allEntries = data;
         this.investmentService.getP2PRepayments().subscribe({
-          next: (rep) => { this.repayments = rep; this.applyFilter(); this.loading = false; },
+          next: (rep) => {
+            this.repayments = rep;
+            this.investmentService.getP2PEscrow().subscribe({
+              next: (esc) => { this.escrowTransactions = esc; this.applyFilter(); this.loading = false; },
+              error: () => { this.escrowTransactions = []; this.applyFilter(); this.loading = false; }
+            });
+          },
           error: () => { this.repayments = []; this.applyFilter(); this.loading = false; }
         });
       },
@@ -439,6 +649,24 @@ export class P2PComponent implements OnInit {
     this.showRepaymentForm = true;
   }
 
+  getRepaymentPendingAmount(): number {
+    const entry = this.allEntries.find(e => e.lending_id === this.repaymentForm.lending_id);
+    return entry ? this.getPendingAmount(entry) : 0;
+  }
+
+  onRepaymentAmountChange(): void {
+    if (this.editingRepaymentId) return;
+    const pending = this.getRepaymentPendingAmount();
+    const entry = this.allEntries.find(e => e.lending_id === this.repaymentForm.lending_id);
+    const repCount = this.getRepayments(this.repaymentForm.lending_id).length;
+    const tenure = entry?.tenure || 0;
+    if (this.repaymentForm.amount && this.repaymentForm.amount >= pending && pending > 0) {
+      this.repaymentForm.remarks = 'Final Settlement';
+    } else {
+      this.repaymentForm.remarks = `Installment ${repCount + 1} of ${tenure}`;
+    }
+  }
+
   openEditRepaymentForm(rep: P2PRepayment): void {
     this.repaymentForm = { ...rep };
     this.editingRepaymentId = rep.id!;
@@ -450,14 +678,53 @@ export class P2PComponent implements OnInit {
   saveRepayment(): void {
     if (!this.repaymentForm.amount || this.repaymentForm.amount <= 0) { this.toast('Repayment amount is required', 'error'); return; }
 
+    // Check if this is a final settlement (repayment >= pending)
+    const entry = this.allEntries.find(e => e.lending_id === this.repaymentForm.lending_id);
+    const pending = entry ? this.getPendingAmount(entry) : 0;
+    const isFinalSettlement = entry && this.repaymentForm.amount >= pending && pending > 0;
+
+    if (isFinalSettlement && !this.editingRepaymentId) {
+      this.repaymentForm.remarks = `Final Settlement (Principal: ₹${pending.toFixed(2)}, Interest: ₹${(this.repaymentForm.amount - pending).toFixed(2)})`;
+    }
+
+    const afterSave = () => {
+      // Auto-post principal as escrow Repayment (money went to bank, not escrow)
+      if (!this.editingRepaymentId && entry) {
+        const repIndex = this.getRepayments(entry.lending_id).length; // new repayment will be at this index
+        const principal = this.getRepaymentPrincipal(this.repaymentForm.amount!, entry, repIndex);
+        if (principal > 0) {
+          const escrowEntry: P2PEscrow = {
+            date: this.repaymentForm.date,
+            type: 'Repayment',
+            amount: principal,
+            platform: entry.platform,
+            remarks: `Auto: ${entry.lending_id} - ${entry.name}`
+          };
+          this.investmentService.addP2PEscrow(escrowEntry).subscribe();
+        }
+      }
+
+      if (isFinalSettlement && entry && !this.editingRepaymentId) {
+        // Auto-close the lending, update maturity_date to repayment date
+        const updated = { ...entry, status: 'Closed', maturity_date: this.repaymentForm.date };
+        this.investmentService.updateP2P(entry.id!, updated).subscribe({
+          next: () => { this.toast('Lending closed (full & final settlement)', 'success'); this.loadData(); },
+          error: () => this.loadData()
+        });
+      } else {
+        this.loadData();
+        this.checkAutoClose(this.repaymentForm.lending_id);
+      }
+    };
+
     if (this.editingRepaymentId) {
       this.investmentService.updateP2PRepayment(this.editingRepaymentId, this.repaymentForm).subscribe({
-        next: () => { this.toast('Repayment updated', 'success'); this.showRepaymentForm = false; this.editingRepaymentId = null; this.loadData(); this.checkAutoClose(this.repaymentForm.lending_id); },
+        next: () => { this.toast('Repayment updated', 'success'); this.showRepaymentForm = false; this.editingRepaymentId = null; afterSave(); },
         error: () => this.toast('Failed to update repayment', 'error')
       });
     } else {
       this.investmentService.addP2PRepayment(this.repaymentForm).subscribe({
-        next: () => { this.toast('Repayment recorded', 'success'); this.showRepaymentForm = false; this.loadData(); this.checkAutoClose(this.repaymentForm.lending_id); },
+        next: () => { this.toast('Repayment recorded', 'success'); this.showRepaymentForm = false; afterSave(); },
         error: () => this.toast('Failed to add repayment', 'error')
       });
     }
@@ -465,8 +732,41 @@ export class P2PComponent implements OnInit {
 
   deleteRepayment(id: number): void {
     if (confirm('Delete this repayment entry?')) {
+      const rep = this.repayments.find(r => r.id === id);
       this.investmentService.deleteP2PRepayment(id).subscribe({
-        next: () => { this.toast('Repayment deleted', 'success'); this.loadData(); },
+        next: () => {
+          this.toast('Repayment deleted', 'success');
+          // Clean up auto-created escrow entry for this repayment
+          if (rep) {
+            const entry = this.allEntries.find(e => e.lending_id === rep.lending_id);
+            if (entry) {
+              const matchingEscrow = this.escrowTransactions.find(t =>
+                t.type === 'Repayment' && t.date === rep.date &&
+                t.remarks?.startsWith(`Auto: ${entry.lending_id}`)
+              );
+              if (matchingEscrow) {
+                this.investmentService.deleteP2PEscrow(matchingEscrow.id!).subscribe();
+              }
+            }
+          }
+          this.loadData();
+          // Re-activate if lending was closed but now has pending amount
+          if (rep) {
+            setTimeout(() => {
+              const entry = this.allEntries.find(e => e.lending_id === rep.lending_id);
+              if (entry && entry.status === 'Closed') {
+                const pending = this.getPendingAmount(entry);
+                if (pending > 0) {
+                  const updated = { ...entry, status: 'Active' };
+                  this.investmentService.updateP2P(entry.id!, updated).subscribe({
+                    next: () => { this.toast('Lending re-activated (pending amount remaining)', 'success'); this.loadData(); },
+                    error: () => {}
+                  });
+                }
+              }
+            }, 1000);
+          }
+        },
         error: () => this.toast('Failed to delete repayment', 'error')
       });
     }
@@ -485,13 +785,66 @@ export class P2PComponent implements OnInit {
       if (!entry || entry.status === 'Closed' || entry.status === 'Defaulted') return;
       const received = this.getTotalRepaid(lendingId);
       if (received >= (entry.amount || 0)) {
-        // Auto-close
-        const updated = { ...entry, status: 'Closed' };
+        // Auto-close, update maturity_date to last repayment date
+        const reps = this.getRepayments(lendingId);
+        const lastRepDate = reps.length > 0 ? reps[reps.length - 1].date : entry.maturity_date;
+        const updated = { ...entry, status: 'Closed', maturity_date: lastRepDate };
         this.investmentService.updateP2P(entry.id!, updated).subscribe({
           next: () => { this.toast('Lending auto-closed (fully repaid)', 'success'); this.loadData(); },
           error: () => {}
         });
       }
     }, 1000);
+  }
+
+  // ── Escrow ──
+
+  get escrowBalance(): number {
+    return this.escrowTransactions.reduce((sum, t) => {
+      if (t.type === 'Deposit') return sum + (t.amount || 0);
+      return sum - (t.amount || 0);
+    }, 0);
+  }
+
+  get escrowTotalDeposits(): number {
+    return this.escrowTransactions.filter(t => t.type === 'Deposit').reduce((s, t) => s + (t.amount || 0), 0);
+  }
+
+  get escrowTotalWithdrawals(): number {
+    return this.escrowTransactions.filter(t => t.type === 'Withdrawal').reduce((s, t) => s + (t.amount || 0), 0);
+  }
+
+  openEscrowForm(): void {
+    this.editingEscrowId = null;
+    this.escrowForm = this.emptyEscrowForm();
+    this.showEscrowForm = true;
+  }
+
+  openEditEscrowForm(txn: P2PEscrow): void {
+    this.editingEscrowId = txn.id!;
+    this.escrowForm = { ...txn };
+    this.showEscrowForm = true;
+  }
+
+  saveEscrow(): void {
+    if (this.editingEscrowId) {
+      this.investmentService.updateP2PEscrow(this.editingEscrowId, this.escrowForm).subscribe({
+        next: () => { this.toast('Transaction updated', 'success'); this.showEscrowForm = false; this.editingEscrowId = null; this.loadData(); },
+        error: () => this.toast('Failed to update', 'error')
+      });
+    } else {
+      this.investmentService.addP2PEscrow(this.escrowForm).subscribe({
+        next: () => { this.toast('Transaction added', 'success'); this.showEscrowForm = false; this.loadData(); },
+        error: () => this.toast('Failed to add', 'error')
+      });
+    }
+  }
+
+  deleteEscrow(id: number): void {
+    if (!confirm('Delete this escrow transaction?')) return;
+    this.investmentService.deleteP2PEscrow(id).subscribe({
+      next: () => { this.toast('Transaction deleted', 'success'); this.loadData(); },
+      error: () => this.toast('Failed to delete', 'error')
+    });
   }
 }

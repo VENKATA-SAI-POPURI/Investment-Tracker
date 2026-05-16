@@ -264,6 +264,7 @@ table {
   &.buy { background: #d1fae5; color: #065f46; }
   &.sell { background: #fee2e2; color: #991b1b; }
   &.completed { background: #dbeafe; color: #1e40af; }
+  &.foreclosed { background: #fef3c7; color: #92400e; margin-left: 0.25rem; font-size: 0.65rem; }
 }
 
 .actions { white-space: nowrap; }

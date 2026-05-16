@@ -1,5 +1,62 @@
 @use '../shared';
 
+.kpi-tiers-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.kpi-tier {
+  background: #1a1a2e;
+  border: 1px solid #2d2d3d;
+  border-radius: 10px;
+  padding: 0.75rem;
+}
+
+.kpi-tier-title {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #64748b;
+  margin: 0 0 0.5rem 0.25rem;
+}
+
+.kpi-tier-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.kpi-card-mini {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.2rem;
+  padding: 0.5rem 0.75rem;
+  background: #252536;
+  border-radius: 8px;
+
+  .kpi-label {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #94a3b8;
+    white-space: nowrap;
+  }
+
+  .kpi-value {
+    font-size: 0.95rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 768px) {
+  .kpi-tiers-row { grid-template-columns: 1fr; }
+  .kpi-card-mini { padding: 0.4rem 0.5rem; }
+}
+
 .filter-toggles {
   display: flex;
   gap: 0.5rem;
@@ -62,6 +119,21 @@
   font-weight: 600;
 }
 
+.pending-info {
+  background: var(--bg-input, #334155);
+  border: 1px solid var(--border-color, #475569);
+  border-radius: 8px;
+  padding: 0.6rem 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+  color: var(--text-secondary, #94a3b8);
+
+  strong {
+    color: #f59e0b;
+    font-size: 1rem;
+  }
+}
+
 .expand-toggle {
   cursor: pointer;
   width: 30px;
@@ -91,11 +163,18 @@ tr.overdue {
 }
 
 // ── Monthly Inflow KPIs ──
+.monthly-row {
+  display: grid;
+  grid-template-columns: 3fr 2fr;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  align-items: stretch;
+}
+
 .monthly-inflow-kpis {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 1rem;
-  margin-bottom: 1.5rem;
 }
 
 .kpi-card {
@@ -180,6 +259,69 @@ tr.overdue {
     color: var(--text-secondary, #94a3b8);
     font-size: 0.75rem;
   }
+
+  .platform-rate {
+    color: #4caf50;
+    font-weight: 600;
+    font-size: 0.75rem;
+  }
+}
+
+// Monthly Return % trend
+.return-trend-container {
+  background: #1a1a2e;
+  border: 1px solid #2d2d3d;
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+
+  .trend-title {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #64748b;
+    margin-bottom: 0.5rem;
+  }
+
+  .return-trend {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.75rem;
+    flex: 1;
+
+    .trend-bar {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      flex: 1;
+      height: 100%;
+      justify-content: flex-end;
+
+      .trend-fill {
+        width: 100%;
+        max-width: 36px;
+        background: linear-gradient(180deg, #4caf50, #2e7d32);
+        border-radius: 4px 4px 0 0;
+        min-height: 2px;
+        transition: height 0.3s ease;
+      }
+
+      .trend-value {
+        font-size: 0.7rem;
+        font-weight: 600;
+        color: #4caf50;
+        margin-top: 4px;
+        white-space: nowrap;
+      }
+
+      .trend-label {
+        font-size: 0.65rem;
+        color: #94a3b8;
+        margin-top: 2px;
+      }
+    }
+  }
 }
 
 .repayment-header td {
@@ -239,6 +381,57 @@ tr.overdue {
   &:hover { background: #4f46e5; }
 }
 
+// ── Escrow Modal ──
+.header-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.escrow-modal {
+  background: #1e1e2e;
+  border-radius: 12px;
+  border: 1px solid #2d2d3d;
+  padding: 1.5rem;
+  width: 90vw;
+  max-width: 800px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+
+  h3 { margin: 0; font-size: 1.1rem; }
+}
+
+.escrow-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.escrow-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  background: #252536;
+  border-radius: 8px;
+
+  .stat-label { font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; }
+  .stat-value { font-size: 1.1rem; font-weight: 600; }
+}
+
+@media (max-width: 768px) {
+  .escrow-summary { grid-template-columns: 1fr; }
+  .escrow-modal { width: 95vw; max-height: 90vh; }
+}
+
 .card-repayments {
   padding: 0.5rem 0 0;
   border-top: 1px solid var(--border-color, #e5e7eb);
@@ -276,6 +469,9 @@ tr.overdue {
     padding-bottom: 0.25rem;
   }
   .platform-chip { flex-shrink: 0; }
+  .monthly-row {
+    grid-template-columns: 1fr;
+  }
   .monthly-inflow-kpis {
     grid-template-columns: 1fr;
   }

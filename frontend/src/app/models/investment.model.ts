@@ -64,6 +64,15 @@ export interface P2PRepayment {
   remarks: string;
 }
 
+export interface P2PEscrow {
+  id?: number;
+  date: string;
+  type: string;
+  amount: number | null;
+  platform: string;
+  remarks: string;
+}
+
 export interface FixedDepositEntry {
   id?: number;
   year: string;

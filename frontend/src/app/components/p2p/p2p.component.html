@@ -4,87 +4,92 @@
       <a routerLink="/" class="back-link">← Dashboard</a>
       <h1>P2P Lending</h1>
     </div>
-    <button class="btn btn-primary" (click)="openAddForm()">+ New Lending</button>
-  </div>
-
-  <!-- Summary Cards -->
-  <div class="forex-summary">
-    <div class="forex-stat">
-      <span class="stat-label">Total Lent</span>
-      <span class="stat-value">₹{{ totalLent | number:'1.2-2' }}</span>
-    </div>
-    <div class="forex-stat">
-      <span class="stat-label">Total Repaid</span>
-      <span class="stat-value">₹{{ totalRepaid | number:'1.2-2' }}</span>
-    </div>
-    <div class="forex-stat">
-      <span class="stat-label">Total Pending</span>
-      <span class="stat-value" [style.color]="totalPending > 0 ? '#f59e0b' : '#4caf50'">₹{{ totalPending | number:'1.2-2' }}</span>
-    </div>
-    <div class="forex-stat">
-      <span class="stat-label">Total Return</span>
-      <span class="stat-value" style="color: #4caf50">₹{{ totalReturns | number:'1.2-2' }}</span>
-    </div>
-    <div class="forex-stat">
-      <span class="stat-label">Expected Return</span>
-      <span class="stat-value" style="color: #2196f3">₹{{ expectedReturn | number:'1.2-2' }}</span>
-    </div>
-    <div class="forex-stat">
-      <span class="stat-label">Active Lendings</span>
-      <span class="stat-value">{{ activeLendings }} (₹{{ activeLentAmount | number:'1.2-2' }})</span>
-    </div>
-    <div class="forex-stat">
-      <span class="stat-label">Avg Interest Rate (p.a.)</span>
-      <span class="stat-value">{{ avgInterestRate }}</span>
-    </div>
-    <div class="forex-stat">
-      <span class="stat-label">Defaulted</span>
-      <span class="stat-value" [style.color]="defaultedCount > 0 ? '#f44336' : 'inherit'">{{ defaultedCount }} (₹{{ defaultedAmount | number:'1.2-2' }})</span>
-    </div>
-    <div class="forex-stat">
-      <span class="stat-label">Recovery Rate</span>
-      <span class="stat-value">{{ recoveryRate }}</span>
+    <div class="header-actions">
+      <button class="btn btn-secondary" (click)="showEscrowPanel = true">💰 Escrow</button>
+      <button class="btn btn-primary" (click)="openAddForm()">+ New Lending</button>
     </div>
   </div>
 
-  <!-- Monthly Inflow KPIs -->
-  <div class="monthly-inflow-kpis">
-    <div class="kpi-card">
-      <div class="kpi-header">{{ getMonthLabel(-1) }}</div>
-      <div class="kpi-row">
-        <div class="kpi-item">
-          <span class="kpi-label">Expected</span>
-          <span class="kpi-value">₹{{ prevMonthExpected | number:'1.2-2' }}</span>
+  <!-- KPI Tiers -->
+  <div class="kpi-tiers-row">
+    <div class="kpi-tier">
+      <h4 class="kpi-tier-title">Portfolio</h4>
+      <div class="kpi-tier-cards">
+        <div class="kpi-card-mini"><span class="kpi-label">Escrow</span><span class="kpi-value" [style.color]="escrowBalance >= 0 ? '#4caf50' : '#ef4444'">₹{{ escrowBalance | number:'1.0-0' }}</span></div>
+        <div class="kpi-card-mini"><span class="kpi-label">Total Lent</span><span class="kpi-value">₹{{ totalLent | number:'1.0-0' }}</span></div>
+        <div class="kpi-card-mini"><span class="kpi-label">Active Lent</span><span class="kpi-value" style="color: #2196f3">₹{{ activeLentAmount | number:'1.0-0' }}</span></div>
+        <div class="kpi-card-mini"><span class="kpi-label">Pending</span><span class="kpi-value" [style.color]="totalPending > 0 ? '#f59e0b' : '#4caf50'">₹{{ totalPending | number:'1.0-0' }}</span></div>
+      </div>
+    </div>
+    <div class="kpi-tier">
+      <h4 class="kpi-tier-title">Returns</h4>
+      <div class="kpi-tier-cards">
+        <div class="kpi-card-mini"><span class="kpi-label">Total Return</span><span class="kpi-value" style="color: #4caf50">₹{{ totalReturns | number:'1.0-0' }}</span></div>
+        <div class="kpi-card-mini"><span class="kpi-label">Exp. Return</span><span class="kpi-value" style="color: #2196f3">₹{{ expectedReturn | number:'1.0-0' }}</span></div>
+        <div class="kpi-card-mini"><span class="kpi-label">Avg Rate (p.a.)</span><span class="kpi-value">{{ avgInterestRate }}</span></div>
+      </div>
+    </div>
+    <div class="kpi-tier">
+      <h4 class="kpi-tier-title">Risk & Health</h4>
+      <div class="kpi-tier-cards">
+        <div class="kpi-card-mini"><span class="kpi-label">Overdue</span><span class="kpi-value" [style.color]="overdueCount > 0 ? '#f44336' : 'inherit'">{{ overdueCount }} (₹{{ overdueAmount | number:'1.0-0' }})</span></div>
+        <div class="kpi-card-mini"><span class="kpi-label">Defaulted</span><span class="kpi-value" [style.color]="defaultedCount > 0 ? '#f44336' : 'inherit'">{{ defaultedCount }}</span></div>
+        <div class="kpi-card-mini"><span class="kpi-label">Foreclosed</span><span class="kpi-value" style="color: #2196f3">{{ foreclosedCount }}</span></div>
+        <div class="kpi-card-mini"><span class="kpi-label">Portfolio IRR</span><span class="kpi-value" style="color: #4caf50">{{ portfolioIRR != null ? (portfolioIRR | number:'1.1-1') + '%' : '-' }}</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Monthly Inflow + Return Trend Row -->
+  <div class="monthly-row">
+    <div class="monthly-inflow-kpis">
+      <div class="kpi-card">
+        <div class="kpi-header">{{ getMonthLabel(-1) }}</div>
+        <div class="kpi-row">
+          <div class="kpi-item">
+            <span class="kpi-label">Expected</span>
+            <span class="kpi-value">₹{{ prevMonthExpected | number:'1.2-2' }}</span>
+          </div>
+          <div class="kpi-item">
+            <span class="kpi-label">Actual</span>
+            <span class="kpi-value" [style.color]="prevMonthActual >= prevMonthExpected ? '#4caf50' : '#f44336'">₹{{ prevMonthActual | number:'1.2-2' }}</span>
+          </div>
         </div>
-        <div class="kpi-item">
-          <span class="kpi-label">Actual</span>
-          <span class="kpi-value" [style.color]="prevMonthActual >= prevMonthExpected ? '#4caf50' : '#f44336'">₹{{ prevMonthActual | number:'1.2-2' }}</span>
+      </div>
+      <div class="kpi-card kpi-current">
+        <div class="kpi-header">{{ getMonthLabel(0) }} <span class="kpi-badge">Current</span></div>
+        <div class="kpi-row">
+          <div class="kpi-item">
+            <span class="kpi-label">Expected</span>
+            <span class="kpi-value">₹{{ currentMonthExpected | number:'1.2-2' }}</span>
+          </div>
+          <div class="kpi-item">
+            <span class="kpi-label">Actual</span>
+            <span class="kpi-value" [style.color]="currentMonthActual >= currentMonthExpected ? '#4caf50' : '#f59e0b'">₹{{ currentMonthActual | number:'1.2-2' }}</span>
+          </div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-header">{{ getMonthLabel(1) }}</div>
+        <div class="kpi-row">
+          <div class="kpi-item">
+            <span class="kpi-label">Expected</span>
+            <span class="kpi-value">₹{{ nextMonthExpected | number:'1.2-2' }}</span>
+          </div>
+          <div class="kpi-item">
+            <span class="kpi-label">Actual</span>
+            <span class="kpi-value" [style.color]="nextMonthActual >= nextMonthExpected ? '#4caf50' : '#f59e0b'">₹{{ nextMonthActual | number:'1.2-2' }}</span>
+          </div>
         </div>
       </div>
     </div>
-    <div class="kpi-card kpi-current">
-      <div class="kpi-header">{{ getMonthLabel(0) }} <span class="kpi-badge">Current</span></div>
-      <div class="kpi-row">
-        <div class="kpi-item">
-          <span class="kpi-label">Expected</span>
-          <span class="kpi-value">₹{{ currentMonthExpected | number:'1.2-2' }}</span>
-        </div>
-        <div class="kpi-item">
-          <span class="kpi-label">Actual</span>
-          <span class="kpi-value" [style.color]="currentMonthActual >= currentMonthExpected ? '#4caf50' : '#f59e0b'">₹{{ currentMonthActual | number:'1.2-2' }}</span>
-        </div>
-      </div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-header">{{ getMonthLabel(1) }}</div>
-      <div class="kpi-row">
-        <div class="kpi-item">
-          <span class="kpi-label">Expected</span>
-          <span class="kpi-value">₹{{ nextMonthExpected | number:'1.2-2' }}</span>
-        </div>
-        <div class="kpi-item">
-          <span class="kpi-label">Actual</span>
-          <span class="kpi-value" [style.color]="nextMonthActual >= nextMonthExpected ? '#4caf50' : '#f59e0b'">₹{{ nextMonthActual | number:'1.2-2' }}</span>
+    <div class="return-trend-container" *ngIf="monthlyReturnTrend.length > 0">
+      <div class="trend-title">Monthly Return % Trend</div>
+      <div class="return-trend">
+        <div class="trend-bar" *ngFor="let m of monthlyReturnTrend">
+          <div class="trend-fill" [style.height.%]="(m.returnPct / (maxMonthlyReturnPct || 1)) * 100"></div>
+          <span class="trend-value">{{ m.returnPct | number:'1.1-1' }}%</span>
+          <span class="trend-label">{{ m.month }}</span>
         </div>
       </div>
     </div>
@@ -96,6 +101,7 @@
       <span class="platform-name">{{ p.platform }}</span>
       <span class="platform-amount">₹{{ p.lent | number:'1.0-0' }}</span>
       <span class="platform-active">{{ p.active }} active</span>
+      <span class="platform-rate">{{ p.avgRate }}</span>
     </div>
   </div>
 
@@ -166,6 +172,9 @@
   <div class="form-overlay" *ngIf="showRepaymentForm" (click)="cancelRepaymentForm()">
     <div class="form-modal" (click)="$event.stopPropagation()">
       <h2>{{ editingRepaymentId ? 'Edit' : 'Add' }} Repayment — {{ repaymentForm.lending_id }}</h2>
+      <div class="pending-info" *ngIf="!editingRepaymentId">
+        Pending Amount: <strong>₹{{ getRepaymentPendingAmount() | number:'1.2-2' }}</strong>
+      </div>
       <form (ngSubmit)="saveRepayment()">
         <div class="form-grid">
           <div class="form-group">
@@ -174,7 +183,7 @@
           </div>
           <div class="form-group">
             <label>Amount (₹) *</label>
-            <input type="number" [(ngModel)]="repaymentForm.amount" name="rep_amount" step="0.01" min="0" placeholder="Repayment amount" required>
+            <input type="number" [(ngModel)]="repaymentForm.amount" name="rep_amount" step="0.01" min="0" placeholder="Repayment amount" required (ngModelChange)="onRepaymentAmountChange()">
           </div>
           <div class="form-group full-width">
             <label>Remarks</label>
@@ -207,8 +216,9 @@
           <th class="sortable" (click)="sort('tenure')">Tenure <span class="sort-icon">{{ sortIcon('tenure') }}</span></th>
           <th>Received</th>
           <th>Pending</th>
-          <th>Interest Amt</th>
-          <th>Interest %</th>
+          <th>Return Amt</th>
+          <th>Return %</th>
+          <th>IRR</th>
           <th>Maturity</th>
           <th class="sortable" (click)="sort('nextInstallment')">Next Installment <span class="sort-icon">{{ sortIcon('nextInstallment') }}</span></th>
           <th class="sortable" (click)="sort('status')">Status <span class="sort-icon">{{ sortIcon('status') }}</span></th>
@@ -229,10 +239,14 @@
             <td class="number">₹{{ getTotalRepaid(entry.lending_id) | number:'1.2-2' }}</td>
             <td class="number" [style.color]="getPendingAmount(entry) > 0 ? '#f59e0b' : '#4caf50'">₹{{ getPendingAmount(entry) | number:'1.2-2' }}</td>
             <td class="number" style="color: #4caf50">₹{{ getTotalInterest(entry.lending_id) | number:'1.2-2' }}</td>
-            <td class="number">{{ getInterestRate(entry) != null ? (getInterestRate(entry)! | number:'1.2-2') + '%' : '-' }}</td>
+            <td class="number">{{ getTotalRepaid(entry.lending_id) > 0 ? ((getTotalInterest(entry.lending_id) / getTotalRepaid(entry.lending_id)) * 100 | number:'1.2-2') + '%' : '-' }}</td>
+            <td class="number">{{ getIRR(entry) != null ? (getIRR(entry) | number:'1.1-1') + '%' : '-' }}</td>
             <td>{{ entry.maturity_date }}</td>
             <td>{{ getNextInstallmentDate(entry) }}</td>
-            <td><span class="badge" [class.buy]="entry.status === 'Active'" [class.sell]="entry.status === 'Defaulted'" [class.completed]="entry.status === 'Closed'">{{ entry.status }}</span></td>
+            <td>
+              <span class="badge" [class.buy]="entry.status === 'Active'" [class.sell]="entry.status === 'Defaulted'" [class.completed]="entry.status === 'Closed'">{{ entry.status }}</span>
+              <span class="badge foreclosed" *ngIf="isForeclosed(entry)">Foreclosed</span>
+            </td>
             <td class="actions">
               <button class="btn-icon" (click)="openRepaymentForm(entry.lending_id)" title="Add Repayment">💰</button>
               <button class="btn-icon edit" (click)="openEditForm(entry)" title="Edit">✏️</button>
@@ -242,7 +256,7 @@
           <!-- Expanded repayment rows -->
           <tr class="repayment-header" *ngIf="expandedLendingId === entry.lending_id">
             <td></td>
-            <td colspan="13">
+            <td colspan="14">
               <div class="repayment-section">
                 <div class="repayment-title">
                   <span>Repayment History ({{ getRepayments(entry.lending_id).length }})</span>
@@ -255,16 +269,18 @@
                       <th>Amount</th>
                       <th>Principal</th>
                       <th>Interest</th>
+                      <th>Annualized %</th>
                       <th>Remarks</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr *ngFor="let rep of getRepayments(entry.lending_id)">
+                    <tr *ngFor="let rep of getRepayments(entry.lending_id); let i = index">
                       <td>{{ rep.date }}</td>
                       <td class="number">₹{{ rep.amount | number:'1.2-2' }}</td>
-                      <td class="number">₹{{ getRepaymentPrincipal(rep.amount || 0, entry) | number:'1.2-2' }}</td>
-                      <td class="number" style="color: #4caf50">₹{{ getRepaymentInterest(rep.amount || 0, entry) | number:'1.2-2' }}</td>
+                      <td class="number">₹{{ getRepaymentPrincipal(rep.amount || 0, entry, i) | number:'1.2-2' }}</td>
+                      <td class="number" style="color: #4caf50">₹{{ getRepaymentInterest(rep.amount || 0, entry, i) | number:'1.2-2' }}</td>
+                      <td class="number">{{ getRepaymentAnnualizedRate(entry, i) != null ? (getRepaymentAnnualizedRate(entry, i)! | number:'1.2-2') + '%' : '-' }}</td>
                       <td class="remarks">{{ rep.remarks }}</td>
                       <td class="actions">
                         <button class="btn-icon edit" (click)="openEditRepaymentForm(rep)" title="Edit">✏️</button>
@@ -297,7 +313,9 @@
           <div class="card-row"><span>Tenure:</span><span>{{ entry.tenure }} months</span></div>
           <div class="card-row"><span>Received:</span><span>₹{{ getTotalRepaid(entry.lending_id) | number:'1.2-2' }}</span></div>
           <div class="card-row"><span>Pending:</span><span [style.color]="getPendingAmount(entry) > 0 ? '#f59e0b' : '#4caf50'">₹{{ getPendingAmount(entry) | number:'1.2-2' }}</span></div>
-          <div class="card-row" *ngIf="getInterestRate(entry) != null"><span>Interest:</span><span>{{ getInterestRate(entry)! | number:'1.2-2' }}%</span></div>
+          <div class="card-row"><span>Return Amt:</span><span style="color: #4caf50">₹{{ getTotalInterest(entry.lending_id) | number:'1.2-2' }}</span></div>
+          <div class="card-row" *ngIf="getTotalRepaid(entry.lending_id) > 0"><span>Return %:</span><span>{{ (getTotalInterest(entry.lending_id) / getTotalRepaid(entry.lending_id)) * 100 | number:'1.2-2' }}%</span></div>
+          <div class="card-row"><span>IRR:</span><span style="color: #4caf50">{{ getIRR(entry) != null ? (getIRR(entry) | number:'1.1-1') + '%' : '-' }}</span></div>
           <div class="card-row"><span>Maturity:</span><span>{{ entry.maturity_date }}</span></div>
           <div class="card-row"><span>Next Installment:</span><span>{{ getNextInstallmentDate(entry) }}</span></div>
         </div>
@@ -322,5 +340,97 @@
       </div>
     </div>
     <div class="empty" *ngIf="entries.length === 0">No P2P lending entries yet. Click <strong>+ New Lending</strong> to log your first loan.</div>
+  </div>
+
+  <!-- Escrow Account Modal -->
+  <div class="form-overlay" *ngIf="showEscrowPanel" (click)="showEscrowPanel = false">
+    <div class="escrow-modal" (click)="$event.stopPropagation()">
+      <div class="section-header">
+        <h3>Escrow Account</h3>
+        <div class="header-actions">
+          <button class="btn btn-primary btn-sm" (click)="openEscrowForm()">+ Add Transaction</button>
+          <button class="btn-icon" (click)="showEscrowPanel = false" title="Close">✕</button>
+        </div>
+      </div>
+      <div class="escrow-summary">
+      <div class="escrow-stat">
+        <span class="stat-label">Total Deposits</span>
+        <span class="stat-value" style="color: #4caf50">₹{{ escrowTotalDeposits | number:'1.2-2' }}</span>
+      </div>
+      <div class="escrow-stat">
+        <span class="stat-label">Total Withdrawals</span>
+        <span class="stat-value" style="color: #ef4444">₹{{ escrowTotalWithdrawals | number:'1.2-2' }}</span>
+      </div>
+      <div class="escrow-stat">
+        <span class="stat-label">Balance</span>
+        <span class="stat-value" [style.color]="escrowBalance >= 0 ? '#4caf50' : '#ef4444'">₹{{ escrowBalance | number:'1.2-2' }}</span>
+      </div>
+    </div>
+    <table class="data-table" *ngIf="escrowTransactions.length > 0">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Type</th>
+          <th>Amount</th>
+          <th>Platform</th>
+          <th>Remarks</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let txn of escrowTransactions">
+          <td>{{ txn.date }}</td>
+          <td><span class="badge" [class.buy]="txn.type === 'Deposit'" [class.sell]="txn.type === 'Withdrawal'" [class.completed]="txn.type === 'Repayment'">{{ txn.type }}</span></td>
+          <td class="number">₹{{ txn.amount | number:'1.2-2' }}</td>
+          <td>{{ txn.platform }}</td>
+          <td class="remarks">{{ txn.remarks }}</td>
+          <td class="actions">
+            <button class="btn-icon edit" (click)="openEditEscrowForm(txn)" title="Edit">✏️</button>
+            <button class="btn-icon delete" (click)="deleteEscrow(txn.id!)" title="Delete">🗑️</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="empty" *ngIf="escrowTransactions.length === 0">No escrow transactions yet.</div>
+    </div>
+  </div>
+
+  <!-- Escrow Form Modal -->
+  <div class="form-overlay" *ngIf="showEscrowForm" (click)="showEscrowForm = false">
+    <div class="form-modal" (click)="$event.stopPropagation()">
+      <h3>{{ editingEscrowId ? 'Edit' : 'Add' }} Escrow Transaction</h3>
+      <form (ngSubmit)="saveEscrow()">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Date *</label>
+            <input type="date" [(ngModel)]="escrowForm.date" name="date" required>
+          </div>
+          <div class="form-group">
+            <label>Type *</label>
+            <select [(ngModel)]="escrowForm.type" name="type" required>
+              <option value="Deposit">Deposit</option>
+              <option value="Withdrawal">Withdrawal</option>
+              <option value="Repayment">Repayment</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Amount *</label>
+            <input type="number" [(ngModel)]="escrowForm.amount" name="amount" placeholder="Amount" required>
+          </div>
+          <div class="form-group">
+            <label>Platform</label>
+            <input type="text" [(ngModel)]="escrowForm.platform" name="platform" placeholder="e.g. LenDenClub">
+          </div>
+          <div class="form-group full-width">
+            <label>Remarks</label>
+            <input type="text" [(ngModel)]="escrowForm.remarks" name="remarks" placeholder="Notes">
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" (click)="showEscrowForm = false">Cancel</button>
+          <button type="submit" class="btn btn-primary">{{ editingEscrowId ? 'Update' : 'Add' }}</button>
+        </div>
+      </form>
+    </div>
   </div>
 </div>

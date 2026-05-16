@@ -212,7 +212,43 @@ def delete_p2p_repayment(row_id):
     return jsonify({"error": "Row not found"}), 404
 
 
-# â”€â”€ Fixed Deposits Endpoints â”€â”€
+# ── P2P Escrow Endpoints ──
+
+@app.route("/api/p2p-escrow", methods=["GET"])
+def get_p2p_escrow():
+    rows = db_service.get_all("P2P Escrow")
+    return jsonify(rows)
+
+
+@app.route("/api/p2p-escrow", methods=["POST"])
+def add_p2p_escrow():
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+    result = db_service.add_row("P2P Escrow", data)
+    return jsonify({"message": "Escrow transaction added", "id": result["id"]}), 201
+
+
+@app.route("/api/p2p-escrow/<int:row_id>", methods=["PUT"])
+def update_p2p_escrow(row_id):
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+    success = db_service.update_row("P2P Escrow", row_id, data)
+    if success:
+        return jsonify({"message": "Escrow transaction updated"})
+    return jsonify({"error": "Row not found"}), 404
+
+
+@app.route("/api/p2p-escrow/<int:row_id>", methods=["DELETE"])
+def delete_p2p_escrow(row_id):
+    success = db_service.delete_row("P2P Escrow", row_id)
+    if success:
+        return jsonify({"message": "Escrow transaction deleted"})
+    return jsonify({"error": "Row not found"}), 404
+
+
+# ── Fixed Deposits Endpoints ──
 
 @app.route("/api/fixed-deposits", methods=["GET"])
 def get_fixed_deposits():

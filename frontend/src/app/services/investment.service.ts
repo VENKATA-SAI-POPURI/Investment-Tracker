@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { EquityEntry, CommodityEntry, MutualFundEntry, P2PEntry, P2PRepayment, FixedDepositEntry, ForexEntry, Summary } from '../models/investment.model';
+import { EquityEntry, CommodityEntry, MutualFundEntry, P2PEntry, P2PRepayment, P2PEscrow, FixedDepositEntry, ForexEntry, Summary } from '../models/investment.model';
 import { environment } from '../../environments/environment';
 
 @Injectable({ providedIn: 'root' })
@@ -93,6 +93,23 @@ export class InvestmentService {
 
   deleteP2PRepayment(id: number): Observable<any> {
     return this.http.delete(`${this.baseUrl}/p2p-repayments/${id}`);
+  }
+
+  // ── P2P Escrow ──
+  getP2PEscrow(): Observable<P2PEscrow[]> {
+    return this.http.get<P2PEscrow[]>(`${this.baseUrl}/p2p-escrow`);
+  }
+
+  addP2PEscrow(entry: P2PEscrow): Observable<any> {
+    return this.http.post(`${this.baseUrl}/p2p-escrow`, entry);
+  }
+
+  updateP2PEscrow(id: number, entry: P2PEscrow): Observable<any> {
+    return this.http.put(`${this.baseUrl}/p2p-escrow/${id}`, entry);
+  }
+
+  deleteP2PEscrow(id: number): Observable<any> {
+    return this.http.delete(`${this.baseUrl}/p2p-escrow/${id}`);
   }
 
   // ── Fixed Deposits ──
