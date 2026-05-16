@@ -230,22 +230,62 @@ export class P2PComponent implements OnInit {
 
   // ── Feature: This month's expected inflow ──
   get thisMonthInflow(): number {
+    return this.getExpectedInflowForMonth(0);
+  }
+
+  // ── Monthly Inflow KPI helpers ──
+
+  private getExpectedInflowForMonth(offset: number): number {
     const now = new Date();
-    const thisMonth = now.getMonth();
-    const thisYear = now.getFullYear();
+    const targetDate = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+    const targetMonth = targetDate.getMonth();
+    const targetYear = targetDate.getFullYear();
+
     return this.allEntries.filter(e => e.status === 'Active').reduce((sum, e) => {
-      const nextDate = this.getNextInstallmentDate(e);
-      if (nextDate === '-') return sum;
-      const d = new Date(nextDate);
-      if (d.getMonth() === thisMonth && d.getFullYear() === thisYear) {
-        // Expected inflow = principal + interest per installment
-        const pp = this.getPrincipalPerInstallment(e);
-        const avgRate = this.getInterestRate(e);
-        const interestPer = avgRate != null ? pp * (avgRate / 100) : 0;
-        return sum + pp + interestPer;
+      if (!e.date || !e.tenure) return sum;
+      const start = new Date(e.date);
+      const pp = this.getPrincipalPerInstallment(e);
+
+      for (let i = 1; i <= e.tenure; i++) {
+        const instDate = new Date(start);
+        instDate.setMonth(instDate.getMonth() + i);
+        if (instDate.getMonth() === targetMonth && instDate.getFullYear() === targetYear) {
+          return sum + pp;
+        }
       }
       return sum;
     }, 0);
+  }
+
+  private getActualInflowForMonth(offset: number): number {
+    const now = new Date();
+    const targetDate = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+    const targetMonth = targetDate.getMonth();
+    const targetYear = targetDate.getFullYear();
+
+    return this.repayments.reduce((sum, r) => {
+      if (!r.date || !r.amount) return sum;
+      const d = new Date(r.date);
+      if (d.getMonth() === targetMonth && d.getFullYear() === targetYear) {
+        const entry = this.allEntries.find(e => e.lending_id === r.lending_id);
+        const pp = entry ? this.getPrincipalPerInstallment(entry) : r.amount;
+        return sum + Math.min(r.amount, pp);
+      }
+      return sum;
+    }, 0);
+  }
+
+  get prevMonthExpected(): number { return this.getExpectedInflowForMonth(-1); }
+  get prevMonthActual(): number { return this.getActualInflowForMonth(-1); }
+  get currentMonthExpected(): number { return this.getExpectedInflowForMonth(0); }
+  get currentMonthActual(): number { return this.getActualInflowForMonth(0); }
+  get nextMonthExpected(): number { return this.getExpectedInflowForMonth(1); }
+  get nextMonthActual(): number { return this.getActualInflowForMonth(1); }
+
+  getMonthLabel(offset: number): string {
+    const d = new Date();
+    d.setMonth(d.getMonth() + offset);
+    return d.toLocaleString('default', { month: 'short', year: 'numeric' });
   }
 
   // ── Feature: Recovery rate for defaulted ──

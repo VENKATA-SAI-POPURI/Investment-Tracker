@@ -90,6 +90,72 @@ tr.overdue {
   margin-bottom: 1.5rem;
 }
 
+// ── Monthly Inflow KPIs ──
+.monthly-inflow-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.kpi-card {
+  background: var(--bg-card, #1e293b);
+  border: 1px solid var(--border-color, #334155);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  transition: transform 0.2s;
+
+  &.kpi-current {
+    border-color: var(--accent, #3b82f6);
+    box-shadow: 0 0 0 1px var(--accent, #3b82f6), 0 4px 12px rgba(59, 130, 246, 0.15);
+  }
+}
+
+.kpi-header {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-heading, #f1f5f9);
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.kpi-badge {
+  font-size: 0.65rem;
+  font-weight: 600;
+  background: var(--accent, #3b82f6);
+  color: #fff;
+  padding: 0.15rem 0.5rem;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.kpi-row {
+  display: flex;
+  gap: 1.5rem;
+}
+
+.kpi-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  flex: 1;
+}
+
+.kpi-label {
+  font-size: 0.75rem;
+  color: var(--text-secondary, #94a3b8);
+  font-weight: 500;
+}
+
+.kpi-value {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-heading, #f1f5f9);
+}
+
 .platform-chip {
   display: flex;
   align-items: center;
@@ -210,5 +276,8 @@ tr.overdue {
     padding-bottom: 0.25rem;
   }
   .platform-chip { flex-shrink: 0; }
+  .monthly-inflow-kpis {
+    grid-template-columns: 1fr;
+  }
 }
 

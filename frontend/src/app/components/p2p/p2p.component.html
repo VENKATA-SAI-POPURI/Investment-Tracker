@@ -45,9 +45,48 @@
       <span class="stat-label">Recovery Rate</span>
       <span class="stat-value">{{ recoveryRate }}</span>
     </div>
-    <div class="forex-stat">
-      <span class="stat-label">This Month Inflow</span>
-      <span class="stat-value" style="color: #4caf50">₹{{ thisMonthInflow | number:'1.2-2' }}</span>
+  </div>
+
+  <!-- Monthly Inflow KPIs -->
+  <div class="monthly-inflow-kpis">
+    <div class="kpi-card">
+      <div class="kpi-header">{{ getMonthLabel(-1) }}</div>
+      <div class="kpi-row">
+        <div class="kpi-item">
+          <span class="kpi-label">Expected</span>
+          <span class="kpi-value">₹{{ prevMonthExpected | number:'1.2-2' }}</span>
+        </div>
+        <div class="kpi-item">
+          <span class="kpi-label">Actual</span>
+          <span class="kpi-value" [style.color]="prevMonthActual >= prevMonthExpected ? '#4caf50' : '#f44336'">₹{{ prevMonthActual | number:'1.2-2' }}</span>
+        </div>
+      </div>
+    </div>
+    <div class="kpi-card kpi-current">
+      <div class="kpi-header">{{ getMonthLabel(0) }} <span class="kpi-badge">Current</span></div>
+      <div class="kpi-row">
+        <div class="kpi-item">
+          <span class="kpi-label">Expected</span>
+          <span class="kpi-value">₹{{ currentMonthExpected | number:'1.2-2' }}</span>
+        </div>
+        <div class="kpi-item">
+          <span class="kpi-label">Actual</span>
+          <span class="kpi-value" [style.color]="currentMonthActual >= currentMonthExpected ? '#4caf50' : '#f59e0b'">₹{{ currentMonthActual | number:'1.2-2' }}</span>
+        </div>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-header">{{ getMonthLabel(1) }}</div>
+      <div class="kpi-row">
+        <div class="kpi-item">
+          <span class="kpi-label">Expected</span>
+          <span class="kpi-value">₹{{ nextMonthExpected | number:'1.2-2' }}</span>
+        </div>
+        <div class="kpi-item">
+          <span class="kpi-label">Actual</span>
+          <span class="kpi-value" [style.color]="nextMonthActual >= nextMonthExpected ? '#4caf50' : '#f59e0b'">₹{{ nextMonthActual | number:'1.2-2' }}</span>
+        </div>
+      </div>
     </div>
   </div>
 
