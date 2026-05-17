@@ -504,7 +504,7 @@ export class P2PComponent implements OnInit {
 
   // ── Data operations ──
 
-  loadData(): void {
+  loadData(onComplete?: () => void): void {
     this.loading = true;
     this.investmentService.getP2P().subscribe({
       next: (data) => {
@@ -513,14 +513,14 @@ export class P2PComponent implements OnInit {
           next: (rep) => {
             this.repayments = rep;
             this.investmentService.getP2PEscrow().subscribe({
-              next: (esc) => { this.escrowTransactions = esc; this.applyFilter(); this.loading = false; },
-              error: () => { this.escrowTransactions = []; this.applyFilter(); this.loading = false; }
+              next: (esc) => { this.escrowTransactions = esc; this.applyFilter(); this.loading = false; onComplete?.(); },
+              error: () => { this.escrowTransactions = []; this.applyFilter(); this.loading = false; onComplete?.(); }
             });
           },
-          error: () => { this.repayments = []; this.applyFilter(); this.loading = false; }
+          error: () => { this.repayments = []; this.applyFilter(); this.loading = false; onComplete?.(); }
         });
       },
-      error: () => { this.toast('Failed to load entries', 'error'); this.loading = false; }
+      error: () => { this.toast('Failed to load entries', 'error'); this.loading = false; onComplete?.(); }
     });
   }
 
@@ -688,15 +688,14 @@ export class P2PComponent implements OnInit {
     }
 
     const afterSave = () => {
-      // Auto-post principal as escrow Repayment (money went to bank, not escrow)
+      // Auto-post full repayment as escrow withdrawal (entire repayment goes to bank, not escrow)
       if (!this.editingRepaymentId && entry) {
-        const repIndex = this.getRepayments(entry.lending_id).length; // new repayment will be at this index
-        const principal = this.getRepaymentPrincipal(this.repaymentForm.amount!, entry, repIndex);
-        if (principal > 0) {
+        const fullAmount = this.repaymentForm.amount!;
+        if (fullAmount > 0) {
           const escrowEntry: P2PEscrow = {
             date: this.repaymentForm.date,
             type: 'Repayment',
-            amount: principal,
+            amount: fullAmount,
             platform: entry.platform,
             remarks: `Auto: ${entry.lending_id} - ${entry.name}`
           };
@@ -749,23 +748,21 @@ export class P2PComponent implements OnInit {
               }
             }
           }
-          this.loadData();
-          // Re-activate if lending was closed but now has pending amount
-          if (rep) {
-            setTimeout(() => {
-              const entry = this.allEntries.find(e => e.lending_id === rep.lending_id);
-              if (entry && entry.status === 'Closed') {
-                const pending = this.getPendingAmount(entry);
-                if (pending > 0) {
-                  const updated = { ...entry, status: 'Active' };
-                  this.investmentService.updateP2P(entry.id!, updated).subscribe({
-                    next: () => { this.toast('Lending re-activated (pending amount remaining)', 'success'); this.loadData(); },
-                    error: () => {}
-                  });
-                }
+          const lendingId = rep?.lending_id;
+          this.loadData(() => {
+            if (!lendingId) return;
+            const entry = this.allEntries.find(e => e.lending_id === lendingId);
+            if (entry && entry.status === 'Closed') {
+              const pending = this.getPendingAmount(entry);
+              if (pending > 0) {
+                const updated = { ...entry, status: 'Active' };
+                this.investmentService.updateP2P(entry.id!, updated).subscribe({
+                  next: () => { this.toast('Lending re-activated (pending amount remaining)', 'success'); this.loadData(); },
+                  error: () => {}
+                });
               }
-            }, 1000);
-          }
+            }
+          });
         },
         error: () => this.toast('Failed to delete repayment', 'error')
       });

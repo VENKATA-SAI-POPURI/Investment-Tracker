@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import threading
+import warnings
 import requests
 
 
@@ -11,6 +12,8 @@ class TursoConnection:
         # Convert libsql:// to https://
         self._url = url.replace("libsql://", "https://") + "/v2/pipeline"
         self._headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        # On Windows/local dev, SSL cert verification can fail; allow override via env var
+        self._verify_ssl = os.environ.get("TURSO_VERIFY_SSL", "true").lower() != "false"
 
     def execute(self, sql, params=None):
         stmt = {"sql": sql}
@@ -29,7 +32,9 @@ class TursoConnection:
                     args.append({"type": "text", "value": str(v)})
             stmt["args"] = args
         body = {"requests": [{"type": "execute", "stmt": stmt}, {"type": "close"}]}
-        resp = requests.post(self._url, json=body, headers=self._headers, timeout=15)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            resp = requests.post(self._url, json=body, headers=self._headers, timeout=15, verify=self._verify_ssl)
         if resp.status_code != 200:
             raise Exception(f"Turso HTTP {resp.status_code}: {resp.text}")
         data = resp.json()
@@ -397,9 +402,9 @@ class DbService:
                 """)
                 summary["P2P"]["current_invested"] = round(cursor.fetchone()["pending"], 2)
 
-                # Escrow balance
+                # Escrow balance: Deposits are positive, everything else (Repayment, Withdrawal) is negative
                 cursor = conn.execute("""
-                    SELECT COALESCE(SUM(CASE WHEN type IN ('Deposit', 'Repayment') THEN amount ELSE -amount END), 0) as balance
+                    SELECT COALESCE(SUM(CASE WHEN type = 'Deposit' THEN amount ELSE -amount END), 0) as balance
                     FROM p2p_escrow
                 """)
                 summary["P2P"]["escrow_balance"] = round(cursor.fetchone()["balance"], 2)
