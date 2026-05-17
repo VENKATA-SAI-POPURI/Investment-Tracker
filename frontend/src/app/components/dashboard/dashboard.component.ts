@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { forkJoin } from 'rxjs';
 import { InvestmentService } from '../../services/investment.service';
-import { Summary, EquityEntry, CommodityEntry, MutualFundEntry, P2PEntry, FixedDepositEntry, ForexEntry } from '../../models/investment.model';
+import { Summary, EquityEntry, CommodityEntry, MutualFundEntry, P2PEntry, P2PRepayment, FixedDepositEntry, ForexEntry } from '../../models/investment.model';
 
 interface PieSlice {
   label: string;
@@ -69,6 +69,7 @@ export class DashboardComponent implements OnInit {
   commodityData: CommodityEntry[] = [];
   mfData: MutualFundEntry[] = [];
   p2pData: P2PEntry[] = [];
+  p2pRepayments: P2PRepayment[] = [];
   fdData: FixedDepositEntry[] = [];
   forexData: ForexEntry[] = [];
   showForexPopup = false;
@@ -130,6 +131,7 @@ export class DashboardComponent implements OnInit {
       commodity: this.investmentService.getCommodity(),
       mf: this.investmentService.getMutualFunds(),
       p2p: this.investmentService.getP2P(),
+      p2pRep: this.investmentService.getP2PRepayments(),
       fd: this.investmentService.getFixedDeposits(),
       forex: this.investmentService.getForex()
     }).subscribe({
@@ -139,6 +141,7 @@ export class DashboardComponent implements OnInit {
         this.commodityData = data.commodity;
         this.mfData = data.mf;
         this.p2pData = data.p2p;
+        this.p2pRepayments = data.p2pRep;
         this.fdData = data.fd;
         this.forexData = data.forex;
         this.loading = false;
@@ -291,6 +294,9 @@ export class DashboardComponent implements OnInit {
   // ── Category-Level Summary ──
 
   get catCurrentInvestment(): number {
+    if (this.selectedCategory === 'P2P') {
+      return (this.summary['P2P'] as any)?.current_invested || 0;
+    }
     return this.catEntries.reduce((sum, e) => sum + this.calcInvestment(e.buyQty, e.sellQty, e.buyVal), 0);
   }
 
@@ -299,6 +305,9 @@ export class DashboardComponent implements OnInit {
   }
 
   get catTotalSales(): number {
+    if (this.selectedCategory === 'P2P') {
+      return this.p2pRepayments.reduce((sum, r) => sum + (r.amount || 0), 0);
+    }
     return this.catEntries.reduce((sum, e) => sum + (e.sellVal || 0), 0);
   }
 
@@ -322,7 +331,14 @@ export class DashboardComponent implements OnInit {
       case 'Commodity':
         return this.commodityData.filter(yearFilter).map(e => ({ group: { Year: e.year || 'N/A', Commodity: e.commodity }, buyQty: e.buy_quantity, sellQty: e.sell_quantity, buyVal: e.buy_value, sellVal: e.sell_value }));
       case 'P2P':
-        return this.p2pData.map(e => ({ group: { Platform: e.platform, Status: e.status }, buyQty: e.amount, sellQty: 0 as any, buyVal: e.amount, sellVal: 0 as any }));
+        return this.p2pData.map(e => {
+          const repaid = this.p2pRepayments.filter(r => r.lending_id === e.lending_id).reduce((s, r) => s + (r.amount || 0), 0);
+          const pending = Math.max(0, (e.amount || 0) - repaid);
+          // Use pending as "current" via buyQty/sellQty trick: buyVal=amount, calcInvestment returns pending
+          const buyQty = e.amount || 0;
+          const sellQty = repaid;
+          return { group: { Platform: e.platform, Status: e.status }, buyQty, sellQty, buyVal: e.amount, sellVal: repaid };
+        });
       case 'Fixed Deposits':
         return this.fdData.filter(yearFilter).map(e => ({ group: { Year: e.year || 'N/A', Platform: e.platform, Bank: e.bank_name }, buyQty: e.fd_value, sellQty: 0 as any, buyVal: e.fd_value, sellVal: e.return_value }));
       default:
