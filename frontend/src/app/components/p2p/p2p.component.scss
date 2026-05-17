@@ -119,6 +119,17 @@
   font-weight: 600;
 }
 
+.escrow-underfunded-flag {
+  margin-top: 0.5rem;
+  padding: 0.35rem 0.75rem;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 6px;
+  font-size: 0.75rem;
+  color: #fca5a5;
+  font-weight: 500;
+}
+
 .pending-info {
   background: var(--bg-input, #334155);
   border: 1px solid var(--border-color, #475569);
@@ -131,6 +142,68 @@
   strong {
     color: #f59e0b;
     font-size: 1rem;
+  }
+}
+
+.escrow-preview {
+  margin-top: 1rem;
+  background: #1a1a2e;
+  border: 1px solid #2d2d3d;
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  font-size: 0.85rem;
+
+  .escrow-preview-title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #94a3b8;
+    margin-bottom: 0.6rem;
+  }
+
+  .escrow-preview-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.25rem 0;
+    color: #cbd5e1;
+
+    &.deficiency {
+      color: #ef4444;
+      font-weight: 600;
+      margin-top: 0.15rem;
+    }
+  }
+
+  .preview-new {
+    color: #60a5fa;
+    font-weight: 600;
+  }
+
+  .escrow-preview-divider {
+    border-top: 1px solid #2d2d3d;
+    margin: 0.4rem 0;
+  }
+
+  .escrow-preview-note {
+    margin-top: 0.55rem;
+    padding: 0.4rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 500;
+
+    &.warn {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #fca5a5;
+    }
+
+    &.ok {
+      background: rgba(74, 222, 128, 0.08);
+      border: 1px solid rgba(74, 222, 128, 0.25);
+      color: #86efac;
+    }
   }
 }
 
@@ -153,6 +226,32 @@ tr.expanded {
 tr.overdue {
   background: rgba(239, 68, 68, 0.08);
   border-left: 3px solid #ef4444;
+}
+
+.overdue-badge {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  font-size: 0.65rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  margin-left: 0.25rem;
+  white-space: nowrap;
+}
+
+.filter-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #ef4444;
+  color: #fff;
+  border-radius: 10px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  min-width: 1.2em;
+  padding: 0 0.35em;
+  margin-left: 0.3em;
+  line-height: 1.4;
 }
 
 .platform-breakdown {
@@ -282,6 +381,29 @@ tr.overdue {
     letter-spacing: 0.06em;
     color: #64748b;
     margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+
+    .trend-legend {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-size: 0.65rem;
+      text-transform: none;
+      letter-spacing: 0;
+      color: #64748b;
+      margin-left: auto;
+    }
+
+    .legend-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      &.actual { background: #4caf50; }
+      &.projected { background: #60a5fa; border: 1px dashed #60a5fa; }
+    }
   }
 
   .return-trend {
@@ -290,12 +412,19 @@ tr.overdue {
     gap: 0.75rem;
     flex: 1;
 
+    .trend-divider {
+      width: 1px;
+      height: 60px;
+      background: #2d2d3d;
+      align-self: flex-end;
+      flex-shrink: 0;
+    }
+
     .trend-bar {
       display: flex;
       flex-direction: column;
       align-items: center;
       flex: 1;
-      height: 100%;
       justify-content: flex-end;
 
       .trend-fill {
@@ -319,6 +448,67 @@ tr.overdue {
         font-size: 0.65rem;
         color: #94a3b8;
         margin-top: 2px;
+      }
+
+      &.future {
+        opacity: 0.8;
+
+        .trend-fill {
+          background: linear-gradient(180deg, #60a5fa, #2563eb);
+          border: 1px dashed #60a5fa;
+          background-clip: padding-box;
+        }
+
+        .trend-value {
+          color: #60a5fa;
+        }
+
+        .trend-label {
+          color: #64748b;
+          font-style: italic;
+        }
+      }
+
+      &.current-month {
+        flex: 1.4; // slightly wider to fit two sub-bars
+
+        .trend-dual-fills {
+          display: flex;
+          align-items: flex-end;
+          gap: 2px;
+          width: 100%;
+          max-width: 52px;
+
+          .trend-fill {
+            flex: 1;
+            max-width: none;
+            min-height: 2px;
+          }
+
+          .actual-fill {
+            background: linear-gradient(180deg, #4caf50, #2e7d32);
+            border-radius: 3px 3px 0 0;
+          }
+
+          .proj-fill {
+            background: linear-gradient(180deg, #60a5fa, #2563eb);
+            border: 1px dashed #60a5fa;
+            background-clip: padding-box;
+            border-radius: 3px 3px 0 0;
+          }
+        }
+
+        .trend-value-dual {
+          display: flex;
+          gap: 3px;
+          margin-top: 4px;
+          font-size: 0.62rem;
+          font-weight: 600;
+          white-space: nowrap;
+
+          .actual-val { color: #4caf50; }
+          .proj-val   { color: #60a5fa; }
+        }
       }
     }
   }

@@ -1,5 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { forkJoin } from 'rxjs';
 import { InvestmentService } from '../../services/investment.service';
@@ -45,7 +46,7 @@ interface CategoryDef {
 
 const PIE_COLORS = ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#64748b', '#a855f7', '#06b6d4'];
 
-const TARGET_ALLOCATION: Record<string, number> = {
+const DEFAULT_TARGET_ALLOCATION: Record<string, number> = {
   'Equity (India)': 35,
   'Equity (USA)': 30,
   'Mutual Funds': 20,
@@ -56,13 +57,23 @@ const TARGET_ALLOCATION: Record<string, number> = {
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, RouterLink, FormsModule],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss'
 })
 export class DashboardComponent implements OnInit {
   summary: Summary = {};
   loading = true;
+  showTargetEditor = false;
+  targetAllocation: Record<string, number> = { ...DEFAULT_TARGET_ALLOCATION };
+
+  saveTargets(): void {
+    this.investmentService.saveSetting('targetAllocation', JSON.stringify(this.targetAllocation)).subscribe();
+  }
+
+  get targetAllocationKeys(): string[] {
+    return Object.keys(this.targetAllocation);
+  }
   darkMode = false;
 
   equityData: EquityEntry[] = [];
@@ -110,6 +121,13 @@ export class DashboardComponent implements OnInit {
     });
 
     this.loadAll();
+    this.investmentService.getSetting('targetAllocation').subscribe(res => {
+      if (res.value) {
+        try {
+          this.targetAllocation = { ...DEFAULT_TARGET_ALLOCATION, ...JSON.parse(res.value) };
+        } catch {}
+      }
+    });
   }
 
   toggleDarkMode(): void {
@@ -164,6 +182,23 @@ export class DashboardComponent implements OnInit {
   }
 
   // ── Global KPIs ──
+
+  getCategoryActiveCount(key: string): number {
+    switch (key) {
+      case 'Equity':
+        return this.equityData.filter(e => this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value) > 0).length;
+      case 'Mutual Funds':
+        return this.mfData.filter(e => this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value) > 0).length;
+      case 'Commodity':
+        return this.commodityData.filter(e => this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value) > 0).length;
+      case 'P2P':
+        return this.p2pData.filter(e => e.status === 'Active').length;
+      case 'Fixed Deposits':
+        return this.fdData.filter(e => !e.return_value || e.return_value === 0).length;
+      default:
+        return this.summary[key]?.count || 0;
+    }
+  }
 
   private calcInvestment(buyQty: number | null, sellQty: number | null, buyValue: number | null): number {
     const bq = buyQty || 0;
@@ -232,10 +267,10 @@ export class DashboardComponent implements OnInit {
       if (val > 0) catData.push({ label: c.label, value: Math.round(val * 100) / 100 });
     });
 
-    // P2P: use backend-computed pending
+    // P2P: use escrow balance (cash currently sitting in/committed to the P2P platform)
     const p2pSummary = this.summary['P2P'];
     if (p2pSummary) {
-      const p2pVal = (p2pSummary as any).current_invested || 0;
+      const p2pVal = (p2pSummary as any).escrow_balance || 0;
       if (p2pVal > 0) catData.push({ label: 'P2P', value: Math.round(p2pVal * 100) / 100 });
     }
 
@@ -262,11 +297,11 @@ export class DashboardComponent implements OnInit {
   // ── Category Selection ──
 
   getTargetAllocation(label: string): number | null {
-    return TARGET_ALLOCATION[label] ?? null;
+    return this.targetAllocation[label] ?? null;
   }
 
   getAllocationFlag(slice: PieSlice): string {
-    const target = TARGET_ALLOCATION[slice.label];
+    const target = this.targetAllocation[slice.label];
     if (target == null) return '';
     const variance = Math.abs(slice.pct - target) / target * 100;
     if (variance < 10) return '✔';
@@ -275,12 +310,12 @@ export class DashboardComponent implements OnInit {
   }
 
   getAllocationFlagColor(slice: PieSlice): string {
-    const target = TARGET_ALLOCATION[slice.label];
+    const target = this.targetAllocation[slice.label];
     if (target == null) return 'inherit';
     const variance = Math.abs(slice.pct - target) / target * 100;
-    if (variance < 10) return '#4caf50';   // green
-    if (variance < 25) return '#f59e0b';   // orange
-    return '#ef4444';                       // red
+    if (variance < 10) return '#4caf50';
+    if (variance < 25) return '#f59e0b';
+    return '#ef4444';
   }
 
   selectCategory(key: string): void {

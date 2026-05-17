@@ -558,5 +558,21 @@ def shutdown():
     return jsonify({"message": "Shutting down"})
 
 
+# ── Settings Endpoints ──
+
+@app.route("/api/settings/<key>", methods=["GET"])
+def get_setting(key):
+    value = db_service.get_setting(key)
+    return jsonify({"key": key, "value": value})
+
+@app.route("/api/settings/<key>", methods=["PUT"])
+def set_setting(key):
+    data = request.get_json()
+    if not data or "value" not in data:
+        return jsonify({"error": "Missing value"}), 400
+    db_service.set_setting(key, data["value"])
+    return jsonify({"message": "Setting saved"})
+
+
 if __name__ == "__main__":
     app.run(debug=True, port=5001, host="0.0.0.0")

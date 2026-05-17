@@ -209,6 +209,10 @@ class DbService:
                 conn.execute(
                     f"CREATE TABLE IF NOT EXISTS {table} (id INTEGER PRIMARY KEY AUTOINCREMENT, {cols})"
                 )
+            # Settings table: generic key-value store
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+            )
             conn.commit()
             conn.close()
 
@@ -351,6 +355,24 @@ class DbService:
             deleted = cursor.rowcount > 0
             conn.close()
         return deleted
+
+    def get_setting(self, key: str):
+        with self._lock:
+            conn = self._connect()
+            cursor = conn.execute("SELECT value FROM settings WHERE key = ?", (key,))
+            row = cursor.fetchone()
+            conn.close()
+            return row["value"] if row else None
+
+    def set_setting(self, key: str, value: str):
+        with self._lock:
+            conn = self._connect()
+            conn.execute(
+                "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (key, value)
+            )
+            conn.commit()
+            conn.close()
 
     def get_summary(self):
         summary = {}

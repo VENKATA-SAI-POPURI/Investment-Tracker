@@ -27,7 +27,7 @@ export class P2PComponent implements OnInit {
   editingEscrowId: number | null = null;
   expandedLendingId: string | null = null;
   searchQuery = '';
-  statusFilter: 'All' | 'Active' = 'Active';
+  statusFilter: 'All' | 'Active' | 'Overdue' | 'Closed' = 'Active';
   sortColumn = '';
   sortDirection: 'asc' | 'desc' = 'asc';
   toasts: { msg: string; type: string }[] = [];
@@ -83,9 +83,7 @@ export class P2PComponent implements OnInit {
 
   computeMaturityDate(): string {
     if (!this.form.date || !this.form.tenure) return '';
-    const d = new Date(this.form.date);
-    d.setMonth(d.getMonth() + this.form.tenure);
-    return d.toISOString().split('T')[0];
+    return this._getInstallmentDate(this.form, this.form.tenure).toISOString().split('T')[0];
   }
 
   onDateOrTenureChange(): void {
@@ -211,12 +209,22 @@ export class P2PComponent implements OnInit {
     if (entry.status !== 'Active' || !entry.date || !entry.tenure) return '-';
     const reps = this.getRepayments(entry.lending_id);
     const repCount = reps.length;
-    // Assume monthly installments starting 1 month after lending date
-    const nextMonth = repCount + 1;
-    if (nextMonth > entry.tenure) return '-';
-    const d = new Date(entry.date);
-    d.setMonth(d.getMonth() + nextMonth);
-    return d.toISOString().split('T')[0];
+    const nextInstallmentNum = repCount + 1;
+    if (nextInstallmentNum > entry.tenure) return '-';
+    return this._getInstallmentDate(entry, nextInstallmentNum).toISOString().split('T')[0];
+  }
+
+  /**
+   * Returns the due date for installment `num` (1-indexed).
+   * Rule: if disbursed on/before 20th → 1st installment = 5th of next month
+   *        if disbursed after 20th    → 1st installment = 5th of the month after next
+   * Subsequent installments are on the 5th of each following month.
+   */
+  private _getInstallmentDate(entry: P2PEntry, installmentNum: number): Date {
+    if (!entry.date) return new Date(0);
+    const start = new Date(entry.date);
+    const baseOffset = start.getDate() <= 20 ? 1 : 2;
+    return new Date(start.getFullYear(), start.getMonth() + baseOffset + (installmentNum - 1), 5);
   }
 
   // ── Summary getters ──
@@ -342,11 +350,13 @@ export class P2PComponent implements OnInit {
     }));
   }
 
-  // ── Feature: Monthly Return % trend (last 6 months) ──
-  get monthlyReturnTrend(): { month: string; returnPct: number }[] {
+  // ── Feature: Monthly Return % trend (last 6 months + next 3 projected) ──
+  get monthlyReturnTrend(): { month: string; returnPct: number; returnAmount: number; projectedPct: number | null; projectedAmount: number | null; isFuture: boolean; isCurrent: boolean }[] {
     const now = new Date();
-    const months: { month: string; returnPct: number }[] = [];
-    for (let i = 5; i >= 0; i--) {
+    const result: { month: string; returnPct: number; returnAmount: number; projectedPct: number | null; projectedAmount: number | null; isFuture: boolean; isCurrent: boolean }[] = [];
+
+    // Historical: last 5 months (excluding current)
+    for (let i = 5; i >= 1; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const monthLabel = d.toLocaleString('default', { month: 'short', year: '2-digit' });
       const m = d.getMonth();
@@ -365,11 +375,80 @@ export class P2PComponent implements OnInit {
           }
         }
       });
-      // Return % = interest earned / principal repaid that month
-      const pct = principal > 0 ? (interest / principal) * 100 : 0;
-      months.push({ month: monthLabel, returnPct: pct });
+      result.push({ month: monthLabel, returnPct: principal > 0 ? (interest / principal) * 100 : 0, returnAmount: interest, projectedPct: null, projectedAmount: null, isFuture: false, isCurrent: false });
     }
-    return months;
+
+    // Current month: actual so far + projected
+    const curLabel = now.toLocaleString('default', { month: 'short', year: '2-digit' });
+    const cm = now.getMonth();
+    const cy = now.getFullYear();
+    let curInterest = 0;
+    let curPrincipal = 0;
+    this.repayments.forEach(rep => {
+      const repDate = new Date(rep.date);
+      if (repDate.getMonth() === cm && repDate.getFullYear() === cy) {
+        const entry = this.allEntries.find(e => e.lending_id === rep.lending_id);
+        if (entry) {
+          const idx = this.getRepayments(entry.lending_id).indexOf(rep);
+          const intAmt = this.getRepaymentInterest(rep.amount || 0, entry, idx >= 0 ? idx : undefined);
+          curInterest += intAmt;
+          curPrincipal += (rep.amount || 0) - intAmt;
+        }
+      }
+    });
+    const curProj = this._expectedReturnForMonth(0);
+    result.push({
+      month: curLabel,
+      returnPct: curPrincipal > 0 ? (curInterest / curPrincipal) * 100 : 0,
+      returnAmount: curInterest,
+      projectedPct: curProj.pct,
+      projectedAmount: curProj.interest,
+      isFuture: false,
+      isCurrent: true
+    });
+
+    // Projected: next 3 months
+    for (let offset = 1; offset <= 3; offset++) {
+      const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+      const monthLabel = d.toLocaleString('default', { month: 'short', year: '2-digit' });
+      const proj = this._expectedReturnForMonth(offset);
+      result.push({ month: monthLabel, returnPct: proj.pct, returnAmount: proj.interest, projectedPct: null, projectedAmount: null, isFuture: true, isCurrent: false });
+    }
+
+    return result;
+  }
+
+  private _expectedReturnForMonth(offset: number): { pct: number; interest: number } {
+    const now = new Date();
+    const target = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+    const tm = target.getMonth();
+    const ty = target.getFullYear();
+    const fallbackRate = this.activeAvgInterestRateNum || this.avgInterestRateNum;
+    let totalPrincipal = 0;
+    let totalInterest = 0;
+    this.allEntries.filter(e => e.status === 'Active').forEach(e => {
+      if (!e.date || !e.tenure || !e.amount) return;
+      const repsDone = this.getRepayments(e.lending_id).length;
+      const pp = this.getPrincipalPerInstallment(e);
+      const pending = this.getPendingAmount(e);
+      const rate = this.getInterestRate(e) ?? fallbackRate;
+      for (let i = 1; i <= e.tenure; i++) {
+        const instDate = this._getInstallmentDate(e, i);
+        if (instDate.getMonth() === tm && instDate.getFullYear() === ty) {
+          if (i <= repsDone) break;
+          const k = i - repsDone;
+          const balanceBeforePayment = Math.max(0, pending - (k - 1) * pp);
+          totalPrincipal += pp;
+          totalInterest += balanceBeforePayment * (rate / 100 / 12);
+          break;
+        }
+      }
+    });
+    return { pct: totalPrincipal > 0 ? (totalInterest / totalPrincipal) * 100 : 0, interest: totalInterest };
+  }
+
+  private _expectedReturnPctForMonth(offset: number): number {
+    return this._expectedReturnForMonth(offset).pct;
   }
 
   // ── Feature: IRR per lending ──
@@ -418,16 +497,34 @@ export class P2PComponent implements OnInit {
   }
 
   get portfolioIRR(): number | null {
-    // Aggregate IRR across all lendings with data
-    const irrs = this.allEntries
-      .map(e => this.getIRR(e))
-      .filter((r): r is number => r != null);
-    if (irrs.length === 0) return null;
-    return irrs.reduce((s, r) => s + r, 0) / irrs.length;
+    // Amount-weighted IRR across all lendings with data
+    const eligible = this.allEntries.filter(e => this.getIRR(e) != null && (e.amount || 0) > 0);
+    if (eligible.length === 0) return null;
+    const totalWeight = eligible.reduce((s, e) => s + (e.amount || 0), 0);
+    if (totalWeight === 0) return null;
+    return eligible.reduce((s, e) => s + (this.getIRR(e)! * (e.amount || 0)), 0) / totalWeight;
   }
 
   get maxMonthlyReturnPct(): number {
-    return Math.max(...this.monthlyReturnTrend.map(m => m.returnPct), 1);
+    return Math.max(
+      ...this.monthlyReturnTrend.map(m => Math.max(m.returnPct, m.projectedPct ?? 0)),
+      1
+    );
+  }
+
+  get maxActualReturnPct(): number {
+    return Math.max(
+      ...this.monthlyReturnTrend.filter(m => !m.isFuture).map(m => m.returnPct),
+      1
+    );
+  }
+
+  get maxProjectedReturnPct(): number {
+    return Math.max(
+      ...this.monthlyReturnTrend.filter(m => m.isFuture).map(m => m.returnPct),
+      ...this.monthlyReturnTrend.filter(m => m.isCurrent).map(m => m.projectedPct ?? 0),
+      1
+    );
   }
 
   // ── Feature: This month's expected inflow ──
@@ -449,8 +546,7 @@ export class P2PComponent implements OnInit {
       const pp = this.getPrincipalPerInstallment(e);
 
       for (let i = 1; i <= e.tenure; i++) {
-        const instDate = new Date(start);
-        instDate.setMonth(instDate.getMonth() + i);
+        const instDate = this._getInstallmentDate(e, i);
         if (instDate.getMonth() === targetMonth && instDate.getFullYear() === targetYear) {
           return sum + pp;
         }
@@ -492,6 +588,10 @@ export class P2PComponent implements OnInit {
     return d.toLocaleString('default', { month: 'short', year: 'numeric' });
   }
 
+  formatReturnPct(pct: number): string {
+    return pct.toFixed(2) + '%';
+  }
+
   // ── Feature: Recovery rate for defaulted ──
   get recoveryRate(): string {
     const defaulted = this.allEntries.filter(e => e.status === 'Defaulted');
@@ -524,10 +624,19 @@ export class P2PComponent implements OnInit {
     });
   }
 
+  setStatusFilter(f: 'All' | 'Active' | 'Overdue' | 'Closed'): void {
+    this.statusFilter = f;
+    this.applyFilter();
+  }
+
   applyFilter(): void {
     let filtered = this.allEntries;
     if (this.statusFilter === 'Active') {
       filtered = filtered.filter(e => e.status === 'Active');
+    } else if (this.statusFilter === 'Overdue') {
+      filtered = filtered.filter(e => this.isOverdue(e));
+    } else if (this.statusFilter === 'Closed') {
+      filtered = filtered.filter(e => e.status !== 'Active');
     }
     if (this.searchQuery.trim()) {
       const q = this.searchQuery.toLowerCase();
@@ -801,6 +910,18 @@ export class P2PComponent implements OnInit {
       if (t.type === 'Deposit') return sum + (t.amount || 0);
       return sum - (t.amount || 0);
     }, 0);
+  }
+
+  /** True when active lent exceeds escrow balance by more than 5% of escrow balance */
+  get isEscrowUnderFunded(): boolean {
+    return this.activeLentAmount > this.escrowBalance * 1.05;
+  }
+
+  get escrowImpactPreview(): { newTotalActive: number; deficiency: number; needsDeposit: boolean } {
+    const amount = this.form.status === 'Active' ? (this.form.amount || 0) : 0;
+    const newTotalActive = this.activeLentAmount + amount;
+    const deficiency = newTotalActive - this.escrowBalance;
+    return { newTotalActive, deficiency, needsDeposit: deficiency > 0 };
   }
 
   get escrowTotalDeposits(): number {

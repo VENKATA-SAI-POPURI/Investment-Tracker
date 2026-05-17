@@ -134,6 +134,15 @@ export class InvestmentService {
     return this.http.get<Summary>(`${this.baseUrl}/summary`);
   }
 
+  // ── Settings ──
+  getSetting(key: string): Observable<{ key: string; value: string | null }> {
+    return this.http.get<{ key: string; value: string | null }>(`${this.baseUrl}/settings/${key}`);
+  }
+
+  saveSetting(key: string, value: string): Observable<any> {
+    return this.http.put(`${this.baseUrl}/settings/${key}`, { value });
+  }
+
   // ── Forex ──
   getForex(): Observable<ForexEntry[]> {
     return this.http.get<ForexEntry[]>(`${this.baseUrl}/forex`);

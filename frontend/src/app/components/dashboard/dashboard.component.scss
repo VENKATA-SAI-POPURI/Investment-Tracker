@@ -88,6 +88,45 @@
   overflow: hidden;
 }
 
+.target-popup {
+  background: var(--bg-card, #fff);
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+  width: 100%;
+  max-width: 400px;
+  overflow: hidden;
+
+  .target-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border-color, #e2e8f0);
+    &:last-of-type { border-bottom: none; }
+
+    .target-label { flex: 1; font-size: 0.88rem; color: var(--text-primary); }
+    .target-input {
+      width: 70px;
+      padding: 0.3rem 0.5rem;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+      background: var(--bg-card-alt);
+      color: var(--text-primary);
+      font-size: 0.9rem;
+      text-align: right;
+      &:focus { outline: none; border-color: #6366f1; }
+    }
+    .target-pct-sign { font-size: 0.85rem; color: var(--text-secondary); min-width: 12px; }
+  }
+
+  .target-hint {
+    margin: 1rem 0 0;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    text-align: center;
+  }
+}
+
 .forex-popup-header {
   display: flex;
   justify-content: space-between;
@@ -491,6 +530,25 @@
   border-radius: 10px;
   padding: 1.25rem;
   border: 1px solid var(--border-color);
+
+  .pie-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+    h3 { margin: 0; font-size: 0.95rem; color: var(--text-secondary); }
+  }
+
+  .target-edit-btn {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.65rem;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    cursor: pointer;
+    &:hover { border-color: #6366f1; color: #6366f1; }
+  }
 
   h3 {
     margin: 0 0 1rem;

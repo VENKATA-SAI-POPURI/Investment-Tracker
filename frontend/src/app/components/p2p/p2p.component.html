@@ -17,8 +17,11 @@
       <div class="kpi-tier-cards">
         <div class="kpi-card-mini"><span class="kpi-label">Escrow</span><span class="kpi-value" [style.color]="escrowBalance >= 0 ? '#4caf50' : '#ef4444'">₹{{ escrowBalance | number:'1.2-2' }}</span></div>
         <div class="kpi-card-mini"><span class="kpi-label">Total Lent</span><span class="kpi-value">₹{{ totalLent | number:'1.2-2' }}</span></div>
-        <div class="kpi-card-mini"><span class="kpi-label">Active Lent</span><span class="kpi-value" style="color: #2196f3">₹{{ activeLentAmount | number:'1.2-2' }}</span></div>
+        <div class="kpi-card-mini"><span class="kpi-label">Active Lent</span><span class="kpi-value" [style.color]="isEscrowUnderFunded ? '#ef4444' : '#2196f3'">₹{{ activeLentAmount | number:'1.2-2' }}</span></div>
         <div class="kpi-card-mini"><span class="kpi-label">Pending</span><span class="kpi-value" [style.color]="totalPending > 0 ? '#f59e0b' : '#4caf50'">₹{{ totalPending | number:'1.2-2' }}</span></div>
+      </div>
+      <div class="escrow-underfunded-flag" *ngIf="isEscrowUnderFunded">
+        ⚠️ Active Lent exceeds Escrow Balance by more than 5% — please top up Escrow.
       </div>
     </div>
     <div class="kpi-tier">
@@ -84,13 +87,39 @@
       </div>
     </div>
     <div class="return-trend-container" *ngIf="monthlyReturnTrend.length > 0">
-      <div class="trend-title">Monthly Return % Trend</div>
+      <div class="trend-title">Monthly Return % Trend <span class="trend-legend"><span class="legend-dot actual"></span>Actual &nbsp;<span class="legend-dot projected"></span>Projected</span></div>
       <div class="return-trend">
-        <div class="trend-bar" *ngFor="let m of monthlyReturnTrend">
-          <div class="trend-fill" [style.height.%]="(m.returnPct / (maxMonthlyReturnPct || 1)) * 100"></div>
-          <span class="trend-value">{{ m.returnPct | number:'1.2-2' }}%</span>
-          <span class="trend-label">{{ m.month }}</span>
-        </div>
+        <ng-container *ngFor="let m of monthlyReturnTrend; let i = index">
+          <div class="trend-divider" *ngIf="i === 6"></div>
+
+          <!-- Current month: side-by-side actual + projected -->
+          <div class="trend-bar current-month" *ngIf="m.isCurrent">
+            <div class="trend-dual-fills">
+              <div class="trend-fill actual-fill"
+                [style.height.px]="(m.returnPct / (maxActualReturnPct || 1)) * 60"
+                [title]="'Actual: \u20b9' + m.returnAmount.toFixed(2)"></div>
+              <div class="trend-fill proj-fill"
+                [style.height.px]="((m.projectedPct || 0) / (maxProjectedReturnPct || 1)) * 60"
+                [title]="'Projected: \u20b9' + (m.projectedAmount || 0).toFixed(2)"></div>
+            </div>
+            <div class="trend-value-dual">
+              <span class="actual-val">{{ m.returnPct | number:'1.2-2' }}%</span>
+              <span class="proj-val">{{ m.projectedPct | number:'1.2-2' }}%</span>
+            </div>
+            <span class="trend-label">{{ m.month }}</span>
+          </div>
+
+          <!-- Historical or future bar -->
+          <div class="trend-bar" *ngIf="!m.isCurrent" [class.future]="m.isFuture"
+            [title]="(m.isFuture ? 'Projected: \u20b9' : 'Actual: \u20b9') + m.returnAmount.toFixed(2)">
+            <div class="trend-fill"
+              [style.height.px]="m.isFuture
+                ? (m.returnPct / (maxProjectedReturnPct || 1)) * 60
+                : (m.returnPct / (maxActualReturnPct    || 1)) * 60"></div>
+            <span class="trend-value">{{ m.returnPct | number:'1.2-2' }}%</span>
+            <span class="trend-label">{{ m.month }}</span>
+          </div>
+        </ng-container>
       </div>
     </div>
   </div>
@@ -106,9 +135,12 @@
   </div>
 
   <div class="filter-bar">
-    <button class="btn btn-secondary" (click)="statusFilter = statusFilter === 'Active' ? 'All' : 'Active'; applyFilter()">
-      {{ statusFilter === 'Active' ? 'Show All Entries' : 'Show Active Only' }}
-    </button>
+    <div class="filter-toggles">
+      <button class="filter-btn" [class.active]="statusFilter === 'All'" (click)="setStatusFilter('All')">All</button>
+      <button class="filter-btn" [class.active]="statusFilter === 'Active'" (click)="setStatusFilter('Active')">Active</button>
+      <button class="filter-btn" [class.active]="statusFilter === 'Overdue'" (click)="setStatusFilter('Overdue')">Overdue<span *ngIf="overdueCount > 0" class="filter-count"> {{ overdueCount }}</span></button>
+      <button class="filter-btn" [class.active]="statusFilter === 'Closed'" (click)="setStatusFilter('Closed')">Closed</button>
+    </div>
     <input type="text" class="search-input" placeholder="Search by name, platform, status..." [(ngModel)]="searchQuery" (input)="onSearch()">
     <span class="entry-count">Showing {{ entries.length }} of {{ allEntries.length }} entries</span>
   </div>
@@ -158,6 +190,38 @@
           <div class="form-group">
             <label>Remarks</label>
             <input type="text" [(ngModel)]="form.remarks" name="remarks" placeholder="Optional notes">
+          </div>
+        </div>
+
+        <!-- Escrow Impact Preview (new Active entries only) -->
+        <div class="escrow-preview" *ngIf="!editingId && form.status === 'Active' && (form.amount || 0) > 0">
+          <div class="escrow-preview-title">💰 Escrow Impact</div>
+          <div class="escrow-preview-row">
+            <span>Escrow Balance</span>
+            <span>₹{{ escrowBalance | number:'1.2-2' }}</span>
+          </div>
+          <div class="escrow-preview-row">
+            <span>Active Lent</span>
+            <span>₹{{ activeLentAmount | number:'1.2-2' }}</span>
+          </div>
+          <div class="escrow-preview-row">
+            <span>New Entry</span>
+            <span class="preview-new">+ ₹{{ (form.amount || 0) | number:'1.2-2' }}</span>
+          </div>
+          <div class="escrow-preview-divider"></div>
+          <div class="escrow-preview-row">
+            <span>New Total Active</span>
+            <span>₹{{ escrowImpactPreview.newTotalActive | number:'1.2-2' }}</span>
+          </div>
+          <div class="escrow-preview-row deficiency" *ngIf="escrowImpactPreview.needsDeposit">
+            <span>⚠️ Escrow Deficiency</span>
+            <span>₹{{ escrowImpactPreview.deficiency | number:'1.2-2' }}</span>
+          </div>
+          <div class="escrow-preview-note warn" *ngIf="escrowImpactPreview.needsDeposit">
+            Please deposit ₹{{ escrowImpactPreview.deficiency | number:'1.2-2' }} into Escrow to cover this lending.
+          </div>
+          <div class="escrow-preview-note ok" *ngIf="!escrowImpactPreview.needsDeposit">
+            ✓ Escrow fully covers active lent after this entry.
           </div>
         </div>
         <div class="form-actions">
@@ -246,6 +310,7 @@
             <td>
               <span class="badge" [class.buy]="entry.status === 'Active'" [class.sell]="entry.status === 'Defaulted'" [class.completed]="entry.status === 'Closed'">{{ entry.status }}</span>
               <span class="badge foreclosed" *ngIf="isForeclosed(entry)">Foreclosed</span>
+              <span class="badge overdue-badge" *ngIf="isOverdue(entry)">⚠ Overdue</span>
             </td>
             <td class="actions">
               <button class="btn-icon" (click)="openRepaymentForm(entry.lending_id)" title="Add Repayment">💰</button>
