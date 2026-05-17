@@ -15,10 +15,10 @@
     <div class="kpi-tier">
       <h4 class="kpi-tier-title">Portfolio</h4>
       <div class="kpi-tier-cards">
-        <div class="kpi-card-mini"><span class="kpi-label">Escrow</span><span class="kpi-value" [style.color]="escrowBalance >= 0 ? '#4caf50' : '#ef4444'">₹{{ escrowBalance | number:'1.0-0' }}</span></div>
-        <div class="kpi-card-mini"><span class="kpi-label">Total Lent</span><span class="kpi-value">₹{{ totalLent | number:'1.0-0' }}</span></div>
-        <div class="kpi-card-mini"><span class="kpi-label">Active Lent</span><span class="kpi-value" style="color: #2196f3">₹{{ activeLentAmount | number:'1.0-0' }}</span></div>
-        <div class="kpi-card-mini"><span class="kpi-label">Pending</span><span class="kpi-value" [style.color]="totalPending > 0 ? '#f59e0b' : '#4caf50'">₹{{ totalPending | number:'1.0-0' }}</span></div>
+        <div class="kpi-card-mini"><span class="kpi-label">Escrow</span><span class="kpi-value" [style.color]="escrowBalance >= 0 ? '#4caf50' : '#ef4444'">₹{{ escrowBalance | number:'1.2-2' }}</span></div>
+        <div class="kpi-card-mini"><span class="kpi-label">Total Lent</span><span class="kpi-value">₹{{ totalLent | number:'1.2-2' }}</span></div>
+        <div class="kpi-card-mini"><span class="kpi-label">Active Lent</span><span class="kpi-value" style="color: #2196f3">₹{{ activeLentAmount | number:'1.2-2' }}</span></div>
+        <div class="kpi-card-mini"><span class="kpi-label">Pending</span><span class="kpi-value" [style.color]="totalPending > 0 ? '#f59e0b' : '#4caf50'">₹{{ totalPending | number:'1.2-2' }}</span></div>
       </div>
     </div>
     <div class="kpi-tier">
@@ -32,10 +32,10 @@
     <div class="kpi-tier">
       <h4 class="kpi-tier-title">Risk & Health</h4>
       <div class="kpi-tier-cards">
-        <div class="kpi-card-mini"><span class="kpi-label">Overdue</span><span class="kpi-value" [style.color]="overdueCount > 0 ? '#f44336' : 'inherit'">{{ overdueCount }} (₹{{ overdueAmount | number:'1.0-0' }})</span></div>
+        <div class="kpi-card-mini"><span class="kpi-label">Overdue</span><span class="kpi-value" [style.color]="overdueCount > 0 ? '#f44336' : 'inherit'">{{ overdueCount }} (₹{{ overdueAmount | number:'1.2-2' }})</span></div>
         <div class="kpi-card-mini"><span class="kpi-label">Defaulted</span><span class="kpi-value" [style.color]="defaultedCount > 0 ? '#f44336' : 'inherit'">{{ defaultedCount }}</span></div>
         <div class="kpi-card-mini"><span class="kpi-label">Foreclosed</span><span class="kpi-value" style="color: #2196f3">{{ foreclosedCount }}</span></div>
-        <div class="kpi-card-mini"><span class="kpi-label">Portfolio IRR</span><span class="kpi-value" style="color: #4caf50">{{ portfolioIRR != null ? (portfolioIRR | number:'1.1-1') + '%' : '-' }}</span></div>
+        <div class="kpi-card-mini"><span class="kpi-label">Portfolio IRR</span><span class="kpi-value" style="color: #4caf50">{{ portfolioIRR != null ? (portfolioIRR | number:'1.2-2') + '%' : '-' }}</span></div>
       </div>
     </div>
   </div>
@@ -88,7 +88,7 @@
       <div class="return-trend">
         <div class="trend-bar" *ngFor="let m of monthlyReturnTrend">
           <div class="trend-fill" [style.height.%]="(m.returnPct / (maxMonthlyReturnPct || 1)) * 100"></div>
-          <span class="trend-value">{{ m.returnPct | number:'1.1-1' }}%</span>
+          <span class="trend-value">{{ m.returnPct | number:'1.2-2' }}%</span>
           <span class="trend-label">{{ m.month }}</span>
         </div>
       </div>
@@ -99,7 +99,7 @@
   <div class="platform-breakdown" *ngIf="platformBreakdown.length > 0">
     <div class="platform-chip" *ngFor="let p of platformBreakdown">
       <span class="platform-name">{{ p.platform }}</span>
-      <span class="platform-amount">₹{{ p.lent | number:'1.0-0' }}</span>
+      <span class="platform-amount">₹{{ p.lent | number:'1.2-2' }}</span>
       <span class="platform-active">{{ p.active }} active</span>
       <span class="platform-rate">{{ p.avgRate }}</span>
     </div>
@@ -240,7 +240,7 @@
             <td class="number" [style.color]="getPendingAmount(entry) > 0 ? '#f59e0b' : '#4caf50'">₹{{ getPendingAmount(entry) | number:'1.2-2' }}</td>
             <td class="number" style="color: #4caf50">₹{{ getTotalInterest(entry.lending_id) | number:'1.2-2' }}</td>
             <td class="number">{{ getTotalRepaid(entry.lending_id) > 0 ? ((getTotalInterest(entry.lending_id) / getTotalRepaid(entry.lending_id)) * 100 | number:'1.2-2') + '%' : '-' }}</td>
-            <td class="number">{{ getIRR(entry) != null ? (getIRR(entry) | number:'1.1-1') + '%' : '-' }}</td>
+            <td class="number">{{ getIRR(entry) != null ? (getIRR(entry) | number:'1.2-2') + '%' : '-' }}</td>
             <td>{{ entry.maturity_date }}</td>
             <td>{{ getNextInstallmentDate(entry) }}</td>
             <td>
@@ -315,7 +315,7 @@
           <div class="card-row"><span>Pending:</span><span [style.color]="getPendingAmount(entry) > 0 ? '#f59e0b' : '#4caf50'">₹{{ getPendingAmount(entry) | number:'1.2-2' }}</span></div>
           <div class="card-row"><span>Return Amt:</span><span style="color: #4caf50">₹{{ getTotalInterest(entry.lending_id) | number:'1.2-2' }}</span></div>
           <div class="card-row" *ngIf="getTotalRepaid(entry.lending_id) > 0"><span>Return %:</span><span>{{ (getTotalInterest(entry.lending_id) / getTotalRepaid(entry.lending_id)) * 100 | number:'1.2-2' }}%</span></div>
-          <div class="card-row"><span>IRR:</span><span style="color: #4caf50">{{ getIRR(entry) != null ? (getIRR(entry) | number:'1.1-1') + '%' : '-' }}</span></div>
+          <div class="card-row"><span>IRR:</span><span style="color: #4caf50">{{ getIRR(entry) != null ? (getIRR(entry) | number:'1.2-2') + '%' : '-' }}</span></div>
           <div class="card-row"><span>Maturity:</span><span>{{ entry.maturity_date }}</span></div>
           <div class="card-row"><span>Next Installment:</span><span>{{ getNextInstallmentDate(entry) }}</span></div>
         </div>
