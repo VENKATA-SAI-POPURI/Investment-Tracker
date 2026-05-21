@@ -2,6 +2,8 @@
 import signal
 import subprocess
 import requests
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from db_service import DbService
@@ -9,12 +11,14 @@ from db_service import DbService
 # Load .env file if present (local development)
 _env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
 if os.path.exists(_env_path):
-    with open(_env_path) as _f:
+    with open(_env_path, encoding='utf-8') as _f:
         for _line in _f:
             _line = _line.strip()
             if _line and not _line.startswith('#') and '=' in _line:
                 _k, _v = _line.split('=', 1)
-                os.environ.setdefault(_k.strip(), _v.strip())
+                _k, _v = _k.strip(), _v.strip()
+                if _v:  # only set if value is non-empty
+                    os.environ[_k] = _v
 
 app = Flask(__name__)
 CORS(app)
@@ -365,35 +369,7 @@ def ai_analyze():
         return jsonify({"error": "AI service not configured. Set GROQ_API_KEY in environment."}), 503
 
     # Gather all portfolio data
-    summary = db_service.get_summary()
-    equity = db_service.get_all("Equity")
-    commodity = db_service.get_all("Commodity")
-    mutual_funds = db_service.get_all("Mutual Funds")
-    p2p = db_service.get_all("P2P")
-    fixed_deposits = db_service.get_all("Fixed Deposits")
-
-    # Build portfolio context
-    portfolio_context = f"""
-PORTFOLIO SUMMARY:
-{_format_summary(summary)}
-
-EQUITY HOLDINGS ({len(equity)} entries):
-{_format_equity(equity)}
-
-MUTUAL FUNDS ({len(mutual_funds)} entries):
-{_format_mf(mutual_funds)}
-
-COMMODITY ({len(commodity)} entries):
-{_format_commodity(commodity)}
-
-P2P LENDING ({len(p2p)} entries):
-{_format_p2p(p2p)}
-
-FIXED DEPOSITS ({len(fixed_deposits)} entries):
-{_format_fd(fixed_deposits)}
-
-TARGET ALLOCATION: Equity India 35%, Equity USA 30%, Mutual Funds 20%, Commodity 10%, P2P 5%
-"""
+    portfolio_context = _build_portfolio_context()
 
     prompt = f"""You are an expert investment advisor. Analyze the following portfolio and provide actionable insights.
 
@@ -430,12 +406,12 @@ Keep the response concise and actionable. Use bullet points."""
                     "messages": [{"role": "user", "content": prompt}],
                     "temperature": 0.7,
                     "max_tokens": 2048
-                }, timeout=30)
+                }, timeout=30, verify=False)
         else:
             resp = requests.post(
                 f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key={api_key}",
                 json={"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"temperature": 0.7, "maxOutputTokens": 2048}},
-                timeout=30)
+                timeout=30, verify=False)
 
         if resp.status_code != 200:
             error_detail = resp.text[:500] if resp.text else "No details"
@@ -447,6 +423,92 @@ Keep the response concise and actionable. Use bullet points."""
         else:
             text = data["candidates"][0]["content"]["parts"][0]["text"]
         return jsonify({"analysis": text})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+def _build_portfolio_context():
+    summary = db_service.get_summary()
+    equity = db_service.get_all("Equity")
+    commodity = db_service.get_all("Commodity")
+    mutual_funds = db_service.get_all("Mutual Funds")
+    p2p = db_service.get_all("P2P")
+    fixed_deposits = db_service.get_all("Fixed Deposits")
+    return f"""PORTFOLIO SUMMARY:
+{_format_summary(summary)}
+
+EQUITY HOLDINGS ({len(equity)} entries):
+{_format_equity(equity)}
+
+MUTUAL FUNDS ({len(mutual_funds)} entries):
+{_format_mf(mutual_funds)}
+
+COMMODITY ({len(commodity)} entries):
+{_format_commodity(commodity)}
+
+P2P LENDING ({len(p2p)} entries):
+{_format_p2p(p2p)}
+
+FIXED DEPOSITS ({len(fixed_deposits)} entries):
+{_format_fd(fixed_deposits)}
+
+TARGET ALLOCATION: Equity India 35%, Equity USA 30%, Mutual Funds 20%, Commodity 10%, P2P 5%"""
+
+
+@app.route("/api/ai/chat", methods=["POST"])
+def ai_chat():
+    api_key = AI_API_KEY
+    if not api_key:
+        return jsonify({"error": "AI service not configured. Set GROQ_API_KEY in environment."}), 503
+
+    body = request.get_json(silent=True) or {}
+    user_message = (body.get("message") or "").strip()
+    history = body.get("history") or []  # list of {role: 'user'|'assistant', content: str}
+
+    if not user_message:
+        return jsonify({"error": "Message is required."}), 400
+
+    portfolio_context = _build_portfolio_context()
+    system_prompt = f"""You are an expert investment advisor with access to the user's full portfolio data. Answer questions concisely and accurately. Use markdown formatting. Always base your answers on the actual portfolio data provided below.
+
+{portfolio_context}"""
+
+    try:
+        if AI_PROVIDER == "groq":
+            messages = [{"role": "system", "content": system_prompt}]
+            for h in history:
+                role = h.get("role", "user")
+                if role == "assistant":
+                    role = "assistant"
+                messages.append({"role": role, "content": h.get("content", "")})
+            messages.append({"role": "user", "content": user_message})
+
+            resp = requests.post("https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={"model": "llama-3.3-70b-versatile", "messages": messages, "temperature": 0.7, "max_tokens": 1024},
+                timeout=30, verify=False)
+        else:
+            # Gemini uses 'user'/'model' roles and no system message
+            contents = [{"role": "user", "parts": [{"text": f"System context:\n{system_prompt}\n\nUser: {user_message}"}]}]
+            for h in history:
+                role = "model" if h.get("role") == "assistant" else "user"
+                contents.append({"role": role, "parts": [{"text": h.get("content", "")}]})
+            contents.append({"role": "user", "parts": [{"text": user_message}]})
+
+            resp = requests.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key={api_key}",
+                json={"contents": contents, "generationConfig": {"temperature": 0.7, "maxOutputTokens": 1024}},
+                timeout=30, verify=False)
+
+        if resp.status_code != 200:
+            return jsonify({"error": f"AI API error: {resp.status_code} - {resp.text[:300]}"}), 502
+
+        data = resp.json()
+        if AI_PROVIDER == "groq":
+            reply = data["choices"][0]["message"]["content"]
+        else:
+            reply = data["candidates"][0]["content"]["parts"][0]["text"]
+        return jsonify({"reply": reply})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -466,15 +528,20 @@ def _format_equity(entries):
         name = e.get("name", "Unknown")
         if name not in holdings:
             holdings[name] = {"market": e.get("market", ""), "sector": e.get("sector", ""), "market_cap": e.get("market_cap", ""), "buy_qty": 0, "buy_val": 0, "sell_qty": 0, "sell_val": 0}
-        holdings[name]["buy_qty"] += (e.get("buy_quantity") or 0)
-        holdings[name]["buy_val"] += (e.get("buy_value") or 0)
-        holdings[name]["sell_qty"] += (e.get("sell_quantity") or 0)
-        holdings[name]["sell_val"] += (e.get("sell_value") or 0)
+        qty = e.get("quantity") or 0
+        val = e.get("value") or 0
+        if e.get("buy_sell") == "Sell":
+            holdings[name]["sell_qty"] += qty
+            holdings[name]["sell_val"] += val
+        else:
+            holdings[name]["buy_qty"] += qty
+            holdings[name]["buy_val"] += val
     lines = []
     for name, h in holdings.items():
         net_qty = h["buy_qty"] - h["sell_qty"]
-        if net_qty > 0:
-            lines.append(f"  {name} ({h['market']}/{h['market_cap']}/{h['sector']}): Qty {net_qty:.4f}, Invested ₹{h['buy_val'] - h['sell_val']:,.0f}")
+        net_val = h["buy_val"] - h["sell_val"]
+        if net_val > 0:
+            lines.append(f"  {name} ({h['market']}/{h['market_cap']}/{h['sector']}): Qty {net_qty:.4f}, Invested ₹{net_val:,.0f}")
     return "\n".join(lines) or "  No current holdings"
 
 

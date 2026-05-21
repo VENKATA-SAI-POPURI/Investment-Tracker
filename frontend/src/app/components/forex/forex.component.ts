@@ -20,8 +20,8 @@ export class ForexComponent implements OnInit {
   showForm = false;
   editingId: number | null = null;
   searchQuery = '';
-  sortColumn = '';
-  sortDirection: 'asc' | 'desc' = 'asc';
+  sortColumn = 'date';
+  sortDirection: 'asc' | 'desc' = 'desc';
   toasts: { msg: string; type: string }[] = [];
 
   form: ForexEntry = this.emptyForm();
@@ -75,48 +75,81 @@ export class ForexComponent implements OnInit {
   }
 
   get totalInvestedUSD(): number {
-    // USD currently invested in US stocks (buy - sell value in USD terms)
     const usaEquity = this.equityData.filter(e => e.market === 'USA');
-    const totalBuyINR = usaEquity.reduce((s, e) => s + (e.buy_value || 0), 0);
-    const totalSellINR = usaEquity.reduce((s, e) => s + (e.sell_value || 0), 0);
-    // Convert INR back to USD using avg deposit rate for approximation
-    const avgRate = this.avgDepositRateNum;
-    if (avgRate <= 0) return 0;
-    return Math.round(((totalBuyINR - totalSellINR) / avgRate) * 100) / 100;
+    const totalBuyUSD = usaEquity.filter(e => e.buy_sell === 'Buy').reduce((s, e) => s + (e.value_usd || 0), 0);
+    const totalSellUSD = usaEquity.filter(e => e.buy_sell === 'Sell').reduce((s, e) => s + (e.value_usd || 0), 0);
+    return Math.round((totalBuyUSD - totalSellUSD) * 100) / 100;
+  }
+
+  get indiaInvestedINR(): number {
+    const indiaEquity = this.equityData.filter(e => e.market !== 'USA');
+    const totalBuy = indiaEquity.filter(e => e.buy_sell === 'Buy').reduce((s, e) => s + (e.value || 0), 0);
+    const totalSell = indiaEquity.filter(e => e.buy_sell === 'Sell').reduce((s, e) => s + (e.value || 0), 0);
+    return Math.round((totalBuy - totalSell) * 100) / 100;
+  }
+
+  get usaInvestedINR(): number {
+    return Math.round(this.totalInvestedUSD * this.avgDepositRateNum * 100) / 100;
+  }
+
+  get totalPortfolioINR(): number {
+    return this.indiaInvestedINR + this.usaInvestedINR;
+  }
+
+  get indiaPct(): number {
+    const total = this.totalPortfolioINR;
+    if (total <= 0) return 0;
+    return Math.round((this.indiaInvestedINR / total) * 100);
+  }
+
+  get usaPct(): number {
+    return 100 - this.indiaPct;
   }
 
   get totalSalesUSD(): number {
-    const usaEquity = this.equityData.filter(e => e.market === 'USA');
-    const totalSellINR = usaEquity.reduce((s, e) => s + (e.sell_value || 0), 0);
-    const avgRate = this.avgDepositRateNum;
-    if (avgRate <= 0) return 0;
-    return Math.round((totalSellINR / avgRate) * 100) / 100;
+    const usaEquity = this.equityData.filter(e => e.market === 'USA' && e.buy_sell === 'Sell');
+    return Math.round(usaEquity.reduce((s, e) => s + (e.value_usd || 0), 0) * 100) / 100;
   }
 
   get avgDepositRateNum(): number {
-    const deposits = this.allEntries.filter(e => e.type === 'Deposit' && (e.rate || 0) > 0);
-    if (deposits.length === 0) return 0;
-    return deposits.reduce((s, e) => s + (e.rate || 0), 0) / deposits.length;
+    const totalUSD = this.totalDepositsUSD;
+    if (totalUSD <= 0) return 0;
+    return this.totalDepositsINR / totalUSD;
   }
 
   get avgDepositRate(): string {
-    const deposits = this.allEntries.filter(e => e.type === 'Deposit' && (e.rate || 0) > 0);
-    if (deposits.length === 0) return '-';
-    const sum = deposits.reduce((s, e) => s + (e.rate || 0), 0);
-    return (sum / deposits.length).toFixed(4);
+    const rate = this.avgDepositRateNum;
+    if (rate <= 0) return '-';
+    return rate.toFixed(4);
   }
 
   get avgWithdrawalRate(): string {
-    const withdrawals = this.allEntries.filter(e => e.type === 'Withdrawal' && (e.rate || 0) > 0);
-    if (withdrawals.length === 0) return '-';
-    const sum = withdrawals.reduce((s, e) => s + (e.rate || 0), 0);
-    return (sum / withdrawals.length).toFixed(4);
+    const rate = this.avgWithdrawalRateNum;
+    if (rate <= 0) return '-';
+    return rate.toFixed(4);
   }
 
   private get avgWithdrawalRateNum(): number {
-    const withdrawals = this.allEntries.filter(e => e.type === 'Withdrawal' && (e.rate || 0) > 0);
-    if (withdrawals.length === 0) return 0;
-    return withdrawals.reduce((s, e) => s + (e.rate || 0), 0) / withdrawals.length;
+    const totalUSD = this.totalWithdrawalsUSD;
+    if (totalUSD <= 0) return 0;
+    return this.totalWithdrawalsINR / totalUSD;
+  }
+
+  get latestRateNum(): number {
+    const entries = this.allEntries.filter(e => (e.rate || 0) > 0);
+    if (entries.length === 0) return 0;
+    const latest = entries.reduce((a, b) => (a.date >= b.date ? a : b));
+    return latest.rate || 0;
+  }
+
+  // Positive = avg deposit was more expensive than latest (bad for deposits)
+  get depositRateDiff(): number {
+    return this.avgDepositRateNum - this.latestRateNum;
+  }
+
+  // Positive = avg withdrawal was better than latest (good for withdrawals)
+  get withdrawalRateDiff(): number {
+    return this.avgWithdrawalRateNum - this.latestRateNum;
   }
 
   get forexWithdrawalImpact(): number {

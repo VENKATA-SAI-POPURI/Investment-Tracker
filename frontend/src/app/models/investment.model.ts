@@ -1,15 +1,13 @@
 export interface EquityEntry {
   id?: number;
-  year: string;
   market: string;
   market_cap: string;
+  date: string;
   sector: string;
   name: string;
-  date: string;
-  buy_quantity: number | null;
-  buy_value: number | null;
-  sell_quantity: number | null;
-  sell_value: number | null;
+  quantity: number | null;
+  value: number | null;
+  value_usd: number | null;
   buy_sell: string;
   remarks: string;
 }

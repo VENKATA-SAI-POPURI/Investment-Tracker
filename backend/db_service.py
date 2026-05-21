@@ -113,9 +113,12 @@ class _TursoRow:
 
 TABLES = {
     "equity": {
-        "columns": ["year", "market", "market_cap", "sector", "name", "date", "buy_quantity", "buy_value", "sell_quantity", "sell_value", "buy_sell", "remarks"],
-        "buy_col": "buy_value",
-        "sell_col": "sell_value",
+        "columns": ["market", "market_cap", "date", "sector", "name", "quantity", "value", "value_usd", "buy_sell", "remarks"],
+        "buy_col": "value",
+        "buy_where": "buy_sell = 'Buy'",
+        "sell_col": "value",
+        "sell_where": "buy_sell = 'Sell'",
+        "no_upsert": True,
     },
     "commodity": {
         "columns": ["year", "commodity", "name", "date", "buy_quantity", "buy_value", "sell_quantity", "sell_value", "buy_sell", "remarks"],
@@ -167,7 +170,10 @@ SHEET_TO_TABLE = {
 }
 
 NUMERIC_FIELDS = {
-    "buy_quantity", "buy_value", "sell_quantity", "sell_value",
+    # New transaction-level equity fields
+    "quantity", "value", "value_usd",
+    # Legacy fields (kept for migration queries)
+    "buy_quantity", "buy_value", "buy_value_usd", "sell_quantity", "sell_value", "sell_value_usd",
     "amount", "tenure", "fd_value",
     "interest", "return_value",
     "inr_amount", "usd_amount", "rate",
@@ -199,9 +205,45 @@ class DbService:
         conn.execute("PRAGMA foreign_keys=ON")
         return conn
 
+    def _migrate_equity_v2(self, conn):
+        """Migrate equity table from master (buy/sell columns) to transaction-level schema."""
+        try:
+            conn.execute("SELECT buy_quantity FROM equity LIMIT 0")
+        except Exception:
+            return  # Already on new schema or table doesn't exist yet
+        try:
+            conn.execute("DROP TABLE IF EXISTS equity_txn_new")
+            conn.execute("""
+                CREATE TABLE equity_txn_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    market TEXT, market_cap TEXT, date TEXT, sector TEXT, name TEXT,
+                    quantity REAL, value REAL, value_usd REAL, buy_sell TEXT, remarks TEXT
+                )
+            """)
+            conn.execute("""
+                INSERT INTO equity_txn_new
+                    (market, market_cap, date, sector, name, quantity, value, value_usd, buy_sell, remarks)
+                SELECT
+                    market, market_cap, date, sector, name,
+                    CASE WHEN COALESCE(buy_sell,'Buy')='Buy' THEN COALESCE(buy_quantity,0) ELSE COALESCE(sell_quantity,0) END,
+                    CASE WHEN COALESCE(buy_sell,'Buy')='Buy' THEN COALESCE(buy_value,0) ELSE COALESCE(sell_value,0) END,
+                    NULL,
+                    COALESCE(buy_sell,'Buy'),
+                    remarks
+                FROM equity
+            """)
+            conn.execute("DROP TABLE equity")
+            conn.execute("ALTER TABLE equity_txn_new RENAME TO equity")
+            conn.commit()
+            print("[db_service] Equity table migrated to transaction-level schema.")
+        except Exception:
+            import traceback
+            traceback.print_exc()
+
     def _init_db(self):
         with self._lock:
             conn = self._connect()
+            self._migrate_equity_v2(conn)
             for table, config in TABLES.items():
                 cols = ", ".join(
                     f"{c} {_col_type(c)}" for c in config["columns"]
@@ -245,7 +287,10 @@ class DbService:
         config = TABLES[table]
         columns = config["columns"]
 
-        name_key = "name" if "name" in columns else ("bank_name" if "bank_name" in columns else None)
+        if config.get("no_upsert"):
+            name_key = None
+        else:
+            name_key = "name" if "name" in columns else ("bank_name" if "bank_name" in columns else None)
         lookup_name = data.get(name_key, "").strip() if name_key else ""
 
         with self._lock:
@@ -392,12 +437,16 @@ class DbService:
 
                 total_buy = 0
                 if buy_col:
-                    cursor = conn.execute(f"SELECT COALESCE(SUM({buy_col}), 0) as total FROM {table}")
+                    buy_where = config.get("buy_where", "")
+                    bw = f" WHERE {buy_where}" if buy_where else ""
+                    cursor = conn.execute(f"SELECT COALESCE(SUM({buy_col}), 0) as total FROM {table}{bw}")
                     total_buy = cursor.fetchone()["total"]
 
                 total_sell = 0
                 if sell_col:
-                    cursor = conn.execute(f"SELECT COALESCE(SUM({sell_col}), 0) as total FROM {table}")
+                    sell_where = config.get("sell_where", "")
+                    sw = f" WHERE {sell_where}" if sell_where else ""
+                    cursor = conn.execute(f"SELECT COALESCE(SUM({sell_col}), 0) as total FROM {table}{sw}")
                     total_sell = cursor.fetchone()["total"]
 
                 summary[sheet_name] = {

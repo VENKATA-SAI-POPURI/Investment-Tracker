@@ -11,35 +11,78 @@
   <div class="forex-summary">
     <div class="forex-stat">
       <span class="stat-label">Total Deposited</span>
-      <span class="stat-value">₹{{ totalDepositsINR | number:'1.2-2' }} → ${{ totalDepositsUSD | number:'1.2-2' }}</span>
+      <span class="stat-value">${{ totalDepositsUSD | number:'1.2-2' }}</span>
     </div>
     <div class="forex-stat">
       <span class="stat-label">Total Invested</span>
-      <span class="stat-value">${{ totalInvestedUSD | number:'1.2-2' }} (₹{{ totalInvestedUSD * avgDepositRateNum | number:'1.2-2' }})</span>
+      <span class="stat-value">${{ totalInvestedUSD | number:'1.2-2' }}</span>
     </div>
     <div class="forex-stat">
       <span class="stat-label">Total Withdrawn</span>
-      <span class="stat-value">${{ totalWithdrawalsUSD | number:'1.2-2' }} → ₹{{ totalWithdrawalsINR | number:'1.2-2' }}</span>
+      <span class="stat-value">${{ totalWithdrawalsUSD | number:'1.2-2' }}</span>
     </div>
     <div class="forex-stat">
       <span class="stat-label">Wallet Balance</span>
-      <span class="stat-value">${{ walletBalanceUSD | number:'1.2-2' }} (₹{{ walletBalanceUSD * avgDepositRateNum | number:'1.2-2' }})</span>
+      <div style="display:flex;align-items:baseline;gap:0.5rem;flex-wrap:wrap;">
+        <span class="stat-value">${{ walletBalanceUSD | number:'1.2-2' }}</span>
+        <span class="stat-sub">&#8377;{{ walletBalanceUSD * latestRateNum | number:'1.2-2' }}</span>
+      </div>
     </div>
     <div class="forex-stat">
       <span class="stat-label">Avg Deposit Rate</span>
-      <span class="stat-value">₹{{ avgDepositRate }}</span>
+      <div style="display:flex;align-items:baseline;gap:0.5rem;flex-wrap:wrap;">
+        <span class="stat-value">₹{{ avgDepositRate }}</span>
+        <span class="stat-sub" *ngIf="latestRateNum > 0"
+          [style.color]="depositRateDiff <= 0 ? '#4caf50' : '#f44336'">
+          {{ depositRateDiff <= 0 ? '▼' : '▲' }} {{ (depositRateDiff < 0 ? -depositRateDiff : depositRateDiff) | number:'1.2-2' }} vs latest
+        </span>
+      </div>
     </div>
     <div class="forex-stat">
       <span class="stat-label">Avg Withdrawal Rate</span>
-      <span class="stat-value">₹{{ avgWithdrawalRate }}</span>
+      <div style="display:flex;align-items:baseline;gap:0.5rem;flex-wrap:wrap;">
+        <span class="stat-value">₹{{ avgWithdrawalRate }}</span>
+        <span class="stat-sub" *ngIf="latestRateNum > 0 && avgWithdrawalRate !== '-'"
+          [style.color]="withdrawalRateDiff >= 0 ? '#4caf50' : '#f44336'">
+          {{ withdrawalRateDiff >= 0 ? '▲' : '▼' }} {{ (withdrawalRateDiff < 0 ? -withdrawalRateDiff : withdrawalRateDiff) | number:'1.2-2' }} vs latest
+        </span>
+      </div>
     </div>
     <div class="forex-stat">
       <span class="stat-label">Forex Impact on Withdrawals</span>
       <span class="stat-value" [style.color]="forexWithdrawalImpact >= 0 ? '#4caf50' : '#f44336'">₹{{ (forexWithdrawalImpact < 0 ? -forexWithdrawalImpact : forexWithdrawalImpact) | number:'1.2-2' }}</span>
+      <span class="stat-sub">{{ forexWithdrawalImpact >= 0 ? 'extra INR received vs avg deposit rate' : 'INR lost vs avg deposit rate' }}</span>
     </div>
     <div class="forex-stat">
       <span class="stat-label">Forex Impact on Deposits</span>
       <span class="stat-value" [style.color]="forexDepositImpact >= 0 ? '#f44336' : '#4caf50'">₹{{ (forexDepositImpact < 0 ? -forexDepositImpact : forexDepositImpact) | number:'1.2-2' }}</span>
+      <span class="stat-sub">{{ forexDepositImpact >= 0 ? 'extra INR paid vs cheapest deposit rate' : 'INR saved vs cheapest deposit rate' }}</span>
+    </div>
+  </div>
+
+  <!-- India vs USA Allocation -->
+  <div class="allocation-section" *ngIf="totalPortfolioINR > 0">
+    <div class="allocation-header">
+      <span class="allocation-title">Equity Allocation — India vs USA</span>
+      <span class="allocation-total">Total: ₹{{ totalPortfolioINR | number:'1.0-0' }}</span>
+    </div>
+    <div class="allocation-bar">
+      <div class="alloc-segment alloc-india" [style.width]="indiaPct + '%'" *ngIf="indiaPct > 0">
+        <span *ngIf="indiaPct > 8">🇮🇳 {{ indiaPct }}%</span>
+      </div>
+      <div class="alloc-segment alloc-usa" [style.width]="usaPct + '%'" *ngIf="usaPct > 0">
+        <span *ngIf="usaPct > 8">🇺🇸 {{ usaPct }}%</span>
+      </div>
+    </div>
+    <div class="allocation-legend">
+      <div class="legend-item">
+        <span class="legend-dot dot-india"></span>
+        <span>India &nbsp;<strong>₹{{ indiaInvestedINR | number:'1.0-0' }}</strong> ({{ indiaPct }}%)</span>
+      </div>
+      <div class="legend-item">
+        <span class="legend-dot dot-usa"></span>
+        <span>USA &nbsp;<strong>${{ totalInvestedUSD | number:'1.2-2' }}</strong> · ₹{{ usaInvestedINR | number:'1.0-0' }} ({{ usaPct }}%)</span>
+      </div>
     </div>
   </div>
 
