@@ -7,12 +7,83 @@
     <button class="btn btn-primary" (click)="openAddForm()">+ Add Entry</button>
   </div>
 
+  <!-- Market Allocation -->
+  <div class="allocation-card" *ngIf="!loading && totalNetINR > 0">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;">
+      <span class="allocation-title">Market Allocation (Net Invested)</span>
+      <span class="allocation-total">₹{{ totalNetINR | number:'1.0-0' }} &nbsp;·&nbsp; {{ uniqueStocksCount }} stocks</span>
+    </div>
+    <div class="allocation-bar">
+      <div class="bar-segment bar-india" [style.width.%]="indiaPct" [title]="'India ' + (indiaPct | number:'1.1-1') + '%'">
+        <span *ngIf="indiaPct > 8">🇮🇳 {{ indiaPct | number:'1.0-0' }}%</span>
+      </div>
+      <div class="bar-segment bar-usa" [style.width.%]="usaPct" [title]="'USA ' + (usaPct | number:'1.1-1') + '%'">
+        <span *ngIf="usaPct > 8">🇺🇸 {{ usaPct | number:'1.0-0' }}%</span>
+      </div>
+    </div>
+    <div class="allocation-legend">
+      <span class="legend-india">🇮🇳 India &nbsp;₹{{ indiaNetINR | number:'1.0-0' }}&nbsp;<span class="legend-pct">({{ indiaPct | number:'1.1-1' }}%)</span></span>
+      <span class="legend-usa">🇺🇸 USA &nbsp;${{ usaNetUSD | number:'1.2-2' }} · ₹{{ usaNetINR | number:'1.0-0' }}&nbsp;<span class="legend-pct">({{ usaPct | number:'1.1-1' }}%)</span></span>
+    </div>
+  </div>
+
+  <!-- Capital Gains Snapshot -->
+  <div class="tax-term-card" *ngIf="!loading && taxTermSummary.total > 0">
+    <div class="tax-term-header">
+      <span class="tax-term-title">Capital Gains Snapshot</span>
+      <span class="tax-term-note">STCG &lt; 1Y &nbsp;·&nbsp; LTCG &#8805; 1Y &nbsp;·&nbsp; FIFO-based</span>
+    </div>
+    <div class="tax-term-bar">
+      <div class="stcg-bar" [style.width.%]="taxTermSummary.stcgPct"></div>
+      <div class="ltcg-bar" [style.width.%]="taxTermSummary.ltcgPct"></div>
+    </div>
+    <div class="tax-term-stats">
+      <div class="tax-stat">
+        <span class="tax-dot stcg-dot"></span>
+        <div>
+          <div class="tax-label">Short Term <span class="tax-thresh">(&lt; 1Y)</span></div>
+          <div class="tax-value">&#8377;{{ taxTermSummary.stcg | number:'1.0-0' }}</div>
+          <div class="tax-pct">{{ taxTermSummary.stcgPct }}% of net invested</div>
+        </div>
+      </div>
+      <div class="tax-term-divider"></div>
+      <div class="tax-stat">
+        <span class="tax-dot ltcg-dot"></span>
+        <div>
+          <div class="tax-label">Long Term <span class="tax-thresh">(&#8805; 1Y)</span></div>
+          <div class="tax-value">&#8377;{{ taxTermSummary.ltcg | number:'1.0-0' }}</div>
+          <div class="tax-pct">{{ taxTermSummary.ltcgPct }}% of net invested</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="filter-bar">
+    <div class="fy-backdrop" *ngIf="fyDropdownOpen" (click)="fyDropdownOpen = false"></div>
+    <div class="fy-dropdown" [class.open]="fyDropdownOpen">
+      <button class="fy-dropdown-trigger" (click)="fyDropdownOpen = !fyDropdownOpen; $event.stopPropagation()">
+        {{ fyLabel }} <span class="caret">▾</span>
+      </button>
+      <div class="fy-dropdown-panel" *ngIf="fyDropdownOpen">
+        <div class="fy-option" [class.selected]="selectedFYs.length === 0" (click)="clearFYFilter(); fyDropdownOpen = false">
+          <span class="fy-check">{{ selectedFYs.length === 0 ? '✓' : '' }}</span> All
+        </div>
+        <div class="fy-option" *ngFor="let fy of availableFYs"
+             [class.selected]="isFYSelected(fy)"
+             (click)="toggleFY(fy); $event.stopPropagation()">
+          <span class="fy-check">{{ isFYSelected(fy) ? '✓' : '' }}</span> {{ fy }}
+        </div>
+      </div>
+    </div>
     <button class="btn btn-secondary" (click)="toggleShowAll()">
-      {{ showAll ? 'Show Current Holdings' : 'Show All Entries' }}
+      {{ showAll ? 'Show All' : 'Current Only' }}
     </button>
-    <input type="text" class="search-input" placeholder="Search by name, sector, market, year..." [(ngModel)]="searchQuery" (input)="onSearch()">
-    <span class="entry-count">Showing {{ entries.length }} of {{ allEntries.length }} entries</span>
+    <input type="text" class="search-input" placeholder="Search by name, sector, market..." [(ngModel)]="searchQuery" (input)="onSearch()">
+    <span class="entry-count">{{ viewMode === 'holdings' ? (holdings.length + ' stocks') : (entries.length + ' entries') }}</span>
+    <div class="view-toggle" style="margin-left:auto">
+      <button [class.active]="viewMode === 'holdings'" (click)="viewMode = 'holdings'">Holdings</button>
+      <button [class.active]="viewMode === 'transactions'" (click)="viewMode = 'transactions'">Transactions</button>
+    </div>
   </div>
 
   <!-- Toast notifications -->
@@ -28,13 +99,6 @@
       <h2>{{ editingId ? 'Edit' : 'Add' }} Equity Entry</h2>
       <form (ngSubmit)="saveEntry()">
         <div class="form-grid">
-          <div class="form-group">
-            <label>Year *</label>
-            <select [(ngModel)]="form.year" name="year" required>
-              <option value="">Select FY...</option>
-              <option *ngFor="let fy of fyOptions" [value]="fy">{{ fy }}</option>
-            </select>
-          </div>
           <div class="form-group">
             <label>Market *</label>
             <select [(ngModel)]="form.market" name="market" required>
@@ -70,35 +134,27 @@
             </datalist>
           </div>
           <div class="form-group">
+            <label>Buy / Sell *</label>
+            <select [(ngModel)]="form.buy_sell" name="buy_sell" required>
+              <option value="Buy">Buy</option>
+              <option value="Sell">Sell</option>
+            </select>
+          </div>
+          <div class="form-group">
             <label>Date *</label>
             <input type="date" [(ngModel)]="form.date" name="date" required>
           </div>
           <div class="form-group">
-            <label>Buy Quantity</label>
-            <input type="number" [(ngModel)]="form.buy_quantity" name="buy_quantity" step="1" min="0" placeholder="0" [disabled]="form.buy_sell === 'Sell'">
+            <label>Quantity *</label>
+            <input type="number" [(ngModel)]="form.quantity" name="quantity" step="1" min="0" placeholder="0" required>
           </div>
           <div class="form-group">
-            <label>Buy Value ({{ form.market === 'USA' ? '$' : '₹' }})</label>
-            <input type="number" [(ngModel)]="form.buy_value" name="buy_value" step="0.01" min="0" placeholder="0.00" [disabled]="form.buy_sell === 'Sell'">
-          </div>
-          <div class="form-group">
-            <label>Sell Quantity</label>
-            <input type="number" [(ngModel)]="form.sell_quantity" name="sell_quantity" step="1" min="0" placeholder="0" [disabled]="form.buy_sell === 'Buy'">
-          </div>
-          <div class="form-group">
-            <label>Sell Value ({{ form.market === 'USA' ? '$' : '₹' }})</label>
-            <input type="number" [(ngModel)]="form.sell_value" name="sell_value" step="0.01" min="0" placeholder="0.00" [disabled]="form.buy_sell === 'Buy'">
+            <label>Value ({{ form.market === 'USA' ? '$' : '₹' }}) *</label>
+            <input type="number" [(ngModel)]="form.value" name="value" step="0.01" min="0" placeholder="0.00" required>
           </div>
           <div class="form-group forex-info" *ngIf="form.market === 'USA'">
             <label>Conversion Rate (₹/$)</label>
-            <input type="text" [value]="getAvgRate(form.date) !== null ? ('Avg of last 3: ₹' + (getAvgRate(form.date)! | number:'1.4-4')) : 'No rates available'" disabled class="computed-field">
-          </div>
-          <div class="form-group">
-            <label>Buy / Sell *</label>
-            <select [(ngModel)]="form.buy_sell" name="buy_sell" required (ngModelChange)="onBuySellChange()">
-              <option value="Buy">Buy</option>
-              <option value="Sell">Sell</option>
-            </select>
+            <input type="text" [value]="latestForexRate > 0 ? ('Latest: ₹' + (latestForexRate | number:'1.4-4')) : 'No rates available'" disabled class="computed-field">
           </div>
           <div class="form-group full-width">
             <label>Remarks</label>
@@ -120,39 +176,122 @@
     </div>
   </div>
 
-  <!-- Data Table -->
-  <div class="table-wrapper" *ngIf="!loading">
+  <!-- Holdings View -->
+  <div class="table-wrapper" *ngIf="!loading && viewMode === 'holdings'">
+    <table *ngIf="holdings.length > 0">
+      <thead>
+        <tr>
+          <th class="expand-toggle-col"></th>
+          <th>Market</th>
+          <th>Cap</th>
+          <th>Sector</th>
+          <th>Name</th>
+          <th>Net Qty</th>
+          <th class="bucket-col lt6m-col" title="Held less than 6 months">&lt; 6M</th>
+          <th class="bucket-col lt1y-col" title="Held 6 months to 1 year">6M–1Y</th>
+          <th class="bucket-col lt2y-col" title="Held 1 to 2 years">1Y–2Y</th>
+          <th class="bucket-col gt2y-col" title="Held more than 2 years">&gt; 2Y</th>
+          <th>Net Invested</th>
+          <th>Cost / Unit</th>
+        </tr>
+      </thead>
+      <tbody>
+        <ng-container *ngFor="let h of holdings">
+          <tr [class.row-india]="h.market === 'India'" [class.row-usa]="h.market === 'USA'" [class.expanded]="expandedName === h.name">
+            <td class="expand-toggle" (click)="toggleExpand(h.name)">
+              <span class="expand-icon">{{ expandedName === h.name ? '&#9660;' : '&#9654;' }}</span>
+            </td>
+            <td><span class="badge market">{{ h.market }}</span></td>
+            <td><span class="badge cap">{{ h.market_cap }}</span></td>
+            <td>{{ h.sector }}</td>
+            <td class="name-cell"><strong>{{ h.name }}</strong></td>
+            <td class="number">{{ h.netQty | number:'1.0-5' }}</td>
+            <td class="number bucket-cell lt6m-cell">{{ h.lt6m > 0 ? (h.lt6m | number:'1.0-5') : '-' }}</td>
+            <td class="number bucket-cell lt1y-cell">{{ h.lt1y > 0 ? (h.lt1y | number:'1.0-5') : '-' }}</td>
+            <td class="number bucket-cell lt2y-cell">{{ h.lt2y > 0 ? (h.lt2y | number:'1.0-5') : '-' }}</td>
+            <td class="number bucket-cell gt2y-cell">{{ h.gt2y > 0 ? (h.gt2y | number:'1.0-5') : '-' }}</td>
+            <td class="number">
+              &#8377;{{ h.netValue | number:'1.2-2' }}
+              <span class="sub-text" *ngIf="h.market === 'USA'">${{ h.netValueUsd | number:'1.2-2' }}</span>
+            </td>
+            <td class="number">
+              <span *ngIf="h.market === 'USA'">${{ h.costPerUnitUsd | number:'1.2-2' }}</span>
+              <span *ngIf="h.market !== 'USA'">&#8377;{{ h.costPerUnit | number:'1.2-2' }}</span>
+            </td>
+          </tr>
+          <!-- Expanded transaction rows -->
+          <tr class="txn-expand-header" *ngIf="expandedName === h.name">
+            <td></td>
+            <td colspan="11">
+              <div class="txn-section">
+                <div class="txn-section-title">Transactions for {{ h.name }} ({{ getTransactionsForStock(h.name).length }})</div>
+                <table class="txn-table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Type</th>
+                      <th>Qty</th>
+                      <th>Value</th>
+                      <th>Cost / Unit</th>
+                      <th>Remarks</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr *ngFor="let t of getTransactionsForStock(h.name)">
+                      <td>{{ t.date }}</td>
+                      <td><span class="badge" [class.badge-buy]="t.buy_sell === 'Buy'" [class.badge-sell]="t.buy_sell === 'Sell'">{{ t.buy_sell }}</span></td>
+                      <td class="number">{{ t.quantity }}</td>
+                      <td class="number">{{ t.market === 'USA' ? ('$' + ((t.value_usd || 0) | number:'1.2-2') + ' / ₹' + ((t.value || 0) | number:'1.2-2')) : ('₹' + ((t.value || 0) | number:'1.2-2')) }}</td>
+                      <td class="number">{{ costPerUnit(t) }}</td>
+                      <td class="remarks">{{ t.remarks }}</td>
+                      <td class="actions">
+                        <button class="btn-icon edit" (click)="openEditForm(t)" title="Edit">✏️</button>
+                        <button class="btn-icon delete" (click)="deleteEntry(t.id!)" title="Delete">🗑️</button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </td>
+          </tr>
+        </ng-container>
+      </tbody>
+    </table>
+    <div class="empty" *ngIf="holdings.length === 0">No holdings found.</div>
+  </div>
+
+  <!-- Transactions View -->
+  <div class="table-wrapper" *ngIf="!loading && viewMode === 'transactions'">
     <table *ngIf="entries.length > 0">
       <thead>
         <tr>
-          <th class="sortable" (click)="sort('year')">Year <span class="sort-icon">{{ sortIcon('year') }}</span></th>
           <th class="sortable" (click)="sort('market')">Market <span class="sort-icon">{{ sortIcon('market') }}</span></th>
-          <th class="sortable" (click)="sort('market_cap')">Market Cap <span class="sort-icon">{{ sortIcon('market_cap') }}</span></th>
+          <th class="sortable" (click)="sort('market_cap')">Cap <span class="sort-icon">{{ sortIcon('market_cap') }}</span></th>
           <th class="sortable" (click)="sort('sector')">Sector <span class="sort-icon">{{ sortIcon('sector') }}</span></th>
           <th class="sortable" (click)="sort('name')">Name <span class="sort-icon">{{ sortIcon('name') }}</span></th>
           <th class="sortable" (click)="sort('date')">Date <span class="sort-icon">{{ sortIcon('date') }}</span></th>
-          <th class="sortable" (click)="sort('buy_quantity')">Buy Qty <span class="sort-icon">{{ sortIcon('buy_quantity') }}</span></th>
-          <th class="sortable" (click)="sort('buy_value')">Buy Value <span class="sort-icon">{{ sortIcon('buy_value') }}</span></th>
-          <th class="sortable" (click)="sort('sell_quantity')">Sell Qty <span class="sort-icon">{{ sortIcon('sell_quantity') }}</span></th>
-          <th class="sortable" (click)="sort('sell_value')">Sell Value <span class="sort-icon">{{ sortIcon('sell_value') }}</span></th>
-          <th>Buy/Sell</th>
+          <th>Type</th>
+          <th class="sortable" (click)="sort('quantity')">Qty <span class="sort-icon">{{ sortIcon('quantity') }}</span></th>
+          <th class="sortable" (click)="sort('value')">Value <span class="sort-icon">{{ sortIcon('value') }}</span></th>
+          <th>Cost / Unit</th>
           <th>Remarks</th>
           <th>Actions</th>
         </tr>
       </thead>
       <tbody>
-        <tr *ngFor="let entry of entries">
-          <td><span class="badge year-badge">{{ entry.year }}</span></td>
+        <tr *ngFor="let entry of entries" [class.row-india]="entry.market === 'India'" [class.row-usa]="entry.market === 'USA'">
           <td><span class="badge market">{{ entry.market }}</span></td>
           <td><span class="badge cap">{{ entry.market_cap }}</span></td>
           <td>{{ entry.sector }}</td>
           <td class="name-cell">{{ entry.name }}</td>
           <td>{{ entry.date }}</td>
-          <td class="number">{{ entry.buy_quantity ?? '-' }}</td>
-          <td class="number">{{ entry.buy_value !== null ? '₹' + (entry.buy_value | number:'1.2-2') : '-' }}</td>
-          <td class="number">{{ entry.sell_quantity ?? '-' }}</td>
-          <td class="number">{{ entry.sell_value !== null ? '₹' + (entry.sell_value | number:'1.2-2') : '-' }}</td>
-          <td><span class="badge" [class.buy]="entry.buy_sell === 'Buy'" [class.sell]="entry.buy_sell === 'Sell'">{{ entry.buy_sell }}</span></td>
+          <td><span class="badge" [class.badge-buy]="entry.buy_sell === 'Buy'" [class.badge-sell]="entry.buy_sell === 'Sell'">{{ entry.buy_sell }}</span></td>
+          <td class="number">{{ entry.quantity ?? '-' }}</td>
+          <td class="number">
+            {{ entry.market === 'USA' ? ('$' + ((entry.value_usd || 0) | number:'1.2-2') + ' / ₹' + ((entry.value || 0) | number:'1.2-2')) : ('₹' + ((entry.value || 0) | number:'1.2-2')) }}
+          </td>
+          <td class="number">{{ costPerUnit(entry) }}</td>
           <td class="remarks">{{ entry.remarks }}</td>
           <td class="actions">
             <button class="btn-icon edit" (click)="openEditForm(entry)" title="Edit">✏️</button>
@@ -163,18 +302,17 @@
     </table>
     <!-- Mobile card view -->
     <div class="card-list" *ngIf="entries.length > 0">
-      <div class="entry-card" *ngFor="let entry of entries">
+      <div class="entry-card" *ngFor="let entry of entries" [class.row-india]="entry.market === 'India'" [class.row-usa]="entry.market === 'USA'">
         <div class="card-header">
-          <span class="badge year-badge">{{ entry.year }}</span>
+          <span class="badge" [class.badge-buy]="entry.buy_sell === 'Buy'" [class.badge-sell]="entry.buy_sell === 'Sell'">{{ entry.buy_sell }}</span>
           <strong>{{ entry.name }}</strong>
-          <span class="badge" [class.buy]="entry.buy_sell === 'Buy'" [class.sell]="entry.buy_sell === 'Sell'">{{ entry.buy_sell }}</span>
+          <span class="badge market">{{ entry.market }}</span>
         </div>
         <div class="card-body">
-          <div class="card-row"><span>Market:</span><span>{{ entry.market }} / {{ entry.market_cap }}</span></div>
           <div class="card-row"><span>Sector:</span><span>{{ entry.sector }}</span></div>
           <div class="card-row"><span>Date:</span><span>{{ entry.date }}</span></div>
-          <div class="card-row" *ngIf="entry.buy_quantity"><span>Buy:</span><span>{{ entry.buy_quantity }} &#64; ₹{{ entry.buy_value | number:'1.2-2' }}</span></div>
-          <div class="card-row" *ngIf="entry.sell_quantity"><span>Sell:</span><span>{{ entry.sell_quantity }} &#64; ₹{{ entry.sell_value | number:'1.2-2' }}</span></div>
+          <div class="card-row"><span>Qty:</span><span>{{ entry.quantity }}</span></div>
+          <div class="card-row"><span>Value:</span><span>{{ entry.market === 'USA' ? ('$' + ((entry.value_usd || 0) | number:'1.2-2') + ' / ₹' + ((entry.value || 0) | number:'1.2-2')) : ('₹' + ((entry.value || 0) | number:'1.2-2')) }}</span></div>
         </div>
         <div class="card-actions">
           <button class="btn-icon edit" (click)="openEditForm(entry)" title="Edit">✏️</button>

@@ -71,8 +71,8 @@
         </div>
         <hr>
         <div class="forex-row">
-          <span class="forex-label">Avg Rate (Last 3 Deposits)</span>
-          <span class="forex-value">{{ forexAvgLast3DepositRate !== null ? '₹' + (forexAvgLast3DepositRate! | number:'1.4-4') : 'No data' }}</span>
+          <span class="forex-label">Weighted Avg Deposit Rate</span>
+          <span class="forex-value">{{ forexWeightedAvgDepositRate !== null ? '₹' + (forexWeightedAvgDepositRate! | number:'1.4-4') : 'No data' }}</span>
         </div>
         <div class="forex-row">
           <span class="forex-label">Wallet Balance</span>
@@ -129,7 +129,7 @@
         <div class="kpi-content">
           <div class="kpi-label">Current Investment</div>
           <div class="kpi-value">₹{{ currentInvestment | number:'1.2-2' }}</div>
-          <div class="kpi-sub" *ngIf="forexWalletBalanceUSD > 0">Wallet: ${{ forexWalletBalanceUSD | number:'1.2-2' }} (≈ ₹{{ forexWalletBalanceINR | number:'1.2-2' }})</div>
+          <div class="kpi-sub" *ngIf="forexWalletBalanceUSD > 0">Wallet: ${{ forexWalletBalanceUSD | number:'1.2-2' }} · &#8377;{{ forexWalletBalanceINR | number:'1.2-2' }}</div>
         </div>
       </div>
       <div class="kpi-card returns">
@@ -171,7 +171,7 @@
       <!-- Category Tabs -->
       <div class="analysis-tabs">
         <button
-          *ngFor="let cat of categories"
+          *ngFor="let cat of analysisCategories"
           class="analysis-tab"
           [class.active]="selectedCategory === cat.key"
           (click)="selectCategory(cat.key)"
@@ -232,8 +232,316 @@
       </div>
     </div>
 
-    <!-- Pie Charts (for non-P&L metrics) -->
-    <div class="pie-grid" *ngIf="selectedMetric !== 'Net P&L'">
+    <!-- Equity Analysis Panel -->
+    <div class="eq-analysis" *ngIf="selectedCategory === 'Equity'">
+
+      <!-- Row 1: Market Allocation + Market Cap Distribution (both as split bars) -->
+      <div class="eq-row">
+
+        <div class="eq-card eq-card-grow">
+          <p class="eq-card-title">Market Allocation</p>
+          <div class="eq-split-bar" *ngIf="equityMarketSplit.india !== 0 || equityMarketSplit.usa !== 0">
+            <div class="eq-seg eq-india" [style.width]="equityMarketSplit.indiaPct + '%'">
+              {{ equityMarketSplit.indiaPct > 12 ? ('India ' + equityMarketSplit.indiaPct + '%') : '' }}
+            </div>
+            <div class="eq-seg eq-usa" [style.width]="equityMarketSplit.usaPct + '%'">
+              {{ equityMarketSplit.usaPct > 12 ? ('USA ' + equityMarketSplit.usaPct + '%') : '' }}
+            </div>
+          </div>
+          <div class="eq-legend">
+            <div class="eq-legend-item">
+              <span class="eq-legend-dot" style="background:#f59e0b"></span>
+              <span>India</span>
+              <span class="eq-legend-val">&#8377;{{ equityMarketSplit.india | number:'1.0-0' }}</span>
+              <span class="eq-legend-pct">{{ equityMarketSplit.indiaPct }}%</span>
+            </div>
+            <div class="eq-legend-item">
+              <span class="eq-legend-dot" style="background:#3b82f6"></span>
+              <span>USA</span>
+              <span class="eq-legend-val">&#8377;{{ equityMarketSplit.usa | number:'1.0-0' }}</span>
+              <span class="eq-legend-pct">{{ equityMarketSplit.usaPct }}%</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="eq-card eq-card-grow">
+          <p class="eq-card-title">Market Cap Distribution</p>
+          <div class="eq-split-bar">
+            <div class="eq-seg" *ngFor="let cap of equityMarketCapSplit"
+                 [style.width]="cap.pct + '%'"
+                 [style.background]="cap.color">
+              {{ cap.pct > 10 ? cap.pct + '%' : '' }}
+            </div>
+          </div>
+          <div class="eq-legend eq-legend-wrap">
+            <div class="eq-legend-item" *ngFor="let cap of equityMarketCapSplit">
+              <span class="eq-legend-dot" [style.background]="cap.color"></span>
+              <span>{{ cap.cap }}</span>
+              <span class="eq-legend-val">&#8377;{{ cap.value | number:'1.0-0' }}</span>
+              <span class="eq-legend-pct">{{ cap.pct }}%</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Row 2: Year-wise Market Split + Sector Breakdown -->
+      <div class="eq-row">
+
+        <div class="eq-card eq-card-grow">
+          <p class="eq-card-title">Year-wise Market Split</p>
+          <div class="eq-yearly">
+            <div class="eq-yearly-row" *ngFor="let y of equityYearlyBreakdown">
+              <span class="eq-year-lbl">{{ y.year }}</span>
+              <div class="eq-year-track-outer">
+                <div class="eq-year-track" [style.width]="y.barPct + '%'">
+                  <div class="eq-seg eq-india" [style.width]="y.indiaPct + '%'">
+                    {{ y.indiaPct > 12 ? y.indiaPct + '%' : '' }}
+                  </div>
+                  <div class="eq-seg eq-usa" [style.width]="y.usaPct + '%'">
+                    {{ y.usaPct > 12 ? y.usaPct + '%' : '' }}
+                  </div>
+                </div>
+              </div>
+              <span class="eq-year-total">&#8377;{{ y.total | number:'1.0-0' }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="eq-card eq-card-grow">
+          <p class="eq-card-title">Sector Breakdown</p>
+          <div class="eq-treemap">
+            <div class="eq-tile" *ngFor="let s of equitySectorData"
+              [style.flex-basis]="'calc(' + (s.pct < 8 ? 8 : s.pct) + '% - 6px)'"
+              [style.min-height]="(s.pct * 2.8 + 36) + 'px'"
+              [style.background]="s.color + '22'"
+              [style.border-color]="s.color + '88'"
+              [title]="s.sector + ': \u20B9' + s.value + ' (' + s.pct + '%)'">
+              <span class="eq-tile-name" [style.color]="s.color">{{ s.sector }}</span>
+              <span class="eq-tile-pct">{{ s.pct }}%</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- Mutual Funds Analysis Panel -->
+    <div class="eq-analysis" *ngIf="selectedCategory === 'Mutual Funds'">
+      <div class="eq-row">
+        <div class="eq-card eq-card-grow">
+          <p class="eq-card-title">Category Allocation</p>
+          <div class="eq-split-bar">
+            <div class="eq-seg" *ngFor="let c of mfCategorySplit" [style.width]="c.pct + '%'" [style.background]="c.color">
+              {{ c.pct > 10 ? c.pct + '%' : '' }}
+            </div>
+          </div>
+          <div class="eq-legend eq-legend-wrap">
+            <div class="eq-legend-item" *ngFor="let c of mfCategorySplit">
+              <span class="eq-legend-dot" [style.background]="c.color"></span>
+              <span>{{ c.cat }}</span>
+              <span class="eq-legend-val">&#8377;{{ c.value | number:'1.0-0' }}</span>
+              <span class="eq-legend-pct">{{ c.pct }}%</span>
+            </div>
+          </div>
+        </div>
+        <div class="eq-card eq-card-grow">
+          <p class="eq-card-title">Fund Type Split</p>
+          <div class="eq-split-bar">
+            <div class="eq-seg" *ngFor="let t of mfFundTypeSplit" [style.width]="t.pct + '%'" [style.background]="t.color">
+              {{ t.pct > 10 ? t.pct + '%' : '' }}
+            </div>
+          </div>
+          <div class="eq-legend eq-legend-wrap">
+            <div class="eq-legend-item" *ngFor="let t of mfFundTypeSplit">
+              <span class="eq-legend-dot" [style.background]="t.color"></span>
+              <span>{{ t.type }}</span>
+              <span class="eq-legend-val">&#8377;{{ t.value | number:'1.0-0' }}</span>
+              <span class="eq-legend-pct">{{ t.pct }}%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="eq-row">
+        <div class="eq-card eq-card-grow">
+          <div class="eq-card-title-row">
+            <p class="eq-card-title">Year-wise Breakdown</p>
+            <div class="eq-mini-legend">
+              <span *ngFor="let c of mfCategorySplit" class="eq-mini-dot" [style.background]="c.color" [title]="c.cat"></span>
+            </div>
+          </div>
+          <div class="eq-yearly">
+            <div class="eq-yearly-row" *ngFor="let y of mfYearlyBreakdown">
+              <span class="eq-year-lbl">{{ y.year }}</span>
+              <div class="eq-year-track-outer">
+                <div class="eq-year-track" [style.width]="y.barPct + '%'">
+                  <div class="eq-seg" *ngFor="let seg of y.segments" [style.width]="seg.pct + '%'" [style.background]="seg.color">
+                    {{ seg.pct > 15 ? seg.pct + '%' : '' }}
+                  </div>
+                </div>
+              </div>
+              <span class="eq-year-total">&#8377;{{ y.total | number:'1.0-0' }}</span>
+            </div>
+          </div>
+        </div>
+        <div class="eq-card eq-card-grow">
+          <p class="eq-card-title">Top Funds</p>
+          <div class="eq-treemap">
+            <div class="eq-tile" *ngFor="let f of mfTopFunds"
+              [style.flex-basis]="'calc(' + (f.pct < 8 ? 8 : f.pct) + '% - 6px)'"
+              [style.min-height]="(f.pct * 2.8 + 36) + 'px'"
+              [style.background]="f.color + '22'"
+              [style.border-color]="f.color + '88'"
+              [title]="f.name + ': \u20B9' + f.value + ' (' + f.pct + '%)'"
+            >
+              <span class="eq-tile-name" [style.color]="f.color">{{ f.name }}</span>
+              <span class="eq-tile-pct">{{ f.pct }}%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Commodity Analysis Panel -->
+    <div class="eq-analysis" *ngIf="selectedCategory === 'Commodity'">
+      <div class="eq-row">
+        <div class="eq-card eq-card-grow">
+          <p class="eq-card-title">Commodity Allocation</p>
+          <div class="eq-split-bar">
+            <div class="eq-seg" *ngFor="let c of commCommoditySplit" [style.width]="c.pct + '%'" [style.background]="c.color">
+              {{ c.pct > 10 ? c.pct + '%' : '' }}
+            </div>
+          </div>
+          <div class="eq-legend eq-legend-wrap">
+            <div class="eq-legend-item" *ngFor="let c of commCommoditySplit">
+              <span class="eq-legend-dot" [style.background]="c.color"></span>
+              <span>{{ c.commodity }}</span>
+              <span class="eq-legend-val">&#8377;{{ c.value | number:'1.0-0' }}</span>
+              <span class="eq-legend-pct">{{ c.pct }}%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="eq-row">
+        <div class="eq-card eq-card-grow">
+          <div class="eq-card-title-row">
+            <p class="eq-card-title">Year-wise Breakdown</p>
+            <div class="eq-mini-legend">
+              <span *ngFor="let c of commCommoditySplit" class="eq-mini-dot" [style.background]="c.color" [title]="c.commodity"></span>
+            </div>
+          </div>
+          <div class="eq-yearly">
+            <div class="eq-yearly-row" *ngFor="let y of commYearlyBreakdown">
+              <span class="eq-year-lbl">{{ y.year }}</span>
+              <div class="eq-year-track-outer">
+                <div class="eq-year-track" [style.width]="y.barPct + '%'">
+                  <div class="eq-seg" *ngFor="let seg of y.segments" [style.width]="seg.pct + '%'" [style.background]="seg.color">
+                    {{ seg.pct > 15 ? seg.pct + '%' : '' }}
+                  </div>
+                </div>
+              </div>
+              <span class="eq-year-total">&#8377;{{ y.total | number:'1.0-0' }}</span>
+            </div>
+          </div>
+        </div>
+        <div class="eq-card eq-card-grow">
+          <p class="eq-card-title">Top Instruments</p>
+          <div class="eq-treemap">
+            <div class="eq-tile" *ngFor="let inst of commTopInstruments"
+              [style.flex-basis]="'calc(' + (inst.pct < 8 ? 8 : inst.pct) + '% - 6px)'"
+              [style.min-height]="(inst.pct * 2.8 + 36) + 'px'"
+              [style.background]="inst.color + '22'"
+              [style.border-color]="inst.color + '88'"
+              [title]="inst.name + ': \u20B9' + inst.value + ' (' + inst.pct + '%)'"
+            >
+              <span class="eq-tile-name" [style.color]="inst.color">{{ inst.name }}</span>
+              <span class="eq-tile-pct">{{ inst.pct }}%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- P2P Analysis Panel -->
+    <div class="eq-analysis" *ngIf="selectedCategory === 'P2P'">
+      <div class="eq-row">
+        <div class="eq-card eq-card-grow">
+          <p class="eq-card-title">Platform Allocation</p>
+          <div class="eq-split-bar">
+            <div class="eq-seg" *ngFor="let p of p2pPlatformSplit" [style.width]="p.pct + '%'" [style.background]="p.color">
+              {{ p.pct > 10 ? p.pct + '%' : '' }}
+            </div>
+          </div>
+          <div class="eq-legend eq-legend-wrap">
+            <div class="eq-legend-item" *ngFor="let p of p2pPlatformSplit">
+              <span class="eq-legend-dot" [style.background]="p.color"></span>
+              <span>{{ p.platform }}</span>
+              <span class="eq-legend-val">&#8377;{{ p.value | number:'1.0-0' }}</span>
+              <span class="eq-legend-pct">{{ p.pct }}%</span>
+            </div>
+          </div>
+        </div>
+        <div class="eq-card eq-card-grow">
+          <p class="eq-card-title">Repaid vs Outstanding</p>
+          <div class="eq-split-bar">
+            <div class="eq-seg" [style.width]="p2pRepaidVsOutstanding.repaidPct + '%'" style="background:#10b981">
+              {{ p2pRepaidVsOutstanding.repaidPct > 12 ? p2pRepaidVsOutstanding.repaidPct + '%' : '' }}
+            </div>
+            <div class="eq-seg" [style.width]="p2pRepaidVsOutstanding.outstandingPct + '%'" style="background:#6366f1">
+              {{ p2pRepaidVsOutstanding.outstandingPct > 12 ? p2pRepaidVsOutstanding.outstandingPct + '%' : '' }}
+            </div>
+          </div>
+          <div class="eq-legend">
+            <div class="eq-legend-item">
+              <span class="eq-legend-dot" style="background:#10b981"></span>
+              <span>Repaid</span>
+              <span class="eq-legend-val">&#8377;{{ p2pRepaidVsOutstanding.repaid | number:'1.0-0' }}</span>
+              <span class="eq-legend-pct">{{ p2pRepaidVsOutstanding.repaidPct }}%</span>
+            </div>
+            <div class="eq-legend-item">
+              <span class="eq-legend-dot" style="background:#6366f1"></span>
+              <span>Outstanding</span>
+              <span class="eq-legend-val">&#8377;{{ p2pRepaidVsOutstanding.outstanding | number:'1.0-0' }}</span>
+              <span class="eq-legend-pct">{{ p2pRepaidVsOutstanding.outstandingPct }}%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="eq-row">
+        <div class="eq-card eq-card-grow">
+          <p class="eq-card-title">Portfolio Status</p>
+          <div class="eq-split-bar">
+            <div class="eq-seg" *ngFor="let s of p2pStatusSplit" [style.width]="s.pct + '%'" [style.background]="s.color">
+              {{ s.pct > 10 ? s.pct + '%' : '' }}
+            </div>
+          </div>
+          <div class="eq-legend eq-legend-wrap">
+            <div class="eq-legend-item" *ngFor="let s of p2pStatusSplit">
+              <span class="eq-legend-dot" [style.background]="s.color"></span>
+              <span>{{ s.status }}</span>
+              <span class="eq-legend-val">&#8377;{{ s.value | number:'1.0-0' }}</span>
+              <span class="eq-legend-pct">{{ s.pct }}%</span>
+            </div>
+          </div>
+        </div>
+        <div class="eq-card eq-card-grow">
+          <p class="eq-card-title">Year-wise Lending</p>
+          <div class="eq-yearly">
+            <div class="eq-yearly-row" *ngFor="let y of p2pYearlyBreakdown">
+              <span class="eq-year-lbl">{{ y.year }}</span>
+              <div class="eq-year-track-outer">
+                <div class="eq-year-track" [style.width]="y.barPct + '%'" style="background:#6366f1"></div>
+              </div>
+              <span class="eq-year-total">&#8377;{{ y.total | number:'1.0-0' }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pie Charts (for categories without a custom analysis panel) -->
+    <div class="pie-grid" *ngIf="!hasCustomAnalysis && selectedMetric !== 'Net P&L'">
       <div class="pie-card" *ngFor="let chart of pieCharts">
         <h3>{{ chart.title }}</h3>
         <div class="pie-content">
@@ -257,8 +565,8 @@
       </div>
     </div>
 
-    <!-- Bar Charts (for Net P&L) -->
-    <div class="bar-grid" *ngIf="selectedMetric === 'Net P&L'">
+    <!-- Bar Charts (for categories without a custom analysis panel, Net P&L) -->
+    <div class="bar-grid" *ngIf="!hasCustomAnalysis && selectedMetric === 'Net P&L'">
       <div class="bar-card" *ngFor="let chart of barCharts">
         <h3>{{ chart.title }}</h3>
         <div class="bar-items" *ngIf="chart.items.length > 0">
@@ -290,23 +598,64 @@
     </div>
   </section>
 
-  <!-- AI Insights Section -->
+  <!-- AI Chat Section -->
   <section class="ai-section">
     <div class="ai-card">
       <div class="ai-header">
-        <h3>🤖 AI Portfolio Advisor</h3>
-        <button class="btn btn-primary ai-btn" (click)="getAIAnalysis()" [disabled]="aiLoading">
-          {{ aiLoading ? 'Analyzing...' : (aiAnalysis ? 'Refresh Analysis' : 'Analyze Portfolio') }}
-        </button>
+        <div class="ai-title-area">
+          <h3 class="ai-title">🤖 AI Portfolio Advisor</h3>
+          <span class="ai-subtitle">Ask anything about your portfolio</span>
+        </div>
+        <button class="ai-clear-btn" *ngIf="chatMessages.length > 0" (click)="clearChat()">Clear chat</button>
       </div>
-      <div class="ai-loading" *ngIf="aiLoading">
-        <div class="ai-spinner"></div>
-        <p>Analyzing your portfolio...</p>
+
+      <!-- Empty state -->
+      <div class="ai-empty" *ngIf="chatMessages.length === 0 && !chatLoading">
+        <p class="ai-description">Your AI advisor has full context of your portfolio. Ask any question or start with a quick prompt.</p>
+        <div class="ai-chips">
+          <button class="ai-chip" *ngFor="let p of QUICK_PROMPTS" (click)="sendQuickPrompt(p)">{{ p }}</button>
+        </div>
       </div>
-      <div class="ai-error" *ngIf="aiError">
-        <p>{{ aiError }}</p>
+
+      <!-- Chat messages -->
+      <div class="chat-messages" *ngIf="chatMessages.length > 0 || chatLoading">
+        <div *ngFor="let msg of chatMessages" class="chat-bubble-row" [class.user-row]="msg.role === 'user'">
+          <div class="chat-bubble" [class.user-bubble]="msg.role === 'user'" [class.ai-bubble]="msg.role === 'assistant'">
+            <div *ngIf="msg.role === 'user'" class="bubble-text">{{ msg.content }}</div>
+            <div *ngIf="msg.role === 'assistant'" class="bubble-html" [innerHTML]="msg.html"></div>
+            <span class="bubble-time">{{ msg.time | date:'h:mm a' }}</span>
+          </div>
+        </div>
+        <!-- Typing indicator -->
+        <div class="chat-bubble-row" *ngIf="chatLoading">
+          <div class="chat-bubble ai-bubble typing-bubble">
+            <span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>
+          </div>
+        </div>
       </div>
-      <div class="ai-content" *ngIf="aiAnalysis && !aiLoading" [innerHTML]="aiAnalysisHtml"></div>
+
+      <!-- Error -->
+      <div class="ai-error" *ngIf="chatError">{{ chatError }}</div>
+
+      <!-- Input bar -->
+      <div class="chat-input-row">
+        <div class="chat-chips-row" *ngIf="chatMessages.length > 0 && !chatLoading">
+          <button class="ai-chip ai-chip-sm" *ngFor="let p of QUICK_PROMPTS" (click)="sendQuickPrompt(p)">{{ p }}</button>
+        </div>
+        <div class="chat-input-bar">
+          <input
+            class="chat-input"
+            type="text"
+            placeholder="Ask about your portfolio…"
+            [(ngModel)]="chatInput"
+            (keydown.enter)="sendMessage()"
+            [disabled]="chatLoading"
+          />
+          <button class="chat-send-btn" (click)="sendMessage()" [disabled]="!chatInput.trim() || chatLoading">
+            ➤
+          </button>
+        </div>
+      </div>
     </div>
   </section>
 </div>

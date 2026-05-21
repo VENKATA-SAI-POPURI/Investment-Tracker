@@ -1,2 +1,163 @@
 @use '../shared';
 
+// ── Holding-period bucket columns ──
+.bucket-col  { font-size: 0.75rem; font-weight: 700; text-align: center; white-space: nowrap; }
+.bucket-cell { font-size: 0.8rem; text-align: center; font-weight: 600; }
+.lt6m-col, .lt6m-cell { color: #60a5fa; }
+.lt1y-col, .lt1y-cell { color: #f59e0b; }
+.lt2y-col, .lt2y-cell { color: #10b981; }
+.lt3y-col, .lt3y-cell { color: #14b8a6; }
+.gt3y-col, .gt3y-cell { color: #a78bfa; }
+
+// ── Expand / transaction dropdown ──
+.expand-toggle-col { width: 30px; }
+.expand-toggle { cursor: pointer; width: 30px; text-align: center; user-select: none; }
+.expand-icon { font-size: 0.75rem; color: var(--text-secondary, #94a3b8); }
+tr.expanded { background: rgba(99, 102, 241, 0.05); }
+.txn-expand-header td { padding: 0 !important; border-top: none !important; }
+.txn-section {
+  padding: 0.75rem 1rem 1rem;
+  background: var(--bg-input, #0f172a);
+  border-radius: 0 0 8px 8px;
+  margin-bottom: 0.25rem;
+}
+.txn-section-title { font-size: 0.82rem; font-weight: 600; color: var(--text-secondary, #94a3b8); margin-bottom: 0.5rem; }
+.txn-table {
+  width: 100%; font-size: 0.82rem; border-collapse: collapse;
+  th, td { padding: 0.35rem 0.6rem; border-bottom: 1px solid var(--border-color, #1e293b); text-align: left; }
+  th { font-weight: 600; color: var(--text-secondary, #94a3b8); }
+}
+
+.allocation-card {
+  background: var(--bg-card, #1e293b);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.allocation-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary, #94a3b8);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.allocation-total {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-heading, #f1f5f9);
+}
+
+.allocation-bar {
+  display: flex;
+  height: 32px;
+  border-radius: 8px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.bar-segment {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #fff;
+  transition: width 0.4s ease;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.allocation-legend {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.legend-pct {
+  color: var(--text-secondary, #94a3b8);
+  font-weight: 400;
+}
+
+.filter-bar { flex-wrap: wrap; }
+
+.fy-pills {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.fy-pill {
+  padding: 0.25rem 0.75rem;
+  border-radius: 20px;
+  border: 1px solid var(--border, #334155);
+  background: transparent;
+  color: var(--text-secondary, #94a3b8);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.15s;
+
+  &.active {
+    background: #3b82f6;
+    border-color: #3b82f6;
+    color: #fff;
+    font-weight: 600;
+  }
+
+  &:hover:not(.active) {
+    border-color: #3b82f6;
+    color: #3b82f6;
+  }
+}
+
+/* ── Mobile: force table min-width so overflow-x: auto triggers ── */
+.table-wrapper table {
+  min-width: 960px;
+}
+
+.view-toggle {
+  display: flex;
+  border: 1px solid var(--border, #334155);
+  border-radius: 8px;
+  overflow: hidden;
+
+  button {
+    padding: 0.35rem 0.9rem;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary, #94a3b8);
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: all 0.15s;
+
+    &.active {
+      background: #3b82f6;
+      color: #fff;
+      font-weight: 600;
+    }
+
+    &:hover:not(.active) { background: var(--bg-hover, #334155); }
+  }
+}
+
+// Category row colors
+tr.row-cat-equity   { border-left: 3px solid #3b82f6; background-color: rgba(59,  130, 246, 0.10); }
+tr.row-cat-debt     { border-left: 3px solid #10b981; background-color: rgba(16,  185, 129, 0.10); }
+tr.row-cat-hybrid   { border-left: 3px solid #8b5cf6; background-color: rgba(139,  92, 246, 0.10); }
+tr.row-cat-index    { border-left: 3px solid #f59e0b; background-color: rgba(245, 158,  11, 0.10); }
+tr.row-cat-elss     { border-left: 3px solid #ef4444; background-color: rgba(239,  68,  68, 0.10); }
+tr.row-cat-sectoral { border-left: 3px solid #f97316; background-color: rgba(249, 115,  22, 0.10); }
+
+.badge.category {
+  border-radius: 20px;
+  padding: 0.2rem 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+

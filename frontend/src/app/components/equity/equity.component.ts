@@ -6,16 +6,28 @@ import { firstValueFrom } from 'rxjs';
 import { InvestmentService } from '../../services/investment.service';
 import { EquityEntry, ForexEntry } from '../../models/investment.model';
 
-function getCurrentFY(): string {
-  const now = new Date();
-  const yr = now.getMonth() >= 3 ? now.getFullYear() + 1 : now.getFullYear();
-  return 'FY' + yr.toString().slice(-2);
-}
 
-function getFYOptions(): string[] {
-  const opts: string[] = [];
-  for (let y = 23; y <= 30; y++) opts.push('FY' + y);
-  return opts;
+interface HoldingRow {
+  name: string;
+  market: string;
+  market_cap: string;
+  sector: string;
+  totalBuyQty: number;
+  totalSellQty: number;
+  totalBuyValue: number;
+  totalSellValue: number;
+  totalBuyValueUsd: number;
+  totalSellValueUsd: number;
+  netQty: number;
+  netValue: number;
+  netValueUsd: number;
+  costPerUnit: number;
+  costPerUnitUsd: number;
+  // FIFO holding-period buckets (quantity)
+  lt6m: number;   // < 6 months
+  lt1y: number;   // 6 months – 1 year
+  lt2y: number;   // 1 year – 2 years
+  gt2y: number;   // > 2 years
 }
 
 @Component({
@@ -38,28 +50,164 @@ export class EquityComponent implements OnInit {
   searchQuery = '';
   sortColumn = '';
   sortDirection: 'asc' | 'desc' = 'asc';
-  fyOptions = getFYOptions();
+  expandedName: string | null = null;
+  viewMode: 'transactions' | 'holdings' = 'holdings';
+  selectedFYs: string[] = [];
+  fyDropdownOpen = false;
   toasts: { msg: string; type: string }[] = [];
   sectors = [
-    'Aerospace & Defense', 'Agricultural Food & other Products', 'Agricultural, Commercial & Construction Vehicles',
-    'Auto Components', 'Automobiles', 'Banks', 'Beverages', 'Capital Markets', 'Cement & Cement Products',
-    'Chemicals & Petrochemicals', 'Cigarettes & Tobacco Products', 'Commercial Services & Supplies', 'Construction',
-    'Consumable Fuels', 'Consumer Durables', 'Diversified', 'Diversified FMCG', 'Diversified Metals',
-    'Electrical Equipment', 'Engineering Services', 'Entertainment', 'Ferrous Metals', 'Fertilizers & Agrochemicals',
-    'Finance', 'Financial Technology (Fintech)', 'Food Products', 'Gas', 'Healthcare Equipment & Supplies',
-    'Healthcare Services', 'Household Products', 'Industrial Manufacturing', 'Industrial Products', 'Insurance',
-    'IT - Hardware', 'IT - Services', 'IT - Software', 'Leisure Services', 'Media', 'Metals & Minerals Trading',
-    'Minerals & Mining', 'Non - Ferrous Metals', 'Oil', 'Other Construction Materials', 'Other Consumer Services',
-    'Other Utilities', 'Paper, Forest & Jute Products', 'Personal Products', 'Petroleum Products',
-    'Pharmaceuticals & Biotechnology', 'Power', 'Printing & Publication', 'Realty', 'Retailing',
-    'Telecom - Equipment & Accessories', 'Telecom - Services', 'Textiles & Apparels', 'Transport Infrastructure',
-    'Transport Services'
+    'Communication Services',
+    'Consumer Discretionary',
+    'Consumer Staples',
+    'Energy',
+    'Financials',
+    'Health Care',
+    'Industrials',
+    'Information Technology',
+    'Materials',
+    'Real Estate',
+    'Utilities',
+    'Others'
   ];
 
   form: EquityEntry = this.emptyForm();
 
   get nameSuggestions(): string[] {
     return [...new Set(this.allEntries.map(e => e.name).filter(Boolean))];
+  }
+
+  get indiaNetINR(): number {
+    return this.entries
+      .filter(e => e.market === 'India')
+      .reduce((s, e) => s + (e.buy_sell === 'Buy' ? (e.value || 0) : -(e.value || 0)), 0);
+  }
+
+  get usaNetINR(): number {
+    return Math.round(this.usaNetUSD * this.latestForexRate * 100) / 100;
+  }
+
+  get usaNetUSD(): number {
+    return this.entries
+      .filter(e => e.market === 'USA')
+      .reduce((s, e) => s + (e.buy_sell === 'Buy' ? (e.value_usd || 0) : -(e.value_usd || 0)), 0);
+  }
+
+  get latestForexRate(): number {
+    const entries = this.forexEntries.filter(e => (e.rate || 0) > 0);
+    if (entries.length === 0) return 0;
+    return entries.reduce((a, b) => (a.date >= b.date ? a : b)).rate || 0;
+  }
+
+  get totalNetINR(): number {
+    return this.indiaNetINR + this.usaNetINR;
+  }
+
+  get indiaPct(): number {
+    if (this.totalNetINR <= 0) return 0;
+    return (this.indiaNetINR / this.totalNetINR) * 100;
+  }
+
+  get usaPct(): number {
+    if (this.totalNetINR <= 0) return 0;
+    return (this.usaNetINR / this.totalNetINR) * 100;
+  }
+
+  get availableFYs(): string[] {
+    return [...new Set(this.allEntries.map(e => this.dateToFY(e.date)).filter(Boolean))].sort();
+  }
+
+  get taxTermSummary(): { stcg: number; ltcg: number; total: number; stcgPct: number; ltcgPct: number } {
+    // Equity: STCG < 1Y, LTCG >= 1Y (FIFO-based, proportional value)
+    let stcg = 0, ltcg = 0;
+    for (const h of this.holdings) {
+      const totalBkt = h.lt6m + h.lt1y + h.lt2y + h.gt2y;
+      if (totalBkt <= 0 || h.netValue <= 0) continue;
+      const stcgFrac = (h.lt6m + h.lt1y) / totalBkt;
+      stcg += h.netValue * stcgFrac;
+      ltcg += h.netValue * (1 - stcgFrac);
+    }
+    const total = stcg + ltcg;
+    return { stcg: Math.round(stcg), ltcg: Math.round(ltcg), total: Math.round(total),
+      stcgPct: total > 0 ? Math.round(stcg / total * 100) : 0,
+      ltcgPct: total > 0 ? Math.round(ltcg / total * 100) : 0 };
+  }
+
+  get uniqueStocksCount(): number {
+    // Stocks where net quantity (buys - sells) > 0
+    const map = new Map<string, number>();
+    for (const e of this.entries) {
+      const sign = e.buy_sell === 'Buy' ? 1 : -1;
+      map.set(e.name, (map.get(e.name) || 0) + sign * (e.quantity || 0));
+    }
+    return [...map.values()].filter(q => q > 0).length;
+  }
+
+  get holdings(): HoldingRow[] {
+    const today = new Date();
+    const daysSince = (d: string) =>
+      Math.floor((today.getTime() - new Date(d).getTime()) / 86400000);
+
+    // 1. FIFO holding-period buckets from ALL entries (unfiltered)
+    const buyLots = new Map<string, { date: string; qty: number }[]>();
+    const totalSells = new Map<string, number>();
+    for (const e of this.allEntries) {
+      if (e.buy_sell === 'Buy') {
+        if (!buyLots.has(e.name)) buyLots.set(e.name, []);
+        buyLots.get(e.name)!.push({ date: e.date, qty: e.quantity || 0 });
+      } else {
+        totalSells.set(e.name, (totalSells.get(e.name) || 0) + (e.quantity || 0));
+      }
+    }
+    const buckets = new Map<string, { lt6m: number; lt1y: number; lt2y: number; gt2y: number }>();
+    for (const [name, lots] of buyLots) {
+      const sorted = [...lots].sort((a, b) => a.date.localeCompare(b.date));
+      let sells = totalSells.get(name) || 0;
+      const b = { lt6m: 0, lt1y: 0, lt2y: 0, gt2y: 0 };
+      for (const lot of sorted) {
+        let rem = lot.qty;
+        if (sells >= rem) { sells -= rem; continue; }
+        rem -= sells; sells = 0;
+        const days = daysSince(lot.date);
+        if      (days < 183) b.lt6m += rem;
+        else if (days < 365) b.lt1y += rem;
+        else if (days < 730) b.lt2y += rem;
+        else                 b.gt2y += rem;
+      }
+      buckets.set(name, b);
+    }
+
+    // 2. Aggregate value/qty from filtered entries
+    const map = new Map<string, HoldingRow>();
+    for (const e of this.entries) {
+      if (!map.has(e.name)) {
+        const bkt = buckets.get(e.name) || { lt6m: 0, lt1y: 0, lt2y: 0, gt2y: 0 };
+        map.set(e.name, {
+          name: e.name, market: e.market, market_cap: e.market_cap, sector: e.sector,
+          totalBuyQty: 0, totalSellQty: 0, totalBuyValue: 0, totalSellValue: 0,
+          totalBuyValueUsd: 0, totalSellValueUsd: 0,
+          netQty: 0, netValue: 0, netValueUsd: 0, costPerUnit: 0, costPerUnitUsd: 0,
+          lt6m: bkt.lt6m, lt1y: bkt.lt1y, lt2y: bkt.lt2y, gt2y: bkt.gt2y,
+        });
+      }
+      const h = map.get(e.name)!;
+      if (e.buy_sell === 'Buy') {
+        h.totalBuyQty += (e.quantity || 0);
+        h.totalBuyValue += (e.value || 0);
+        h.totalBuyValueUsd += (e.value_usd || 0);
+      } else {
+        h.totalSellQty += (e.quantity || 0);
+        h.totalSellValue += (e.value || 0);
+        h.totalSellValueUsd += (e.value_usd || 0);
+      }
+    }
+    return Array.from(map.values()).map(h => ({
+      ...h,
+      netQty: h.totalBuyQty - h.totalSellQty,
+      netValue: Math.round((h.totalBuyValue - h.totalSellValue) * 100) / 100,
+      netValueUsd: Math.round((h.totalBuyValueUsd - h.totalSellValueUsd) * 100) / 100,
+      costPerUnit: h.totalBuyQty > 0 ? Math.round((h.totalBuyValue / h.totalBuyQty) * 100) / 100 : 0,
+      costPerUnitUsd: h.totalBuyQty > 0 ? Math.round((h.totalBuyValueUsd / h.totalBuyQty) * 100) / 100 : 0,
+    })).sort((a, b) => b.netValue - a.netValue);
   }
 
   constructor(private investmentService: InvestmentService) {}
@@ -78,25 +226,24 @@ export class EquityComponent implements OnInit {
 
   getAvgRate(tradeDate: string): number | null {
     const deposits = this.forexEntries
-      .filter(e => e.type === 'Deposit' && (e.rate || 0) > 0 && e.date <= tradeDate)
-      .sort((a, b) => b.date.localeCompare(a.date))
-      .slice(0, 3);
+      .filter(e => e.type === 'Deposit' && e.date <= tradeDate);
     if (deposits.length === 0) return null;
-    return deposits.reduce((s, e) => s + (e.rate || 0), 0) / deposits.length;
+    const totalINR = deposits.reduce((s, e) => s + (e.inr_amount || 0), 0);
+    const totalUSD = deposits.reduce((s, e) => s + (e.usd_amount || 0), 0);
+    if (totalUSD <= 0) return null;
+    return totalINR / totalUSD;
   }
 
   emptyForm(): EquityEntry {
     return {
-      year: getCurrentFY(),
       market: '',
       market_cap: '',
       sector: '',
       name: '',
       date: new Date().toISOString().split('T')[0],
-      buy_quantity: null,
-      buy_value: null,
-      sell_quantity: null,
-      sell_value: null,
+      quantity: null,
+      value: null,
+      value_usd: null,
       buy_sell: 'Buy',
       remarks: ''
     };
@@ -120,15 +267,24 @@ export class EquityComponent implements OnInit {
   applyFilter(): void {
     let filtered = this.allEntries;
     if (!this.showAll) {
-      filtered = filtered.filter(e => (e.buy_quantity || 0) > (e.sell_quantity || 0));
+      // Only show stocks with net qty > 0 (still holding)
+      const netQtyMap = new Map<string, number>();
+      for (const e of this.allEntries) {
+        const sign = e.buy_sell === 'Buy' ? 1 : -1;
+        netQtyMap.set(e.name, (netQtyMap.get(e.name) || 0) + sign * (e.quantity || 0));
+      }
+      const activeNames = new Set([...netQtyMap.entries()].filter(([, q]) => q > 0).map(([n]) => n));
+      filtered = filtered.filter(e => activeNames.has(e.name));
+    }
+    if (this.selectedFYs.length) {
+      filtered = filtered.filter(e => this.selectedFYs.includes(this.dateToFY(e.date)));
     }
     if (this.searchQuery.trim()) {
       const q = this.searchQuery.toLowerCase();
       filtered = filtered.filter(e =>
         (e.name || '').toLowerCase().includes(q) ||
         (e.sector || '').toLowerCase().includes(q) ||
-        (e.market || '').toLowerCase().includes(q) ||
-        (e.year || '').toLowerCase().includes(q)
+        (e.market || '').toLowerCase().includes(q)
       );
     }
     if (this.sortColumn) {
@@ -171,6 +327,26 @@ export class EquityComponent implements OnInit {
     return this.sortDirection === 'asc' ? '↑' : '↓';
   }
 
+  get fyLabel(): string { return this.selectedFYs.length === 0 ? 'All' : this.selectedFYs.join(', '); }
+  isFYSelected(fy: string): boolean { return this.selectedFYs.includes(fy); }
+  toggleFY(fy: string): void {
+    const i = this.selectedFYs.indexOf(fy);
+    if (i >= 0) this.selectedFYs.splice(i, 1); else this.selectedFYs.push(fy);
+    this.applyFilter();
+  }
+  clearFYFilter(): void { this.selectedFYs = []; this.applyFilter(); }
+
+  costPerUnit(entry: EquityEntry): string {
+    if ((entry.quantity || 0) <= 0) return '-';
+    if (entry.market === 'USA' && (entry.value_usd || 0) > 0) {
+      return '$' + (entry.value_usd! / entry.quantity!).toFixed(2);
+    }
+    if ((entry.value || 0) > 0) {
+      return '\u20b9' + (entry.value! / entry.quantity!).toFixed(2);
+    }
+    return '-';
+  }
+
   openAddForm(): void {
     this.form = this.emptyForm();
     this.editingId = null;
@@ -188,6 +364,14 @@ export class EquityComponent implements OnInit {
     this.editingId = null;
   }
 
+  toggleExpand(name: string): void {
+    this.expandedName = this.expandedName === name ? null : name;
+  }
+
+  getTransactionsForStock(name: string): EquityEntry[] {
+    return this.entries.filter(e => e.name === name).sort((a, b) => b.date.localeCompare(a.date));
+  }
+
   onNameChange(): void {
     if (this.editingId) return;
     const match = this.allEntries.find(e => e.name?.toLowerCase() === this.form.name?.toLowerCase().trim());
@@ -198,14 +382,13 @@ export class EquityComponent implements OnInit {
     }
   }
 
-  onBuySellChange(): void {
-    if (this.form.buy_sell === 'Buy') {
-      this.form.sell_quantity = null;
-      this.form.sell_value = null;
-    } else {
-      this.form.buy_quantity = null;
-      this.form.buy_value = null;
-    }
+  private dateToFY(dateStr: string): string {
+    if (!dateStr) return '';
+    const parts = dateStr.split('-');
+    const year = parseInt(parts[0]);
+    const month = parseInt(parts[1]);
+    const fy = month >= 4 ? year + 1 : year;
+    return 'FY' + fy.toString().slice(-2);
   }
 
   async saveEntry(): Promise<void> {
@@ -213,16 +396,15 @@ export class EquityComponent implements OnInit {
       this.toast('Name is required', 'error');
       return;
     }
-    if (this.form.buy_sell === 'Buy' && (!this.form.buy_quantity || this.form.buy_quantity <= 0)) {
-      this.toast('Buy quantity must be greater than 0', 'error');
+    if (!this.form.quantity || this.form.quantity <= 0) {
+      this.toast('Quantity must be greater than 0', 'error');
       return;
     }
-    if (this.form.buy_sell === 'Sell' && (!this.form.sell_quantity || this.form.sell_quantity <= 0)) {
-      this.toast('Sell quantity must be greater than 0', 'error');
+    if (!this.form.value || this.form.value <= 0) {
+      this.toast('Value must be greater than 0', 'error');
       return;
     }
 
-    // For USA entries, fetch fresh forex data and convert USD values to INR
     const formToSave = { ...this.form };
     if (formToSave.market === 'USA') {
       try {
@@ -231,17 +413,13 @@ export class EquityComponent implements OnInit {
         this.toast('Failed to fetch forex data', 'error');
         return;
       }
-      const rate = this.getAvgRate(formToSave.date);
-      if (rate === null) {
-        this.toast('No forex deposit rates found on or before this date. Please add a forex entry first.', 'error');
+      const rate = this.latestForexRate;
+      if (rate <= 0) {
+        this.toast('No forex rates found. Please add a forex entry first.', 'error');
         return;
       }
-      if (formToSave.buy_value) {
-        formToSave.buy_value = Math.round(formToSave.buy_value * rate * 100) / 100;
-      }
-      if (formToSave.sell_value) {
-        formToSave.sell_value = Math.round(formToSave.sell_value * rate * 100) / 100;
-      }
+      formToSave.value_usd = formToSave.value;           // save USD amount
+      formToSave.value = Math.round(formToSave.value! * rate * 100) / 100; // convert to INR
     }
 
     if (this.editingId) {
@@ -256,9 +434,8 @@ export class EquityComponent implements OnInit {
       });
     } else {
       this.investmentService.addEquity(formToSave).subscribe({
-        next: (res) => {
-          const msg = res.upserted ? 'Existing entry updated (values added)' : 'Entry added successfully';
-          this.toast(msg, 'success');
+        next: () => {
+          this.toast('Entry added successfully', 'success');
           this.showForm = false;
           this.loadEntries();
         },

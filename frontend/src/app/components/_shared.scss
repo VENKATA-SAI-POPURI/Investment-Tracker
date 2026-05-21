@@ -79,6 +79,169 @@
   to { transform: translateX(0); opacity: 1; }
 }
 
+// ── FY multi-select dropdown ──
+.fy-dropdown {
+  position: relative;
+
+  .fy-dropdown-trigger {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.85rem;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-input);
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: border-color 0.2s;
+    &:hover { border-color: var(--border-hover); }
+    .caret { font-size: 0.7rem; color: var(--text-secondary); transition: transform 0.2s; }
+  }
+
+  &.open .fy-dropdown-trigger .caret { transform: rotate(180deg); }
+  &.open .fy-dropdown-trigger { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.15); }
+
+  .fy-dropdown-panel {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    min-width: 130px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+    z-index: 200;
+    overflow: hidden;
+  }
+
+  .fy-option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.45rem 0.85rem;
+    font-size: 0.85rem;
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: background 0.15s;
+    &:hover { background: rgba(99,102,241,0.08); color: var(--text-primary); }
+    &.selected { color: #6366f1; font-weight: 600; }
+    .fy-check { width: 14px; font-size: 0.75rem; color: #6366f1; }
+  }
+}
+
+.fy-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 199;
+}
+
+// ── Capital Gains / Tax Term Bifurcation card ──
+.tax-term-card {
+  background: var(--bg-card, #1e293b);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+
+  .tax-term-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+
+  .tax-term-title {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-secondary, #94a3b8);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .tax-term-note {
+    font-size: 0.75rem;
+    color: var(--text-muted, #64748b);
+  }
+
+  .tax-term-bar {
+    display: flex;
+    height: 8px;
+    border-radius: 4px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.05);
+
+    .stcg-bar {
+      background: linear-gradient(90deg, #f59e0b, #ef4444);
+      transition: width 0.4s ease;
+      min-width: 2px;
+    }
+
+    .ltcg-bar {
+      background: #10b981;
+      transition: width 0.4s ease;
+      flex: 1;
+    }
+  }
+
+  .tax-term-stats {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+  }
+
+  .tax-stat {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+  }
+
+  .tax-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-top: 4px;
+    flex-shrink: 0;
+    &.stcg-dot { background: #f59e0b; }
+    &.ltcg-dot { background: #10b981; }
+  }
+
+  .tax-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-primary, #e2e8f0);
+  }
+
+  .tax-thresh {
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: var(--text-secondary, #94a3b8);
+  }
+
+  .tax-value {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-heading, #f1f5f9);
+    margin: 0.1rem 0;
+  }
+
+  .tax-pct {
+    font-size: 0.75rem;
+    color: var(--text-secondary, #94a3b8);
+  }
+
+  .tax-term-divider {
+    width: 1px;
+    height: 44px;
+    background: var(--border-color, #334155);
+    opacity: 0.5;
+  }
+}
+
 .alert {
   padding: 0.75rem 1rem;
   border-radius: 8px;
@@ -194,6 +357,18 @@
   border-radius: 10px;
   box-shadow: var(--shadow-card);
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+
+  table {
+    min-width: 700px; // prevents collapse on mobile; override per-component for wider tables
+  }
+
+  // On mobile: hide table only when a card-list replacement exists inside the same wrapper
+  @media (max-width: 768px) {
+    &:has(.card-list) table {
+      display: none;
+    }
+  }
 }
 
 table {
@@ -237,10 +412,6 @@ table {
     transition: background 0.15s;
     &:hover { background: var(--hover-bg); }
   }
-
-  @media (max-width: 768px) {
-    display: none;
-  }
 }
 
 .name-cell { font-weight: 600; }
@@ -261,8 +432,8 @@ table {
   &.fund-type { background: #fef3c7; color: #92400e; }
   &.commodity-type { background: #fef3c7; color: #92400e; }
   &.platform { background: #e0e7ff; color: #3730a3; }
-  &.buy { background: #d1fae5; color: #065f46; }
-  &.sell { background: #fee2e2; color: #991b1b; }
+  &.buy, &.badge-buy { background: #d1fae5; color: #065f46; }
+  &.sell, &.badge-sell { background: #fee2e2; color: #991b1b; }
   &.completed { background: #dbeafe; color: #1e40af; }
   &.foreclosed { background: #fef3c7; color: #92400e; margin-left: 0.25rem; font-size: 0.65rem; }
 }

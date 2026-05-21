@@ -86,10 +86,10 @@ export class DashboardComponent implements OnInit {
   showForexPopup = false;
 
   selectedCategory = 'Equity';
-  selectedMetric = 'Current Investment';
+  selectedMetric = 'Current Holdings';
   selectedYear = 'All';
 
-  metrics = ['Current Investment', 'Total Invested', 'Total Sales', 'Net P&L'];
+  metrics = ['Current Holdings', 'Total Investments', 'Net P&L'];
 
   categories: CategoryDef[] = [
     { key: 'Equity', route: '/equity', icon: '📈' },
@@ -98,6 +98,14 @@ export class DashboardComponent implements OnInit {
     { key: 'P2P', route: '/p2p', icon: '🤝' },
     { key: 'Fixed Deposits', route: '/fixed-deposits', icon: '🏦' },
     { key: 'Forex', route: '/forex', icon: '💱' },
+  ];
+
+  analysisCategories: CategoryDef[] = [
+    { key: 'Equity', route: '/equity', icon: '📈' },
+    { key: 'Mutual Funds', route: '/mutual-funds', icon: '📊' },
+    { key: 'Commodity', route: '/commodity', icon: '🥇' },
+    { key: 'P2P', route: '/p2p', icon: '🤝' },
+    { key: 'Fixed Deposits', route: '/fixed-deposits', icon: '🏦' },
   ];
 
   private systemDarkQuery = window.matchMedia('(prefers-color-scheme: dark)');
@@ -121,6 +129,7 @@ export class DashboardComponent implements OnInit {
     });
 
     this.loadAll();
+    this.restoreAICache();
     this.investmentService.getSetting('targetAllocation').subscribe(res => {
       if (res.value) {
         try {
@@ -172,7 +181,10 @@ export class DashboardComponent implements OnInit {
 
   get availableYears(): string[] {
     const years = new Set<string>();
-    [...this.equityData, ...this.commodityData, ...this.mfData, ...this.fdData]
+    // Equity: derive FY from date (no year field)
+    this.equityData.forEach(e => { const fy = this.dateToFY(e.date); if (fy) years.add(fy); });
+    // Others still use year field
+    [...this.commodityData, ...this.mfData, ...this.fdData]
       .forEach((e: any) => { if (e.year) years.add(e.year); });
     return ['All', ...Array.from(years).sort()];
   }
@@ -185,12 +197,29 @@ export class DashboardComponent implements OnInit {
 
   getCategoryActiveCount(key: string): number {
     switch (key) {
-      case 'Equity':
-        return this.equityData.filter(e => this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value) > 0).length;
-      case 'Mutual Funds':
-        return this.mfData.filter(e => this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value) > 0).length;
-      case 'Commodity':
-        return this.commodityData.filter(e => this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value) > 0).length;
+      case 'Equity': {
+        // Count stocks with net positive value (buy > sell)
+        const netMap = new Map<string, number>();
+        this.equityData.forEach(e => {
+          const sign = e.buy_sell === 'Sell' ? -1 : 1;
+          netMap.set(e.name, (netMap.get(e.name) || 0) + sign * (e.value || 0));
+        });
+        return [...netMap.values()].filter(v => v > 0).length;
+      }
+      case 'Mutual Funds': {
+        const netMap = new Map<string, number>();
+        this.mfData.forEach(e => {
+          netMap.set(e.name, (netMap.get(e.name) || 0) + (e.buy_quantity || 0) - (e.sell_quantity || 0));
+        });
+        return [...netMap.values()].filter(v => v > 0).length;
+      }
+      case 'Commodity': {
+        const netMap = new Map<string, number>();
+        this.commodityData.forEach(e => {
+          netMap.set(e.name, (netMap.get(e.name) || 0) + (e.buy_quantity || 0) - (e.sell_quantity || 0));
+        });
+        return [...netMap.values()].filter(v => v > 0).length;
+      }
       case 'P2P':
         return this.p2pData.filter(e => e.status === 'Active').length;
       case 'Fixed Deposits':
@@ -210,7 +239,7 @@ export class DashboardComponent implements OnInit {
 
   get currentInvestment(): number {
     let total = 0;
-    total += this.equityData.reduce((sum, e) => sum + this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value), 0);
+    total += this.equityData.reduce((sum, e) => sum + ((e.buy_sell === 'Sell' ? -1 : 1) * (e.value || 0)), 0);
     total += this.mfData.reduce((sum, e) => sum + this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value), 0);
     total += this.commodityData.reduce((sum, e) => sum + this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value), 0);
     // P2P: use backend-computed pending (amount - repaid)
@@ -249,9 +278,9 @@ export class DashboardComponent implements OnInit {
     const equityUSA = this.equityData.filter(e => e.market === 'USA');
     const equityOther = this.equityData.filter(e => e.market !== 'India' && e.market !== 'USA');
 
-    const eqIndiaVal = equityIndia.reduce((sum, e) => sum + this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value), 0);
-    const eqUSAVal = equityUSA.reduce((sum, e) => sum + this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value), 0);
-    const eqOtherVal = equityOther.reduce((sum, e) => sum + this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value), 0);
+    const eqIndiaVal = equityIndia.reduce((sum, e) => sum + (e.buy_sell === 'Sell' ? -(e.value || 0) : (e.value || 0)), 0);
+    const eqUSAVal = equityUSA.reduce((sum, e) => sum + (e.buy_sell === 'Sell' ? -(e.value || 0) : (e.value || 0)), 0);
+    const eqOtherVal = equityOther.reduce((sum, e) => sum + (e.buy_sell === 'Sell' ? -(e.value || 0) : (e.value || 0)), 0);
 
     if (eqIndiaVal > 0) catData.push({ label: 'Equity (India)', value: Math.round(eqIndiaVal * 100) / 100 });
     if (eqUSAVal > 0) catData.push({ label: 'Equity (USA)', value: Math.round(eqUSAVal * 100) / 100 });
@@ -292,6 +321,303 @@ export class DashboardComponent implements OnInit {
     const gradient = slices.length > 0 ? `conic-gradient(${gradientParts.join(', ')})` : 'conic-gradient(#e2e8f0 0% 100%)';
 
     return { title: 'Category Allocation', total, slices, gradient };
+  }
+
+  // ── Equity Analysis ──
+
+  private equityEntryValue(e: EquityEntry): number {
+    const sign = e.buy_sell === 'Sell' ? -1 : 1;
+    switch (this.selectedMetric) {
+      case 'Current Holdings': return sign * (e.value || 0);
+      case 'Total Investments': return e.buy_sell === 'Buy' ? (e.value || 0) : 0;
+      case 'Net P&L': return e.buy_sell === 'Sell' ? (e.value || 0) : -(e.value || 0);
+      default: return 0;
+    }
+  }
+
+  get equityFilteredEntries(): EquityEntry[] {
+    return this.selectedYear === 'All'
+      ? this.equityData
+      : this.equityData.filter(e => this.dateToFY(e.date) === this.selectedYear);
+  }
+
+  get equityMarketSplit(): { india: number; usa: number; total: number; indiaPct: number; usaPct: number } {
+    const entries = this.equityFilteredEntries;
+    const india = entries.filter(e => e.market === 'India').reduce((s, e) => s + this.equityEntryValue(e), 0);
+    const usa   = entries.filter(e => e.market === 'USA').reduce((s, e) => s + this.equityEntryValue(e), 0);
+    const absTotal = Math.abs(india) + Math.abs(usa);
+    return {
+      india:    Math.round(india * 100) / 100,
+      usa:      Math.round(usa * 100) / 100,
+      total:    Math.round((india + usa) * 100) / 100,
+      indiaPct: absTotal > 0 ? Math.round((Math.abs(india) / absTotal) * 100) : 0,
+      usaPct:   absTotal > 0 ? Math.round((Math.abs(usa)   / absTotal) * 100) : 0
+    };
+  }
+
+  get equityYearlyBreakdown(): { year: string; india: number; usa: number; total: number; indiaPct: number; usaPct: number; barPct: number }[] {
+    const entries = this.equityFilteredEntries;
+    const years = [...new Set(entries.map(e => this.dateToFY(e.date)).filter(Boolean))].sort();
+    const rows = years.map(year => {
+      const ye = entries.filter(e => this.dateToFY(e.date) === year);
+      const india = ye.filter(e => e.market === 'India').reduce((s, e) => s + this.equityEntryValue(e), 0);
+      const usa   = ye.filter(e => e.market === 'USA').reduce((s, e) => s + this.equityEntryValue(e), 0);
+      const absTotal = Math.abs(india) + Math.abs(usa);
+      return {
+        year,
+        india:    Math.round(india * 100) / 100,
+        usa:      Math.round(usa * 100) / 100,
+        total:    Math.round((india + usa) * 100) / 100,
+        indiaPct: absTotal > 0 ? Math.round((Math.abs(india) / absTotal) * 100) : 0,
+        usaPct:   absTotal > 0 ? Math.round((Math.abs(usa)   / absTotal) * 100) : 0,
+        barPct: 0
+      };
+    }).filter(r => r.india !== 0 || r.usa !== 0);
+    const maxAbs = Math.max(...rows.map(r => Math.abs(r.india) + Math.abs(r.usa)), 1);
+    return rows.map(r => ({ ...r, barPct: Math.round(((Math.abs(r.india) + Math.abs(r.usa)) / maxAbs) * 100) }));
+  }
+
+  get equityMarketCapSplit(): { cap: string; value: number; pct: number; color: string }[] {
+    const capOrder = ['Mega Cap', 'Large Cap', 'Mid Cap', 'Small Cap', 'Micro Cap'];
+    const capColors: Record<string, string> = {
+      'Mega Cap': '#6366f1', 'Large Cap': '#3b82f6', 'Mid Cap': '#10b981',
+      'Small Cap': '#f59e0b', 'Micro Cap': '#ef4444'
+    };
+    const map = new Map<string, number>();
+    this.equityFilteredEntries.forEach(e => {
+      const cap = e.market_cap || 'Unknown';
+      map.set(cap, (map.get(cap) || 0) + this.equityEntryValue(e));
+    });
+    const absTotal = [...map.values()].reduce((s, v) => s + Math.abs(v), 0);
+    return [...map.entries()]
+      .filter(([, v]) => v !== 0)
+      .sort((a, b) => {
+        const ai = capOrder.indexOf(a[0]);
+        const bi = capOrder.indexOf(b[0]);
+        return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+      })
+      .map(([cap, val]) => ({
+        cap,
+        value: Math.round(val * 100) / 100,
+        pct:   absTotal > 0 ? Math.round((Math.abs(val) / absTotal) * 100) : 0,
+        color: capColors[cap] || '#94a3b8'
+      }));
+  }
+
+  get equitySectorData(): { sector: string; value: number; pct: number; color: string }[] {
+    const map = new Map<string, number>();
+    this.equityFilteredEntries.forEach(e => {
+      const sector = e.sector || 'Unknown';
+      map.set(sector, (map.get(sector) || 0) + this.equityEntryValue(e));
+    });
+    const absTotal = [...map.values()].reduce((s, v) => s + Math.abs(v), 0);
+    return [...map.entries()]
+      .filter(([, v]) => v !== 0)
+      .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+      .map(([sector, val], i) => ({
+        sector,
+        value: Math.round(val * 100) / 100,
+        pct:   absTotal > 0 ? Math.round((Math.abs(val) / absTotal) * 100) : 0,
+        color: PIE_COLORS[i % PIE_COLORS.length]
+      }));
+  }
+
+  // ── Mutual Fund Analysis ──
+
+  private mfEntryValue(e: MutualFundEntry): number {
+    switch (this.selectedMetric) {
+      case 'Current Holdings': return this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value);
+      case 'Total Investments': return e.buy_value || 0;
+      case 'Net P&L': {
+        const ci = this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value);
+        return (e.sell_value || 0) - ((e.buy_value || 0) - ci);
+      }
+      default: return 0;
+    }
+  }
+
+  get mfFilteredEntries(): MutualFundEntry[] {
+    return this.selectedYear === 'All' ? this.mfData : this.mfData.filter(e => e.year === this.selectedYear);
+  }
+
+  get mfCategorySplit(): { cat: string; value: number; pct: number; color: string }[] {
+    const colors: Record<string, string> = {
+      'Equity': '#3b82f6', 'Debt': '#10b981', 'Hybrid': '#8b5cf6',
+      'Index': '#f59e0b', 'ELSS': '#ef4444', 'Sectoral': '#f97316'
+    };
+    const order = ['Equity', 'ELSS', 'Index', 'Sectoral', 'Hybrid', 'Debt'];
+    const map = new Map<string, number>();
+    this.mfFilteredEntries.forEach(e => {
+      const cat = e.category || 'Other';
+      map.set(cat, (map.get(cat) || 0) + this.mfEntryValue(e));
+    });
+    const absTotal = [...map.values()].reduce((s, v) => s + Math.abs(v), 0);
+    return [...map.entries()]
+      .filter(([, v]) => v !== 0)
+      .sort((a, b) => { const ai = order.indexOf(a[0]); const bi = order.indexOf(b[0]); return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi); })
+      .map(([cat, val], i) => ({ cat, value: Math.round(val * 100) / 100, pct: absTotal > 0 ? Math.round((Math.abs(val) / absTotal) * 100) : 0, color: colors[cat] || PIE_COLORS[i % PIE_COLORS.length] }));
+  }
+
+  get mfFundTypeSplit(): { type: string; value: number; pct: number; color: string }[] {
+    const map = new Map<string, number>();
+    this.mfFilteredEntries.forEach(e => {
+      const t = e.fund_type || 'Other';
+      map.set(t, (map.get(t) || 0) + this.mfEntryValue(e));
+    });
+    const absTotal = [...map.values()].reduce((s, v) => s + Math.abs(v), 0);
+    return [...map.entries()]
+      .filter(([, v]) => v !== 0)
+      .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+      .map(([type, val], i) => ({ type, value: Math.round(val * 100) / 100, pct: absTotal > 0 ? Math.round((Math.abs(val) / absTotal) * 100) : 0, color: PIE_COLORS[i % PIE_COLORS.length] }));
+  }
+
+  get mfYearlyBreakdown(): { year: string; total: number; barPct: number; segments: { cat: string; pct: number; color: string }[] }[] {
+    const colors: Record<string, string> = { 'Equity': '#3b82f6', 'Debt': '#10b981', 'Hybrid': '#8b5cf6', 'Index': '#f59e0b', 'ELSS': '#ef4444', 'Sectoral': '#f97316' };
+    const entries = this.mfFilteredEntries;
+    const years = [...new Set(entries.map(e => e.year).filter(Boolean))].sort();
+    const rows = years.map(year => {
+      const ye = entries.filter(e => e.year === year);
+      const cMap = new Map<string, number>();
+      ye.forEach(e => { const cat = e.category || 'Other'; cMap.set(cat, (cMap.get(cat) || 0) + this.mfEntryValue(e)); });
+      const total = [...cMap.values()].reduce((s, v) => s + Math.abs(v), 0);
+      const segments = [...cMap.entries()].filter(([, v]) => v !== 0).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).map(([cat, val]) => ({ cat, pct: total > 0 ? Math.round((Math.abs(val) / total) * 100) : 0, color: colors[cat] || '#94a3b8' }));
+      return { year, total: Math.round(total * 100) / 100, barPct: 0, segments };
+    }).filter(r => r.total !== 0);
+    const maxTotal = Math.max(...rows.map(r => r.total), 1);
+    return rows.map(r => ({ ...r, barPct: Math.round((r.total / maxTotal) * 100) }));
+  }
+
+  get mfTopFunds(): { name: string; value: number; pct: number; color: string }[] {
+    const map = new Map<string, number>();
+    this.mfFilteredEntries.forEach(e => {
+      const name = e.name || 'Unknown';
+      map.set(name, (map.get(name) || 0) + this.mfEntryValue(e));
+    });
+    const absTotal = [...map.values()].reduce((s, v) => s + Math.abs(v), 0);
+    return [...map.entries()].filter(([, v]) => v !== 0).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).map(([name, val], i) => ({ name, value: Math.round(val * 100) / 100, pct: absTotal > 0 ? Math.round((Math.abs(val) / absTotal) * 100) : 0, color: PIE_COLORS[i % PIE_COLORS.length] }));
+  }
+
+  // ── Commodity Analysis ──
+
+  private commEntryValue(e: CommodityEntry): number {
+    switch (this.selectedMetric) {
+      case 'Current Holdings': return this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value);
+      case 'Total Investments': return e.buy_value || 0;
+      case 'Net P&L': {
+        const ci = this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value);
+        return (e.sell_value || 0) - ((e.buy_value || 0) - ci);
+      }
+      default: return 0;
+    }
+  }
+
+  get commFilteredEntries(): CommodityEntry[] {
+    return this.selectedYear === 'All' ? this.commodityData : this.commodityData.filter(e => e.year === this.selectedYear);
+  }
+
+  get commCommoditySplit(): { commodity: string; value: number; pct: number; color: string }[] {
+    const colors: Record<string, string> = { 'Gold': '#f59e0b', 'Silver': '#94a3b8', 'Crude Oil': '#78716c', 'Natural Gas': '#3b82f6', 'Copper': '#f97316', 'Other': '#8b5cf6' };
+    const map = new Map<string, number>();
+    this.commFilteredEntries.forEach(e => { const c = e.commodity || 'Other'; map.set(c, (map.get(c) || 0) + this.commEntryValue(e)); });
+    const absTotal = [...map.values()].reduce((s, v) => s + Math.abs(v), 0);
+    return [...map.entries()].filter(([, v]) => v !== 0).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).map(([commodity, val], i) => ({ commodity, value: Math.round(val * 100) / 100, pct: absTotal > 0 ? Math.round((Math.abs(val) / absTotal) * 100) : 0, color: colors[commodity] || PIE_COLORS[i % PIE_COLORS.length] }));
+  }
+
+  get commYearlyBreakdown(): { year: string; total: number; barPct: number; segments: { commodity: string; pct: number; color: string }[] }[] {
+    const colors: Record<string, string> = { 'Gold': '#f59e0b', 'Silver': '#94a3b8', 'Crude Oil': '#78716c', 'Natural Gas': '#3b82f6', 'Copper': '#f97316', 'Other': '#8b5cf6' };
+    const entries = this.commFilteredEntries;
+    const years = [...new Set(entries.map(e => e.year).filter(Boolean))].sort();
+    const rows = years.map(year => {
+      const ye = entries.filter(e => e.year === year);
+      const cMap = new Map<string, number>();
+      ye.forEach(e => { const c = e.commodity || 'Other'; cMap.set(c, (cMap.get(c) || 0) + this.commEntryValue(e)); });
+      const total = [...cMap.values()].reduce((s, v) => s + Math.abs(v), 0);
+      const segments = [...cMap.entries()].filter(([, v]) => v !== 0).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).map(([commodity, val]) => ({ commodity, pct: total > 0 ? Math.round((Math.abs(val) / total) * 100) : 0, color: colors[commodity] || '#94a3b8' }));
+      return { year, total: Math.round(total * 100) / 100, barPct: 0, segments };
+    }).filter(r => r.total !== 0);
+    const maxTotal = Math.max(...rows.map(r => r.total), 1);
+    return rows.map(r => ({ ...r, barPct: Math.round((r.total / maxTotal) * 100) }));
+  }
+
+  get commTopInstruments(): { name: string; commodity: string; value: number; pct: number; color: string }[] {
+    const colors: Record<string, string> = { 'Gold': '#f59e0b', 'Silver': '#94a3b8', 'Crude Oil': '#78716c', 'Natural Gas': '#3b82f6', 'Copper': '#f97316', 'Other': '#8b5cf6' };
+    const map = new Map<string, { val: number; commodity: string }>();
+    this.commFilteredEntries.forEach(e => {
+      const name = e.name || 'Unknown';
+      const existing = map.get(name) || { val: 0, commodity: e.commodity || 'Other' };
+      map.set(name, { val: existing.val + this.commEntryValue(e), commodity: existing.commodity });
+    });
+    const absTotal = [...map.values()].reduce((s, v) => s + Math.abs(v.val), 0);
+    return [...map.entries()].filter(([, v]) => v.val !== 0).sort((a, b) => Math.abs(b[1].val) - Math.abs(a[1].val)).map(([name, v]) => ({ name, commodity: v.commodity, value: Math.round(v.val * 100) / 100, pct: absTotal > 0 ? Math.round((Math.abs(v.val) / absTotal) * 100) : 0, color: colors[v.commodity] || '#94a3b8' }));
+  }
+
+  // ── P2P Analysis ──
+
+  private dateToFY(dateStr: string): string {
+    if (!dateStr) return 'Unknown';
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return 'Unknown';
+      const m = d.getMonth() + 1;
+      const fyYear = m >= 4 ? d.getFullYear() + 1 : d.getFullYear();
+      return 'FY' + String(fyYear).slice(-2);
+    } catch { return 'Unknown'; }
+  }
+
+  private get p2pRepaidMap(): Map<string, number> {
+    const map = new Map<string, number>();
+    this.p2pRepayments.forEach(r => { map.set(r.lending_id, (map.get(r.lending_id) || 0) + (r.amount || 0)); });
+    return map;
+  }
+
+  private p2pEntryValue(e: P2PEntry): number {
+    const repaid = this.p2pRepaidMap.get(e.lending_id) || 0;
+    switch (this.selectedMetric) {
+      case 'Current Holdings': return Math.max(0, (e.amount || 0) - repaid);
+      case 'Total Investments': return e.amount || 0;
+      case 'Net P&L': return repaid - (e.amount || 0);
+      default: return 0;
+    }
+  }
+
+  get p2pFilteredEntries(): P2PEntry[] {
+    if (this.selectedYear === 'All') return this.p2pData;
+    return this.p2pData.filter(e => this.dateToFY(e.date) === this.selectedYear);
+  }
+
+  get p2pPlatformSplit(): { platform: string; value: number; pct: number; color: string }[] {
+    const map = new Map<string, number>();
+    this.p2pFilteredEntries.forEach(e => { const p = e.platform || 'Other'; map.set(p, (map.get(p) || 0) + this.p2pEntryValue(e)); });
+    const absTotal = [...map.values()].reduce((s, v) => s + Math.abs(v), 0);
+    return [...map.entries()].filter(([, v]) => v !== 0).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).map(([platform, val], i) => ({ platform, value: Math.round(val * 100) / 100, pct: absTotal > 0 ? Math.round((Math.abs(val) / absTotal) * 100) : 0, color: PIE_COLORS[i % PIE_COLORS.length] }));
+  }
+
+  get p2pStatusSplit(): { status: string; value: number; pct: number; color: string }[] {
+    const colors: Record<string, string> = { 'Active': '#10b981', 'Completed': '#6366f1', 'Defaulted': '#ef4444', 'Delayed': '#f59e0b' };
+    const map = new Map<string, number>();
+    this.p2pFilteredEntries.forEach(e => { const s = e.status || 'Other'; map.set(s, (map.get(s) || 0) + (e.amount || 0)); });
+    const absTotal = [...map.values()].reduce((s, v) => s + Math.abs(v), 0);
+    return [...map.entries()].filter(([, v]) => v !== 0).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).map(([status, val]) => ({ status, value: Math.round(val * 100) / 100, pct: absTotal > 0 ? Math.round((Math.abs(val) / absTotal) * 100) : 0, color: colors[status] || '#94a3b8' }));
+  }
+
+  get p2pYearlyBreakdown(): { year: string; total: number; barPct: number }[] {
+    const map = new Map<string, number>();
+    this.p2pFilteredEntries.forEach(e => { const fy = this.dateToFY(e.date); map.set(fy, (map.get(fy) || 0) + this.p2pEntryValue(e)); });
+    const rows = [...map.entries()].filter(([, v]) => v !== 0).sort((a, b) => a[0].localeCompare(b[0])).map(([year, val]) => ({ year, total: Math.round(val * 100) / 100, barPct: 0 }));
+    const maxTotal = Math.max(...rows.map(r => Math.abs(r.total)), 1);
+    return rows.map(r => ({ ...r, barPct: Math.round((Math.abs(r.total) / maxTotal) * 100) }));
+  }
+
+  get p2pRepaidVsOutstanding(): { repaid: number; outstanding: number; total: number; repaidPct: number; outstandingPct: number } {
+    let lent = 0; let repaid = 0;
+    this.p2pFilteredEntries.forEach(e => { lent += e.amount || 0; repaid += this.p2pRepaidMap.get(e.lending_id) || 0; });
+    const outstanding = Math.max(0, lent - repaid);
+    const repaidPct = lent > 0 ? Math.round((Math.min(repaid, lent) / lent) * 100) : 0;
+    return { repaid: Math.round(repaid * 100) / 100, outstanding: Math.round(outstanding * 100) / 100, total: Math.round(lent * 100) / 100, repaidPct, outstandingPct: 100 - repaidPct };
+  }
+
+  get hasCustomAnalysis(): boolean {
+    return ['Equity', 'Mutual Funds', 'Commodity', 'P2P'].includes(this.selectedCategory);
   }
 
   // ── Category Selection ──
@@ -360,7 +686,13 @@ export class DashboardComponent implements OnInit {
     const yearFilter = (e: any) => this.selectedYear === 'All' || e.year === this.selectedYear;
     switch (this.selectedCategory) {
       case 'Equity':
-        return this.equityData.filter(yearFilter).map(e => ({ group: { Year: e.year || 'N/A', Market: e.market, 'Market Cap': e.market_cap, Sector: e.sector }, buyQty: e.buy_quantity, sellQty: e.sell_quantity, buyVal: e.buy_value, sellVal: e.sell_value }));
+        return this.equityData.filter(e => this.dateToFY(e.date) === this.selectedYear || this.selectedYear === 'All').map(e => ({
+          group: { FY: this.dateToFY(e.date) || 'N/A', Market: e.market, 'Market Cap': e.market_cap, Sector: e.sector },
+          buyQty: e.buy_sell === 'Buy' ? (e.quantity || 0) : null,
+          sellQty: e.buy_sell === 'Sell' ? (e.quantity || 0) : null,
+          buyVal: e.buy_sell === 'Buy' ? (e.value || 0) : null,
+          sellVal: e.buy_sell === 'Sell' ? (e.value || 0) : null
+        }));
       case 'Mutual Funds':
         return this.mfData.filter(yearFilter).map(e => ({ group: { Year: e.year || 'N/A', Category: e.category, 'Fund Type': e.fund_type }, buyQty: e.buy_quantity, sellQty: e.sell_quantity, buyVal: e.buy_value, sellVal: e.sell_value }));
       case 'Commodity':
@@ -402,21 +734,19 @@ export class DashboardComponent implements OnInit {
       const existing = map.get(key) || 0;
       let val = 0;
       switch (this.selectedMetric) {
-        case 'Current Investment':
+        case 'Current Holdings':
           val = this.calcInvestment(e.buyQty, e.sellQty, e.buyVal);
           break;
-        case 'Total Invested':
+        case 'Total Investments':
           val = e.buyVal || 0;
           break;
-        case 'Total Sales':
-          val = e.sellVal || 0;
-          break;
-        case 'Net P&L':
+        case 'Net P&L': {
           const ci = this.calcInvestment(e.buyQty, e.sellQty, e.buyVal);
           const ti = e.buyVal || 0;
           const ts = e.sellVal || 0;
           val = ts - (ti - ci);
           break;
+        }
       }
       map.set(key, existing + val);
     });
@@ -505,13 +835,13 @@ export class DashboardComponent implements OnInit {
     return deposits.reduce((s, e) => s + (e.rate || 0), 0) / deposits.length;
   }
 
-  get forexAvgLast3DepositRate(): number | null {
-    const deposits = this.forexData
-      .filter(e => e.type === 'Deposit' && (e.rate || 0) > 0)
-      .sort((a, b) => b.date.localeCompare(a.date))
-      .slice(0, 3);
+  get forexWeightedAvgDepositRate(): number | null {
+    // Weighted average rate across ALL deposits, weighted by USD amount deposited
+    const deposits = this.forexData.filter(e => e.type === 'Deposit' && (e.rate || 0) > 0 && (e.usd_amount || 0) > 0);
     if (deposits.length === 0) return null;
-    return deposits.reduce((s, e) => s + (e.rate || 0), 0) / deposits.length;
+    const totalUSD = deposits.reduce((s, e) => s + (e.usd_amount || 0), 0);
+    const weightedSum = deposits.reduce((s, e) => s + (e.usd_amount || 0) * (e.rate || 0), 0);
+    return weightedSum / totalUSD;
   }
 
   get forexWalletBalanceUSD(): number {
@@ -522,9 +852,9 @@ export class DashboardComponent implements OnInit {
 
   get forexTotalInvestedUSD(): number {
     const usaEquity = this.equityData.filter(e => e.market === 'USA');
-    const totalBuyINR = usaEquity.reduce((s, e) => s + (e.buy_value || 0), 0);
-    const totalSellINR = usaEquity.reduce((s, e) => s + (e.sell_value || 0), 0);
-    const avgRate = this.forexAvgLast3DepositRate || this.forexAvgDepositRate;
+    const totalBuyINR = usaEquity.filter(e => e.buy_sell === 'Buy').reduce((s, e) => s + (e.value || 0), 0);
+    const totalSellINR = usaEquity.filter(e => e.buy_sell === 'Sell').reduce((s, e) => s + (e.value || 0), 0);
+    const avgRate = this.forexWeightedAvgDepositRate || this.forexAvgDepositRate;
     if (!avgRate || avgRate <= 0) return 0;
     return Math.round(((totalBuyINR - totalSellINR) / avgRate) * 100) / 100;
   }
@@ -535,8 +865,14 @@ export class DashboardComponent implements OnInit {
     return deposits.reduce((s, e) => s + (e.rate || 0), 0) / deposits.length;
   }
 
+  get forexLatestRate(): number {
+    const entries = this.forexData.filter(e => (e.rate || 0) > 0);
+    if (entries.length === 0) return 0;
+    return entries.reduce((a, b) => (a.date >= b.date ? a : b)).rate || 0;
+  }
+
   get forexWalletBalanceINR(): number {
-    const rate = this.forexAvgLast3DepositRate;
+    const rate = this.forexLatestRate;
     if (!rate) return 0;
     return Math.round(this.forexWalletBalanceUSD * rate * 100) / 100;
   }
@@ -544,9 +880,9 @@ export class DashboardComponent implements OnInit {
   // P&L before forex: pure stock performance converted at uniform avg deposit rate
   get forexPnLBeforeForex(): number {
     const usaEquity = this.equityData.filter(e => e.market === 'USA');
-    const totalBuy = usaEquity.reduce((s, e) => s + (e.buy_value || 0), 0);
-    const totalSell = usaEquity.reduce((s, e) => s + (e.sell_value || 0), 0);
-    const currentInv = usaEquity.reduce((s, e) => s + this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value), 0);
+    const totalBuy = usaEquity.filter(e => e.buy_sell === 'Buy').reduce((s, e) => s + (e.value || 0), 0);
+    const totalSell = usaEquity.filter(e => e.buy_sell === 'Sell').reduce((s, e) => s + (e.value || 0), 0);
+    const currentInv = totalBuy - totalSell;
     return Math.round((totalSell - (totalBuy - currentInv)) * 100) / 100;
   }
 
@@ -572,47 +908,101 @@ export class DashboardComponent implements OnInit {
   }
 
   get forexCurrentHoldingsINR(): number {
-    const rate = this.forexAvgLast3DepositRate;
+    const rate = this.forexWeightedAvgDepositRate;
     if (!rate) return 0;
     return Math.round(this.forexCurrentHoldingsUSD * rate * 100) / 100;
   }
 
   get forexTotalBuyUSD(): number {
-    const usaEquity = this.equityData.filter(e => e.market === 'USA');
-    const totalBuyINR = usaEquity.reduce((s, e) => s + (e.buy_value || 0), 0);
+    const usaEquity = this.equityData.filter(e => e.market === 'USA' && e.buy_sell === 'Buy');
+    const totalBuyUSD = usaEquity.reduce((s, e) => s + (e.value_usd || 0), 0);
+    if (totalBuyUSD > 0) return Math.round(totalBuyUSD * 100) / 100;
+    // Fallback: convert INR using avg deposit rate
+    const totalBuyINR = usaEquity.reduce((s, e) => s + (e.value || 0), 0);
     const avgRate = this.forexAvgDepositRate;
     if (avgRate <= 0) return 0;
     return Math.round((totalBuyINR / avgRate) * 100) / 100;
   }
 
   get forexTotalSalesUSD(): number {
-    const usaEquity = this.equityData.filter(e => e.market === 'USA');
-    const totalSellINR = usaEquity.reduce((s, e) => s + (e.sell_value || 0), 0);
+    const usaEquity = this.equityData.filter(e => e.market === 'USA' && e.buy_sell === 'Sell');
+    const totalSellUSD = usaEquity.reduce((s, e) => s + (e.value_usd || 0), 0);
+    if (totalSellUSD > 0) return Math.round(totalSellUSD * 100) / 100;
+    const totalSellINR = usaEquity.reduce((s, e) => s + (e.value || 0), 0);
     const avgRate = this.forexAvgDepositRate;
     if (avgRate <= 0) return 0;
     return Math.round((totalSellINR / avgRate) * 100) / 100;
   }
 
-  // ── AI Analysis ──
-  aiAnalysis = '';
-  aiAnalysisHtml = '';
-  aiLoading = false;
-  aiError = '';
+  // ── AI Chat ──
+  chatMessages: { role: 'user' | 'assistant'; content: string; html: string; time: Date }[] = [];
+  chatInput = '';
+  chatLoading = false;
+  chatError = '';
 
-  getAIAnalysis(): void {
-    this.aiLoading = true;
-    this.aiError = '';
-    this.investmentService.getAIAnalysis().subscribe({
+  readonly QUICK_PROMPTS = [
+    'Analyze my full portfolio',
+    'Where am I overexposed?',
+    'What should I rebalance?',
+    'How diversified am I?',
+    'What are my biggest risks?',
+  ];
+
+  private restoreAICache(): void {
+    const h = this.investmentService.chatHistory;
+    if (h.length) {
+      this.chatMessages = h.map(m => ({ ...m, html: m.html || this.markdownToHtml(m.content) }));
+    }
+  }
+
+  sendQuickPrompt(prompt: string): void {
+    this.chatInput = prompt;
+    this.sendMessage();
+  }
+
+  sendMessage(): void {
+    const text = this.chatInput.trim();
+    if (!text || this.chatLoading) return;
+    this.chatInput = '';
+    this.chatError = '';
+
+    const userMsg = { role: 'user' as const, content: text, html: this.escapeHtml(text), time: new Date() };
+    this.chatMessages.push(userMsg);
+    this.chatLoading = true;
+    this.scrollChat();
+
+    const history = this.chatMessages.slice(0, -1).map(m => ({ role: m.role, content: m.content }));
+    this.investmentService.sendChatMessage(text, history).subscribe({
       next: (res) => {
-        this.aiAnalysis = res.analysis;
-        this.aiAnalysisHtml = this.markdownToHtml(res.analysis);
-        this.aiLoading = false;
+        const assistantMsg = { role: 'assistant' as const, content: res.reply, html: this.markdownToHtml(res.reply), time: new Date() };
+        this.chatMessages.push(assistantMsg);
+        this.investmentService.chatHistory = [...this.chatMessages];
+        this.chatLoading = false;
+        this.scrollChat();
       },
       error: (err) => {
-        this.aiError = err.error?.error || 'Failed to get AI analysis. Please try again.';
-        this.aiLoading = false;
+        this.chatError = err.error?.error || 'Failed to get response. Please try again.';
+        this.chatMessages.pop(); // remove the user message on error
+        this.chatLoading = false;
       }
     });
+  }
+
+  clearChat(): void {
+    this.chatMessages = [];
+    this.investmentService.chatHistory = [];
+    this.chatError = '';
+  }
+
+  private scrollChat(): void {
+    setTimeout(() => {
+      const el = document.querySelector('.chat-messages');
+      if (el) el.scrollTop = el.scrollHeight;
+    }, 50);
+  }
+
+  private escapeHtml(text: string): string {
+    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
   private markdownToHtml(md: string): string {
@@ -630,3 +1020,4 @@ export class DashboardComponent implements OnInit {
       .replace(/$/, '</p>');
   }
 }
+
