@@ -19,6 +19,11 @@ export class InvestmentService {
 
   private invalidate(key: string): void {
     delete this.cache[key];
+    delete this.cache['summary'];
+  }
+
+  clearAllCache(): void {
+    this.cache = {};
   }
 
   constructor(private http: HttpClient) {}

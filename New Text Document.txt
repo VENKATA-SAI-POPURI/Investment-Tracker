@@ -8,3 +8,8 @@ git push
 https://github.com/VENKATA-SAI-POPURI/Investment-Tracker
 https://dashboard.render.com/web/srv-d8308kjtqb8s73a1fio0/deploys/dep-d8308krtqb8s73a1fj00?r=2026-05-14%4017%3A19%3A19%7E2026-05-14%4017%3A24%3A24
 https://app.netlify.com/projects/relaxed-biscuit-766f5f/overview
+https://app.turso.tech/venkata-sai-popuri/databases/investments
+
+libsql://investments-venkata-sai-popuri.aws-ap-south-1.turso.io
+
+eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3Nzg3ODQxMTAsImlkIjoiMDE5ZTI3YzktZmQwMS03ZTgzLWI0ZmYtYjk0YmIwNTQxZDg2IiwicmlkIjoiNzM0OTVmZTctNmRlNy00NTQwLTk1ZmQtNDI4YzFlNjU3Mzc1In0.Ww9rXlMmvIbjxuNGkgznlN6G2QY_4It_y0ay0IIjKWkCM2TpU5oiVFK1O0-PiXiU_EU9yjym3QJTARWQI2njBg

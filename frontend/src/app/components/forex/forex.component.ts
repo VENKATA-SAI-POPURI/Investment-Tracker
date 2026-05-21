@@ -18,6 +18,8 @@ export class ForexComponent implements OnInit {
   equityData: EquityEntry[] = [];
   loading = true;
   showForm = false;
+  submitting = false;
+  deleting = false;
   editingId: number | null = null;
   searchQuery = '';
   sortColumn = 'date';
@@ -247,36 +249,41 @@ export class ForexComponent implements OnInit {
       this.toast('USD amount is required', 'error');
       return;
     }
+    this.submitting = true;
     if (this.editingId) {
       this.investmentService.updateForex(this.editingId, this.form).subscribe({
         next: () => {
+          this.submitting = false;
           this.toast('Entry updated', 'success');
           this.showForm = false;
           this.editingId = null;
           this.loadEntries();
         },
-        error: () => this.toast('Failed to update', 'error')
+        error: () => { this.submitting = false; this.toast('Failed to update', 'error'); }
       });
     } else {
       this.investmentService.addForex(this.form).subscribe({
         next: () => {
+          this.submitting = false;
           this.toast('Entry added', 'success');
           this.showForm = false;
           this.loadEntries();
         },
-        error: () => this.toast('Failed to add', 'error')
+        error: () => { this.submitting = false; this.toast('Failed to add', 'error'); }
       });
     }
   }
 
   deleteEntry(id: number): void {
     if (!confirm('Delete this entry?')) return;
+    this.deleting = true;
     this.investmentService.deleteForex(id).subscribe({
       next: () => {
+        this.deleting = false;
         this.toast('Entry deleted', 'success');
         this.loadEntries();
       },
-      error: () => this.toast('Failed to delete', 'error')
+      error: () => { this.deleting = false; this.toast('Failed to delete', 'error'); }
     });
   }
 

@@ -64,6 +64,7 @@ const DEFAULT_TARGET_ALLOCATION: Record<string, number> = {
 export class DashboardComponent implements OnInit {
   summary: Summary = {};
   loading = true;
+  refreshing = false;
   showTargetEditor = false;
   targetAllocation: Record<string, number> = { ...DEFAULT_TARGET_ALLOCATION };
 
@@ -148,6 +149,35 @@ export class DashboardComponent implements OnInit {
   private applyDarkMode(): void {
     document.body.classList.toggle('dark', this.darkMode);
     document.body.classList.toggle('light', !this.darkMode);
+  }
+
+  refreshData(): void {
+    if (this.refreshing) return;
+    this.investmentService.clearAllCache();
+    this.refreshing = true;
+    forkJoin({
+      summary: this.investmentService.getSummary(),
+      equity: this.investmentService.getEquity(),
+      commodity: this.investmentService.getCommodity(),
+      mf: this.investmentService.getMutualFunds(),
+      p2p: this.investmentService.getP2P(),
+      p2pRep: this.investmentService.getP2PRepayments(),
+      fd: this.investmentService.getFixedDeposits(),
+      forex: this.investmentService.getForex()
+    }).subscribe({
+      next: (data) => {
+        this.summary = data.summary;
+        this.equityData = data.equity;
+        this.commodityData = data.commodity;
+        this.mfData = data.mf;
+        this.p2pData = data.p2p;
+        this.p2pRepayments = data.p2pRep;
+        this.fdData = data.fd;
+        this.forexData = data.forex;
+        this.refreshing = false;
+      },
+      error: () => this.refreshing = false
+    });
   }
 
   loadAll(): void {
@@ -239,7 +269,10 @@ export class DashboardComponent implements OnInit {
 
   get currentInvestment(): number {
     let total = 0;
-    total += this.equityData.reduce((sum, e) => sum + ((e.buy_sell === 'Sell' ? -1 : 1) * (e.value || 0)), 0);
+
+    // Equity: FIFO cost of remaining lots, clamped per stock (fully-exited positions = 0)
+    total += this.equityFifoHoldings.reduce((s, h) => s + h.value, 0);
+
     total += this.mfData.reduce((sum, e) => sum + this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value), 0);
     total += this.commodityData.reduce((sum, e) => sum + this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value), 0);
     // P2P: use backend-computed pending (amount - repaid)
@@ -247,20 +280,29 @@ export class DashboardComponent implements OnInit {
     if (p2pSummary) {
       total += (p2pSummary as any).current_invested || 0;
     }
-    total += this.fdData.reduce((sum, e) => sum + (e.fd_value || 0), 0);
+    // FD: only active (not yet matured) deposits
+    total += this.fdData.filter(e => !e.return_value || e.return_value === 0).reduce((sum, e) => sum + (e.fd_value || 0), 0);
     return Math.round(total * 100) / 100;
   }
 
   get totalInvestment(): number {
-    return Object.values(this.summary).reduce((sum, s) => sum + s.total_buy, 0);
+    return Object.entries(this.summary)
+      .filter(([key]) => key !== 'Forex')
+      .reduce((sum, [, s]) => sum + s.total_buy, 0);
   }
 
   get totalSaleValue(): number {
-    return Object.values(this.summary).reduce((sum, s) => sum + s.total_sell, 0);
+    return Object.entries(this.summary)
+      .filter(([key]) => key !== 'Forex')
+      .reduce((sum, [, s]) => sum + s.total_sell, 0);
   }
 
   get netPnL(): number {
     return this.totalSaleValue - (this.totalInvestment - this.currentInvestment);
+  }
+
+  get costOfSold(): number {
+    return Math.round((this.totalInvestment - this.currentInvestment) * 100) / 100;
   }
 
   get netPnLPct(): number {
@@ -268,19 +310,60 @@ export class DashboardComponent implements OnInit {
     return exitedValue > 0 ? Math.round((this.netPnL / exitedValue) * 10000) / 100 : 0;
   }
 
+  // ── Equity FIFO holdings (per-stock cost of remaining lots, always from all data) ──
+
+  private get equityFifoHoldings(): { name: string; value: number; market: string; market_cap: string; sector: string }[] {
+    const buyLots = new Map<string, { date: string; qty: number; value: number; meta: { market: string; market_cap: string; sector: string } }[]>();
+    const totalSells = new Map<string, number>();
+    for (const e of this.equityData) {
+      if (e.buy_sell === 'Buy') {
+        if (!buyLots.has(e.name)) buyLots.set(e.name, []);
+        buyLots.get(e.name)!.push({ date: e.date, qty: e.quantity || 0, value: e.value || 0,
+          meta: { market: e.market, market_cap: e.market_cap, sector: e.sector } });
+      } else {
+        totalSells.set(e.name, (totalSells.get(e.name) || 0) + (e.quantity || 0));
+      }
+    }
+    const result: { name: string; value: number; market: string; market_cap: string; sector: string }[] = [];
+    for (const [name, lots] of buyLots) {
+      const sorted = [...lots].sort((a, b) => a.date.localeCompare(b.date));
+      let sells = totalSells.get(name) || 0;
+      let fifoValue = 0;
+      for (const lot of sorted) {
+        let rem = lot.qty;
+        if (sells >= rem) { sells -= rem; continue; }
+        rem -= sells; sells = 0;
+        fifoValue += rem * (lot.qty > 0 ? lot.value / lot.qty : 0);
+      }
+      if (fifoValue > 0) {
+        result.push({ name, value: Math.round(fifoValue * 100) / 100, ...sorted[0].meta });
+      }
+    }
+    return result;
+  }
+
+  // ── Equity net holdings helper (per-stock, clamped to 0) — used for analysis charts ──
+
+  private equityNetHoldings(entries: EquityEntry[]): { name: string; value: number; market: string; market_cap: string; sector: string }[] {
+    const map = new Map<string, { value: number; market: string; market_cap: string; sector: string }>();
+    entries.forEach(e => {
+      const sign = e.buy_sell === 'Sell' ? -1 : 1;
+      const existing = map.get(e.name) || { value: 0, market: e.market, market_cap: e.market_cap, sector: e.sector };
+      map.set(e.name, { ...existing, value: existing.value + sign * (e.value || 0) });
+    });
+    return [...map.entries()].map(([name, d]) => ({ name, ...d, value: Math.max(0, d.value) }));
+  }
+
   // ── Category Allocation Pie ──
 
   get categoryAllocationPie(): PieChart {
     const catData: { label: string; value: number }[] = [];
 
-    // Split Equity by market (India / USA / Other)
-    const equityIndia = this.equityData.filter(e => e.market === 'India');
-    const equityUSA = this.equityData.filter(e => e.market === 'USA');
-    const equityOther = this.equityData.filter(e => e.market !== 'India' && e.market !== 'USA');
-
-    const eqIndiaVal = equityIndia.reduce((sum, e) => sum + (e.buy_sell === 'Sell' ? -(e.value || 0) : (e.value || 0)), 0);
-    const eqUSAVal = equityUSA.reduce((sum, e) => sum + (e.buy_sell === 'Sell' ? -(e.value || 0) : (e.value || 0)), 0);
-    const eqOtherVal = equityOther.reduce((sum, e) => sum + (e.buy_sell === 'Sell' ? -(e.value || 0) : (e.value || 0)), 0);
+    // Split Equity by market — FIFO cost of remaining lots per stock
+    const eqHoldings = this.equityFifoHoldings;
+    const eqIndiaVal = eqHoldings.filter(h => h.market === 'India').reduce((s, h) => s + h.value, 0);
+    const eqUSAVal   = eqHoldings.filter(h => h.market === 'USA').reduce((s, h) => s + h.value, 0);
+    const eqOtherVal = eqHoldings.filter(h => h.market !== 'India' && h.market !== 'USA').reduce((s, h) => s + h.value, 0);
 
     if (eqIndiaVal > 0) catData.push({ label: 'Equity (India)', value: Math.round(eqIndiaVal * 100) / 100 });
     if (eqUSAVal > 0) catData.push({ label: 'Equity (USA)', value: Math.round(eqUSAVal * 100) / 100 });
@@ -289,17 +372,18 @@ export class DashboardComponent implements OnInit {
     const otherCats = [
       { label: 'Mutual Funds', data: this.mfData, fn: (e: MutualFundEntry) => this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value) },
       { label: 'Commodity', data: this.commodityData, fn: (e: CommodityEntry) => this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value) },
-      { label: 'Fixed Deposits', data: this.fdData, fn: (e: FixedDepositEntry) => (e.fd_value || 0) },
+      // Only active (not yet matured) FDs
+      { label: 'Fixed Deposits', data: this.fdData.filter(e => !e.return_value || e.return_value === 0), fn: (e: FixedDepositEntry) => (e.fd_value || 0) },
     ];
     otherCats.forEach(c => {
       const val = (c.data as any[]).reduce((sum, e) => sum + c.fn(e), 0);
       if (val > 0) catData.push({ label: c.label, value: Math.round(val * 100) / 100 });
     });
 
-    // P2P: use escrow balance (cash currently sitting in/committed to the P2P platform)
+    // P2P: use current_invested (outstanding loan principal) — same metric as the KPI card
     const p2pSummary = this.summary['P2P'];
     if (p2pSummary) {
-      const p2pVal = (p2pSummary as any).escrow_balance || 0;
+      const p2pVal = (p2pSummary as any).current_invested || 0;
       if (p2pVal > 0) catData.push({ label: 'P2P', value: Math.round(p2pVal * 100) / 100 });
     }
 
@@ -325,6 +409,50 @@ export class DashboardComponent implements OnInit {
 
   // ── Equity Analysis ──
 
+  // Per-stock realized P&L helper: sell value − proportional buy cost.
+  // Stocks with no sells contribute 0 (unrealized P&L is unknown without live prices).
+  private equityPnL(entries: EquityEntry[]): { name: string; pnl: number; market: string; market_cap: string; sector: string }[] {
+    // Collect sells from passed (possibly year-filtered) entries
+    const sellsByName = new Map<string, { qty: number; value: number; market: string; market_cap: string; sector: string }>();
+    const metaByName = new Map<string, { market: string; market_cap: string; sector: string }>();
+    for (const e of entries) {
+      metaByName.set(e.name, { market: e.market, market_cap: e.market_cap, sector: e.sector });
+      if (e.buy_sell === 'Sell') {
+        const d = sellsByName.get(e.name) || { qty: 0, value: 0, market: e.market, market_cap: e.market_cap, sector: e.sector };
+        d.qty += e.quantity || 0;
+        d.value += e.value || 0;
+        sellsByName.set(e.name, d);
+      }
+    }
+    // Build ALL buy lots per stock from all equity data, sorted oldest-first (FIFO)
+    const allBuyLots = new Map<string, { date: string; qty: number; value: number }[]>();
+    for (const e of this.equityData) {
+      if (e.buy_sell === 'Buy') {
+        if (!allBuyLots.has(e.name)) allBuyLots.set(e.name, []);
+        allBuyLots.get(e.name)!.push({ date: e.date, qty: e.quantity || 0, value: e.value || 0 });
+      }
+    }
+    const result: { name: string; pnl: number; market: string; market_cap: string; sector: string }[] = [];
+    // Stocks with no sells → pnl 0
+    for (const [name, meta] of metaByName) {
+      if (!sellsByName.has(name)) result.push({ name, pnl: 0, ...meta });
+    }
+    // Stocks with sells → FIFO cost
+    for (const [name, sellData] of sellsByName) {
+      const lots = [...(allBuyLots.get(name) || [])].sort((a, b) => a.date.localeCompare(b.date));
+      let remaining = sellData.qty;
+      let fifoCost = 0;
+      for (const lot of lots) {
+        if (remaining <= 0) break;
+        const used = Math.min(lot.qty, remaining);
+        fifoCost += used * (lot.qty > 0 ? lot.value / lot.qty : 0);
+        remaining -= used;
+      }
+      result.push({ name, pnl: Math.round((sellData.value - fifoCost) * 100) / 100, market: sellData.market, market_cap: sellData.market_cap, sector: sellData.sector });
+    }
+    return result;
+  }
+
   private equityEntryValue(e: EquityEntry): number {
     const sign = e.buy_sell === 'Sell' ? -1 : 1;
     switch (this.selectedMetric) {
@@ -341,10 +469,39 @@ export class DashboardComponent implements OnInit {
       : this.equityData.filter(e => this.dateToFY(e.date) === this.selectedYear);
   }
 
+  get equityPnLDiverging(): { dimension: string; items: { label: string; pnl: number; barPct: number }[] }[] {
+    const pnlData = this.equityPnL(this.equityFilteredEntries).filter(h => h.pnl !== 0);
+    if (pnlData.length === 0) return [];
+    const groupBy = (dimension: string, keyFn: (h: { pnl: number; market: string; market_cap: string; sector: string }) => string) => {
+      const map = new Map<string, number>();
+      pnlData.forEach(h => { const k = keyFn(h) || 'Unknown'; map.set(k, (map.get(k) || 0) + h.pnl); });
+      const items = [...map.entries()].map(([label, pnl]) => ({ label, pnl: Math.round(pnl * 100) / 100 }))
+        .sort((a, b) => b.pnl - a.pnl);
+      const maxAbs = Math.max(...items.map(i => Math.abs(i.pnl)), 1);
+      return { dimension, items: items.map(i => ({ ...i, barPct: Math.round(Math.abs(i.pnl) / maxAbs * 100) })) };
+    };
+    return [
+      groupBy('By Market',     h => h.market),
+      groupBy('By Market Cap', h => h.market_cap),
+      groupBy('By Sector',     h => h.sector),
+    ];
+  }
+
   get equityMarketSplit(): { india: number; usa: number; total: number; indiaPct: number; usaPct: number } {
     const entries = this.equityFilteredEntries;
-    const india = entries.filter(e => e.market === 'India').reduce((s, e) => s + this.equityEntryValue(e), 0);
-    const usa   = entries.filter(e => e.market === 'USA').reduce((s, e) => s + this.equityEntryValue(e), 0);
+    let india: number, usa: number;
+    if (this.selectedMetric === 'Current Holdings') {
+      const holdings = this.equityNetHoldings(entries);
+      india = holdings.filter(h => h.market === 'India').reduce((s, h) => s + h.value, 0);
+      usa   = holdings.filter(h => h.market === 'USA').reduce((s, h) => s + h.value, 0);
+    } else if (this.selectedMetric === 'Net P&L') {
+      const pnl = this.equityPnL(entries);
+      india = pnl.filter(h => h.market === 'India').reduce((s, h) => s + h.pnl, 0);
+      usa   = pnl.filter(h => h.market === 'USA').reduce((s, h) => s + h.pnl, 0);
+    } else {
+      india = entries.filter(e => e.market === 'India').reduce((s, e) => s + this.equityEntryValue(e), 0);
+      usa   = entries.filter(e => e.market === 'USA').reduce((s, e) => s + this.equityEntryValue(e), 0);
+    }
     const absTotal = Math.abs(india) + Math.abs(usa);
     return {
       india:    Math.round(india * 100) / 100,
@@ -360,8 +517,19 @@ export class DashboardComponent implements OnInit {
     const years = [...new Set(entries.map(e => this.dateToFY(e.date)).filter(Boolean))].sort();
     const rows = years.map(year => {
       const ye = entries.filter(e => this.dateToFY(e.date) === year);
-      const india = ye.filter(e => e.market === 'India').reduce((s, e) => s + this.equityEntryValue(e), 0);
-      const usa   = ye.filter(e => e.market === 'USA').reduce((s, e) => s + this.equityEntryValue(e), 0);
+      let india: number, usa: number;
+      if (this.selectedMetric === 'Current Holdings') {
+        const holdings = this.equityNetHoldings(ye);
+        india = holdings.filter(h => h.market === 'India').reduce((s, h) => s + h.value, 0);
+        usa   = holdings.filter(h => h.market === 'USA').reduce((s, h) => s + h.value, 0);
+      } else if (this.selectedMetric === 'Net P&L') {
+        const pnl = this.equityPnL(ye);
+        india = pnl.filter(h => h.market === 'India').reduce((s, h) => s + h.pnl, 0);
+        usa   = pnl.filter(h => h.market === 'USA').reduce((s, h) => s + h.pnl, 0);
+      } else {
+        india = ye.filter(e => e.market === 'India').reduce((s, e) => s + this.equityEntryValue(e), 0);
+        usa   = ye.filter(e => e.market === 'USA').reduce((s, e) => s + this.equityEntryValue(e), 0);
+      }
       const absTotal = Math.abs(india) + Math.abs(usa);
       return {
         year,
@@ -384,10 +552,22 @@ export class DashboardComponent implements OnInit {
       'Small Cap': '#f59e0b', 'Micro Cap': '#ef4444'
     };
     const map = new Map<string, number>();
-    this.equityFilteredEntries.forEach(e => {
-      const cap = e.market_cap || 'Unknown';
-      map.set(cap, (map.get(cap) || 0) + this.equityEntryValue(e));
-    });
+    if (this.selectedMetric === 'Current Holdings') {
+      this.equityNetHoldings(this.equityFilteredEntries).forEach(h => {
+        const cap = h.market_cap || 'Unknown';
+        map.set(cap, (map.get(cap) || 0) + h.value);
+      });
+    } else if (this.selectedMetric === 'Net P&L') {
+      this.equityPnL(this.equityFilteredEntries).forEach(h => {
+        const cap = h.market_cap || 'Unknown';
+        map.set(cap, (map.get(cap) || 0) + h.pnl);
+      });
+    } else {
+      this.equityFilteredEntries.forEach(e => {
+        const cap = e.market_cap || 'Unknown';
+        map.set(cap, (map.get(cap) || 0) + this.equityEntryValue(e));
+      });
+    }
     const absTotal = [...map.values()].reduce((s, v) => s + Math.abs(v), 0);
     return [...map.entries()]
       .filter(([, v]) => v !== 0)
@@ -406,10 +586,22 @@ export class DashboardComponent implements OnInit {
 
   get equitySectorData(): { sector: string; value: number; pct: number; color: string }[] {
     const map = new Map<string, number>();
-    this.equityFilteredEntries.forEach(e => {
-      const sector = e.sector || 'Unknown';
-      map.set(sector, (map.get(sector) || 0) + this.equityEntryValue(e));
-    });
+    if (this.selectedMetric === 'Current Holdings') {
+      this.equityNetHoldings(this.equityFilteredEntries).forEach(h => {
+        const sector = h.sector || 'Unknown';
+        map.set(sector, (map.get(sector) || 0) + h.value);
+      });
+    } else if (this.selectedMetric === 'Net P&L') {
+      this.equityPnL(this.equityFilteredEntries).forEach(h => {
+        const sector = h.sector || 'Unknown';
+        map.set(sector, (map.get(sector) || 0) + h.pnl);
+      });
+    } else {
+      this.equityFilteredEntries.forEach(e => {
+        const sector = e.sector || 'Unknown';
+        map.set(sector, (map.get(sector) || 0) + this.equityEntryValue(e));
+      });
+    }
     const absTotal = [...map.values()].reduce((s, v) => s + Math.abs(v), 0);
     return [...map.entries()]
       .filter(([, v]) => v !== 0)
@@ -424,13 +616,29 @@ export class DashboardComponent implements OnInit {
 
   // ── Mutual Fund Analysis ──
 
+  // Cost-per-unit map built from ALL buy rows (used for correct per-row Net P&L on sell rows)
+  private get mfCostPerUnitMap(): Map<string, number> {
+    const agg = new Map<string, { buyQty: number; buyVal: number }>();
+    this.mfData.forEach(e => {
+      if ((e.buy_quantity || 0) > 0) {
+        const d = agg.get(e.name) || { buyQty: 0, buyVal: 0 };
+        d.buyQty += e.buy_quantity || 0; d.buyVal += e.buy_value || 0;
+        agg.set(e.name, d);
+      }
+    });
+    const out = new Map<string, number>();
+    agg.forEach((d, name) => out.set(name, d.buyQty > 0 ? d.buyVal / d.buyQty : 0));
+    return out;
+  }
+
   private mfEntryValue(e: MutualFundEntry): number {
     switch (this.selectedMetric) {
       case 'Current Holdings': return this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value);
       case 'Total Investments': return e.buy_value || 0;
       case 'Net P&L': {
-        const ci = this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value);
-        return (e.sell_value || 0) - ((e.buy_value || 0) - ci);
+        if (!(e.sell_quantity || 0)) return 0; // no realized P&L if nothing sold
+        const costPerUnit = this.mfCostPerUnitMap.get(e.name) || 0;
+        return (e.sell_value || 0) - costPerUnit * (e.sell_quantity || 0);
       }
       default: return 0;
     }
@@ -499,13 +707,29 @@ export class DashboardComponent implements OnInit {
 
   // ── Commodity Analysis ──
 
+  // Cost-per-unit map built from ALL buy rows (used for correct per-row Net P&L on sell rows)
+  private get commCostPerUnitMap(): Map<string, number> {
+    const agg = new Map<string, { buyQty: number; buyVal: number }>();
+    this.commodityData.forEach(e => {
+      if ((e.buy_quantity || 0) > 0) {
+        const d = agg.get(e.name) || { buyQty: 0, buyVal: 0 };
+        d.buyQty += e.buy_quantity || 0; d.buyVal += e.buy_value || 0;
+        agg.set(e.name, d);
+      }
+    });
+    const out = new Map<string, number>();
+    agg.forEach((d, name) => out.set(name, d.buyQty > 0 ? d.buyVal / d.buyQty : 0));
+    return out;
+  }
+
   private commEntryValue(e: CommodityEntry): number {
     switch (this.selectedMetric) {
       case 'Current Holdings': return this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value);
       case 'Total Investments': return e.buy_value || 0;
       case 'Net P&L': {
-        const ci = this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value);
-        return (e.sell_value || 0) - ((e.buy_value || 0) - ci);
+        if (!(e.sell_quantity || 0)) return 0; // no realized P&L if nothing sold
+        const costPerUnit = this.commCostPerUnitMap.get(e.name) || 0;
+        return (e.sell_value || 0) - costPerUnit * (e.sell_quantity || 0);
       }
       default: return 0;
     }
@@ -575,7 +799,8 @@ export class DashboardComponent implements OnInit {
     switch (this.selectedMetric) {
       case 'Current Holdings': return Math.max(0, (e.amount || 0) - repaid);
       case 'Total Investments': return e.amount || 0;
-      case 'Net P&L': return repaid - (e.amount || 0);
+      // Active loans have unknown final outcome — only show realized P&L for completed/defaulted
+      case 'Net P&L': return e.status !== 'Active' ? repaid - (e.amount || 0) : 0;
       default: return 0;
     }
   }
@@ -658,6 +883,26 @@ export class DashboardComponent implements OnInit {
     if (this.selectedCategory === 'P2P') {
       return (this.summary['P2P'] as any)?.current_invested || 0;
     }
+    if (this.selectedCategory === 'Equity') {
+      return Math.round(this.equityFifoHoldings.reduce((s, h) => s + h.value, 0) * 100) / 100;
+    }
+    // MF and Commodity: aggregate per instrument name to correctly apply calcInvestment
+    if (this.selectedCategory === 'Mutual Funds' || this.selectedCategory === 'Commodity') {
+      const yearFilter = (e: any) => this.selectedYear === 'All' || e.year === this.selectedYear;
+      const data = this.selectedCategory === 'Mutual Funds'
+        ? this.mfData.filter(yearFilter)
+        : this.commodityData.filter(yearFilter);
+      const byName = new Map<string, { buyQty: number; buyVal: number; sellQty: number }>();
+      data.forEach((e: any) => {
+        const d = byName.get(e.name) || { buyQty: 0, buyVal: 0, sellQty: 0 };
+        if (e.buy_sell === 'Buy') { d.buyQty += e.buy_quantity || 0; d.buyVal += e.buy_value || 0; }
+        else { d.sellQty += e.sell_quantity || 0; }
+        byName.set(e.name, d);
+      });
+      let total = 0;
+      byName.forEach(d => { total += this.calcInvestment(d.buyQty, d.sellQty, d.buyVal); });
+      return Math.round(total * 100) / 100;
+    }
     return this.catEntries.reduce((sum, e) => sum + this.calcInvestment(e.buyQty, e.sellQty, e.buyVal), 0);
   }
 
@@ -674,6 +919,10 @@ export class DashboardComponent implements OnInit {
 
   get catNetPnL(): number {
     return this.catTotalSales - (this.catTotalInvested - this.catCurrentInvestment);
+  }
+
+  get catCostOfSold(): number {
+    return Math.round((this.catTotalInvested - this.catCurrentInvestment) * 100) / 100;
   }
 
   get catNetPnLPct(): number {
@@ -707,7 +956,8 @@ export class DashboardComponent implements OnInit {
           return { group: { Platform: e.platform, Status: e.status }, buyQty, sellQty, buyVal: e.amount, sellVal: repaid };
         });
       case 'Fixed Deposits':
-        return this.fdData.filter(yearFilter).map(e => ({ group: { Year: e.year || 'N/A', Platform: e.platform, Bank: e.bank_name }, buyQty: e.fd_value, sellQty: 0 as any, buyVal: e.fd_value, sellVal: e.return_value }));
+        // sellQty = buyQty when matured so calcInvestment returns 0 for matured FDs
+        return this.fdData.filter(yearFilter).map(e => ({ group: { Year: e.year || 'N/A', Platform: e.platform, Bank: e.bank_name }, buyQty: e.fd_value, sellQty: (e.return_value && e.return_value > 0 ? e.fd_value : 0) as any, buyVal: e.fd_value, sellVal: e.return_value }));
       default:
         return [];
     }

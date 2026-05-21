@@ -37,6 +37,8 @@ export class MutualFundsComponent implements OnInit {
   entries: MutualFundEntry[] = [];
   loading = true;
   showForm = false;
+  submitting = false;
+  deleting = false;
   editingId: number | null = null;
   showAll = false;
   searchQuery = '';
@@ -296,24 +298,26 @@ export class MutualFundsComponent implements OnInit {
     if (!this.form.name?.trim()) { this.toast('Name is required', 'error'); return; }
     if (this.form.buy_sell === 'Buy' && (!this.form.buy_quantity || this.form.buy_quantity <= 0)) { this.toast('Buy quantity must be > 0', 'error'); return; }
     if (this.form.buy_sell === 'Sell' && (!this.form.sell_quantity || this.form.sell_quantity <= 0)) { this.toast('Sell quantity must be > 0', 'error'); return; }
+    this.submitting = true;
     if (this.editingId) {
       this.investmentService.updateMutualFund(this.editingId, this.form).subscribe({
-        next: () => { this.toast('Entry updated successfully', 'success'); this.showForm = false; this.editingId = null; this.loadEntries(); },
-        error: () => this.toast('Failed to update entry', 'error')
+        next: () => { this.submitting = false; this.toast('Entry updated successfully', 'success'); this.showForm = false; this.editingId = null; this.loadEntries(); },
+        error: () => { this.submitting = false; this.toast('Failed to update entry', 'error'); }
       });
     } else {
       this.investmentService.addMutualFund(this.form).subscribe({
-        next: (res) => { this.toast(res.upserted ? 'Existing entry updated (values added)' : 'Entry added successfully', 'success'); this.showForm = false; this.loadEntries(); },
-        error: () => this.toast('Failed to add entry', 'error')
+        next: (res) => { this.submitting = false; this.toast(res.upserted ? 'Existing entry updated (values added)' : 'Entry added successfully', 'success'); this.showForm = false; this.loadEntries(); },
+        error: () => { this.submitting = false; this.toast('Failed to add entry', 'error'); }
       });
     }
   }
 
   deleteEntry(id: number): void {
     if (confirm('Are you sure you want to delete this entry?')) {
+      this.deleting = true;
       this.investmentService.deleteMutualFund(id).subscribe({
-        next: () => { this.toast('Entry deleted successfully', 'success'); this.loadEntries(); },
-        error: () => this.toast('Failed to delete entry', 'error')
+        next: () => { this.deleting = false; this.toast('Entry deleted successfully', 'success'); this.loadEntries(); },
+        error: () => { this.deleting = false; this.toast('Failed to delete entry', 'error'); }
       });
     }
   }

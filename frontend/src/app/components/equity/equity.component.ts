@@ -43,6 +43,8 @@ export class EquityComponent implements OnInit {
   forexEntries: ForexEntry[] = [];
   loading = true;
   showForm = false;
+  submitting = false;
+  deleting = false;
   editingId: number | null = null;
   message = '';
   messageType: 'success' | 'error' = 'success';
@@ -77,19 +79,15 @@ export class EquityComponent implements OnInit {
   }
 
   get indiaNetINR(): number {
-    return this.entries
-      .filter(e => e.market === 'India')
-      .reduce((s, e) => s + (e.buy_sell === 'Buy' ? (e.value || 0) : -(e.value || 0)), 0);
+    return Math.round(this.holdings.filter(h => h.market === 'India').reduce((s, h) => s + h.netValue, 0) * 100) / 100;
   }
 
   get usaNetINR(): number {
-    return Math.round(this.usaNetUSD * this.latestForexRate * 100) / 100;
+    return Math.round(this.holdings.filter(h => h.market === 'USA').reduce((s, h) => s + h.netValue, 0) * 100) / 100;
   }
 
   get usaNetUSD(): number {
-    return this.entries
-      .filter(e => e.market === 'USA')
-      .reduce((s, e) => s + (e.buy_sell === 'Buy' ? (e.value_usd || 0) : -(e.value_usd || 0)), 0);
+    return Math.round(this.holdings.filter(h => h.market === 'USA').reduce((s, h) => s + h.netValueUsd, 0) * 100) / 100;
   }
 
   get latestForexRate(): number {
@@ -147,26 +145,32 @@ export class EquityComponent implements OnInit {
     const daysSince = (d: string) =>
       Math.floor((today.getTime() - new Date(d).getTime()) / 86400000);
 
-    // 1. FIFO holding-period buckets from ALL entries (unfiltered)
-    const buyLots = new Map<string, { date: string; qty: number }[]>();
+    // 1. FIFO holding-period buckets + FIFO net cost from ALL entries (unfiltered)
+    const buyLots = new Map<string, { date: string; qty: number; value: number; valueUsd: number }[]>();
     const totalSells = new Map<string, number>();
     for (const e of this.allEntries) {
       if (e.buy_sell === 'Buy') {
         if (!buyLots.has(e.name)) buyLots.set(e.name, []);
-        buyLots.get(e.name)!.push({ date: e.date, qty: e.quantity || 0 });
+        buyLots.get(e.name)!.push({ date: e.date, qty: e.quantity || 0, value: e.value || 0, valueUsd: e.value_usd || 0 });
       } else {
         totalSells.set(e.name, (totalSells.get(e.name) || 0) + (e.quantity || 0));
       }
     }
     const buckets = new Map<string, { lt6m: number; lt1y: number; lt2y: number; gt2y: number }>();
+    const fifoNetValue = new Map<string, { inr: number; usd: number }>();
     for (const [name, lots] of buyLots) {
       const sorted = [...lots].sort((a, b) => a.date.localeCompare(b.date));
       let sells = totalSells.get(name) || 0;
       const b = { lt6m: 0, lt1y: 0, lt2y: 0, gt2y: 0 };
+      let netInr = 0, netUsd = 0;
       for (const lot of sorted) {
         let rem = lot.qty;
         if (sells >= rem) { sells -= rem; continue; }
         rem -= sells; sells = 0;
+        const cpuInr = lot.qty > 0 ? lot.value / lot.qty : 0;
+        const cpuUsd = lot.qty > 0 ? lot.valueUsd / lot.qty : 0;
+        netInr += rem * cpuInr;
+        netUsd += rem * cpuUsd;
         const days = daysSince(lot.date);
         if      (days < 183) b.lt6m += rem;
         else if (days < 365) b.lt1y += rem;
@@ -174,6 +178,7 @@ export class EquityComponent implements OnInit {
         else                 b.gt2y += rem;
       }
       buckets.set(name, b);
+      fifoNetValue.set(name, { inr: Math.round(netInr * 100) / 100, usd: Math.round(netUsd * 100) / 100 });
     }
 
     // 2. Aggregate value/qty from filtered entries
@@ -200,14 +205,17 @@ export class EquityComponent implements OnInit {
         h.totalSellValueUsd += (e.value_usd || 0);
       }
     }
-    return Array.from(map.values()).map(h => ({
-      ...h,
-      netQty: h.totalBuyQty - h.totalSellQty,
-      netValue: Math.round((h.totalBuyValue - h.totalSellValue) * 100) / 100,
-      netValueUsd: Math.round((h.totalBuyValueUsd - h.totalSellValueUsd) * 100) / 100,
-      costPerUnit: h.totalBuyQty > 0 ? Math.round((h.totalBuyValue / h.totalBuyQty) * 100) / 100 : 0,
-      costPerUnitUsd: h.totalBuyQty > 0 ? Math.round((h.totalBuyValueUsd / h.totalBuyQty) * 100) / 100 : 0,
-    })).sort((a, b) => b.netValue - a.netValue);
+    return Array.from(map.values()).map(h => {
+      const fifo = fifoNetValue.get(h.name) || { inr: 0, usd: 0 };
+      return {
+        ...h,
+        netQty: h.totalBuyQty - h.totalSellQty,
+        netValue: fifo.inr,
+        netValueUsd: fifo.usd,
+        costPerUnit: h.totalBuyQty > 0 ? Math.round((h.totalBuyValue / h.totalBuyQty) * 100) / 100 : 0,
+        costPerUnitUsd: h.totalBuyQty > 0 ? Math.round((h.totalBuyValueUsd / h.totalBuyQty) * 100) / 100 : 0,
+      };
+    }).sort((a, b) => b.netValue - a.netValue);
   }
 
   constructor(private investmentService: InvestmentService) {}
@@ -382,6 +390,27 @@ export class EquityComponent implements OnInit {
     }
   }
 
+  get formHolding(): { netQty: number; netValue: number; costPerUnit: number; currency: string } | null {
+    if (this.form.buy_sell !== 'Sell' || !this.form.name?.trim()) return null;
+    const name = this.form.name.toLowerCase().trim();
+    const stockEntries = this.allEntries.filter(e => e.name?.toLowerCase() === name);
+    if (stockEntries.length === 0) return null;
+    const buys = stockEntries.filter(e => e.buy_sell === 'Buy');
+    const totalBuyQty = buys.reduce((s, e) => s + (e.quantity || 0), 0);
+    const totalSellQty = stockEntries.filter(e => e.buy_sell === 'Sell').reduce((s, e) => s + (e.quantity || 0), 0);
+    const netQty = totalBuyQty - totalSellQty;
+    if (netQty <= 0) return null;
+    const market = buys[0]?.market || '';
+    if (market === 'USA') {
+      const totalBuyValueUsd = buys.reduce((s, e) => s + (e.value_usd || 0), 0);
+      const costPerUnit = totalBuyQty > 0 ? Math.round(totalBuyValueUsd / totalBuyQty * 100) / 100 : 0;
+      return { netQty, netValue: Math.round(costPerUnit * netQty * 100) / 100, costPerUnit, currency: '$' };
+    }
+    const totalBuyValue = buys.reduce((s, e) => s + (e.value || 0), 0);
+    const costPerUnit = totalBuyQty > 0 ? Math.round(totalBuyValue / totalBuyQty * 100) / 100 : 0;
+    return { netQty, netValue: Math.round(costPerUnit * netQty * 100) / 100, costPerUnit, currency: '\u20b9' };
+  }
+
   private dateToFY(dateStr: string): string {
     if (!dateStr) return '';
     const parts = dateStr.split('-');
@@ -422,36 +451,41 @@ export class EquityComponent implements OnInit {
       formToSave.value = Math.round(formToSave.value! * rate * 100) / 100; // convert to INR
     }
 
+    this.submitting = true;
     if (this.editingId) {
       this.investmentService.updateEquity(this.editingId, formToSave).subscribe({
         next: () => {
+          this.submitting = false;
           this.toast('Entry updated successfully', 'success');
           this.showForm = false;
           this.editingId = null;
           this.loadEntries();
         },
-        error: () => this.toast('Failed to update entry', 'error')
+        error: () => { this.submitting = false; this.toast('Failed to update entry', 'error'); }
       });
     } else {
       this.investmentService.addEquity(formToSave).subscribe({
         next: () => {
+          this.submitting = false;
           this.toast('Entry added successfully', 'success');
           this.showForm = false;
           this.loadEntries();
         },
-        error: () => this.toast('Failed to add entry', 'error')
+        error: () => { this.submitting = false; this.toast('Failed to add entry', 'error'); }
       });
     }
   }
 
   deleteEntry(id: number): void {
     if (confirm('Are you sure you want to delete this entry?')) {
+      this.deleting = true;
       this.investmentService.deleteEquity(id).subscribe({
         next: () => {
+          this.deleting = false;
           this.toast('Entry deleted successfully', 'success');
           this.loadEntries();
         },
-        error: () => this.toast('Failed to delete entry', 'error')
+        error: () => { this.deleting = false; this.toast('Failed to delete entry', 'error'); }
       });
     }
   }

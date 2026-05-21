@@ -29,6 +29,8 @@ export class FixedDepositsComponent implements OnInit {
   allEntries: FixedDepositEntry[] = [];
   loading = true;
   showForm = false;
+  submitting = false;
+  deleting = false;
   editingId: number | null = null;
   searchQuery = '';
   sortColumn = '';
@@ -120,24 +122,26 @@ export class FixedDepositsComponent implements OnInit {
 
   saveEntry(): void {
     if (!this.form.bank_name?.trim()) { this.toast('Bank name is required', 'error'); return; }
+    this.submitting = true;
     if (this.editingId) {
       this.investmentService.updateFixedDeposit(this.editingId, this.form).subscribe({
-        next: () => { this.toast('Entry updated successfully', 'success'); this.showForm = false; this.editingId = null; this.loadEntries(); },
-        error: () => this.toast('Failed to update entry', 'error')
+        next: () => { this.submitting = false; this.toast('Entry updated successfully', 'success'); this.showForm = false; this.editingId = null; this.loadEntries(); },
+        error: () => { this.submitting = false; this.toast('Failed to update entry', 'error'); }
       });
     } else {
       this.investmentService.addFixedDeposit(this.form).subscribe({
-        next: (res) => { this.toast(res.upserted ? 'Existing entry updated (values added)' : 'Entry added successfully', 'success'); this.showForm = false; this.loadEntries(); },
-        error: () => this.toast('Failed to add entry', 'error')
+        next: (res) => { this.submitting = false; this.toast(res.upserted ? 'Existing entry updated (values added)' : 'Entry added successfully', 'success'); this.showForm = false; this.loadEntries(); },
+        error: () => { this.submitting = false; this.toast('Failed to add entry', 'error'); }
       });
     }
   }
 
   deleteEntry(id: number): void {
     if (confirm('Are you sure you want to delete this entry?')) {
+      this.deleting = true;
       this.investmentService.deleteFixedDeposit(id).subscribe({
-        next: () => { this.toast('Entry deleted successfully', 'success'); this.loadEntries(); },
-        error: () => this.toast('Failed to delete entry', 'error')
+        next: () => { this.deleting = false; this.toast('Entry deleted successfully', 'success'); this.loadEntries(); },
+        error: () => { this.deleting = false; this.toast('Failed to delete entry', 'error'); }
       });
     }
   }

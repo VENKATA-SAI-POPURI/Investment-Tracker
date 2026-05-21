@@ -226,7 +226,7 @@
         </div>
         <div class="form-actions">
           <button type="button" class="btn btn-secondary" (click)="cancelForm()">Cancel</button>
-          <button type="submit" class="btn btn-primary">{{ editingId ? 'Update' : 'Add' }}</button>
+          <button type="submit" class="btn btn-primary" [disabled]="submitting">{{ editingId ? 'Update' : 'Add' }}</button>
         </div>
       </form>
     </div>
@@ -256,7 +256,7 @@
         </div>
         <div class="form-actions">
           <button type="button" class="btn btn-secondary" (click)="cancelRepaymentForm()">Cancel</button>
-          <button type="submit" class="btn btn-primary">{{ editingRepaymentId ? 'Update' : 'Add' }}</button>
+          <button type="submit" class="btn btn-primary" [disabled]="submittingRepayment">{{ editingRepaymentId ? 'Update' : 'Add' }}</button>
         </div>
       </form>
     </div>
@@ -315,7 +315,7 @@
             <td class="actions">
               <button class="btn-icon" (click)="openRepaymentForm(entry.lending_id)" title="Add Repayment">💰</button>
               <button class="btn-icon edit" (click)="openEditForm(entry)" title="Edit">✏️</button>
-              <button class="btn-icon delete" (click)="deleteEntry(entry.id!)" title="Delete">🗑️</button>
+              <button class="btn-icon delete" (click)="deleteEntry(entry.id!)" [disabled]="deleting" title="Delete">🗑️</button>
             </td>
           </tr>
           <!-- Expanded repayment rows -->
@@ -349,7 +349,7 @@
                       <td class="remarks">{{ rep.remarks }}</td>
                       <td class="actions">
                         <button class="btn-icon edit" (click)="openEditRepaymentForm(rep)" title="Edit">✏️</button>
-                        <button class="btn-icon delete" (click)="deleteRepayment(rep.id!)" title="Delete">🗑️</button>
+                        <button class="btn-icon delete" (click)="deleteRepayment(rep.id!)" [disabled]="deletingRepayment" title="Delete">🗑️</button>
                       </td>
                     </tr>
                   </tbody>
@@ -387,7 +387,7 @@
         <div class="card-actions">
           <button class="btn-icon" (click)="openRepaymentForm(entry.lending_id)" title="Add Repayment">💰</button>
           <button class="btn-icon edit" (click)="openEditForm(entry)" title="Edit">✏️</button>
-          <button class="btn-icon delete" (click)="deleteEntry(entry.id!)" title="Delete">🗑️</button>
+          <button class="btn-icon delete" (click)="deleteEntry(entry.id!)" [disabled]="deleting" title="Delete">🗑️</button>
         </div>
         <!-- Mobile repayment toggle -->
         <div class="card-repayments" *ngIf="getRepayments(entry.lending_id).length > 0">
@@ -451,7 +451,7 @@
           <td class="remarks">{{ txn.remarks }}</td>
           <td class="actions">
             <button class="btn-icon edit" (click)="openEditEscrowForm(txn)" title="Edit">✏️</button>
-            <button class="btn-icon delete" (click)="deleteEscrow(txn.id!)" title="Delete">🗑️</button>
+            <button class="btn-icon delete" (click)="deleteEscrow(txn.id!)" [disabled]="deletingEscrow" title="Delete">🗑️</button>
           </td>
         </tr>
       </tbody>
@@ -493,7 +493,7 @@
         </div>
         <div class="form-actions">
           <button type="button" class="btn btn-secondary" (click)="showEscrowForm = false">Cancel</button>
-          <button type="submit" class="btn btn-primary">{{ editingEscrowId ? 'Update' : 'Add' }}</button>
+          <button type="submit" class="btn btn-primary" [disabled]="submittingEscrow">{{ editingEscrowId ? 'Update' : 'Add' }}</button>
         </div>
       </form>
     </div>

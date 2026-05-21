@@ -1,5 +1,10 @@
 <div class="dashboard" *ngIf="!loading">
   <div class="dashboard-header">
+    <div class="header-left">
+      <button class="refresh-btn" (click)="refreshData()" [disabled]="refreshing" title="Refresh all data">
+        <span [class.spinning]="refreshing">🔄</span> <span class="forex-label">{{ refreshing ? 'Refreshing...' : 'Refresh' }}</span>
+      </button>
+    </div>
     <h1><img src="profit.png" alt="" class="app-logo">Investment Tracker</h1>
     <div class="header-actions">
       <button class="forex-btn" (click)="toggleForexPopup()" title="Forex Analysis">
@@ -137,6 +142,13 @@
         <div class="kpi-content">
           <div class="kpi-label">Total Sale Value</div>
           <div class="kpi-value">₹{{ totalSaleValue | number:'1.2-2' }}</div>
+          <div class="kpi-sub" *ngIf="totalSaleValue > 0">
+            Cost ₹{{ costOfSold | number:'1.2-2' }}
+            &nbsp;&middot;&nbsp;
+            <span [style.color]="netPnL >= 0 ? '#10b981' : '#ef4444'">
+              {{ netPnL >= 0 ? '+' : '-' }}₹{{ (netPnL >= 0 ? netPnL : -netPnL) | number:'1.2-2' }}
+            </span>
+          </div>
         </div>
       </div>
       <div class="kpi-card" [class.profit]="netPnL >= 0" [class.loss]="netPnL < 0">
@@ -208,6 +220,9 @@
         <div class="cat-kpi">
           <span class="cat-kpi-label">Total Sales</span>
           <span class="cat-kpi-value">₹{{ catTotalSales | number:'1.2-2' }}</span>
+          <span class="cat-kpi-sub" *ngIf="catTotalSales > 0">
+            Cost ₹{{ catCostOfSold | number:'1.2-2' }}&nbsp;&middot;&nbsp;<span [style.color]="catNetPnL >= 0 ? '#10b981' : '#ef4444'">{{ catNetPnL >= 0 ? '+' : '-' }}₹{{ abs(catNetPnL) | number:'1.2-2' }}</span>
+          </span>
         </div>
         <div class="cat-kpi">
           <span class="cat-kpi-label">Net P&L</span>
@@ -323,6 +338,30 @@
           </div>
         </div>
 
+      </div>
+
+      <!-- Diverging P&L chart — only for Net P&L metric -->
+      <div class="eq-row" *ngIf="selectedMetric === 'Net P&L' && equityPnLDiverging.length > 0">
+        <div class="eq-card eq-card-grow" *ngFor="let group of equityPnLDiverging">
+          <p class="eq-card-title">{{ group.dimension }}</p>
+          <div class="div-chart">
+            <div class="div-bar-row" *ngFor="let item of group.items">
+              <span class="div-label">{{ item.label }}</span>
+              <div class="div-track">
+                <div class="div-loss-side">
+                  <div class="div-bar div-bar-loss" [style.width.%]="item.pnl < 0 ? item.barPct : 0"></div>
+                </div>
+                <div class="div-center"></div>
+                <div class="div-gain-side">
+                  <div class="div-bar div-bar-gain" [style.width.%]="item.pnl >= 0 ? item.barPct : 0"></div>
+                </div>
+              </div>
+              <span class="div-val" [class.div-pos]="item.pnl >= 0" [class.div-neg]="item.pnl < 0">
+                {{ item.pnl >= 0 ? '+' : '-' }}&#8377;{{ abs(item.pnl) | number:'1.0-0' }}
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
 
     </div>

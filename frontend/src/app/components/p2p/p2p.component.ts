@@ -21,6 +21,12 @@ export class P2PComponent implements OnInit {
   showForm = false;
   showRepaymentForm = false;
   showEscrowForm = false;
+  submitting = false;
+  deleting = false;
+  submittingRepayment = false;
+  deletingRepayment = false;
+  submittingEscrow = false;
+  deletingEscrow = false;
   showEscrowPanel = false;
   editingId: number | null = null;
   editingRepaymentId: number | null = null;
@@ -718,24 +724,26 @@ export class P2PComponent implements OnInit {
 
     this.form.maturity_date = this.computeMaturityDate();
 
+    this.submitting = true;
     if (this.editingId) {
       this.investmentService.updateP2P(this.editingId, this.form).subscribe({
-        next: () => { this.toast('Lending updated', 'success'); this.showForm = false; this.editingId = null; this.loadData(); },
-        error: () => this.toast('Failed to update', 'error')
+        next: () => { this.submitting = false; this.toast('Lending updated', 'success'); this.showForm = false; this.editingId = null; this.loadData(); },
+        error: () => { this.submitting = false; this.toast('Failed to update', 'error'); }
       });
     } else {
       this.investmentService.addP2P(this.form).subscribe({
-        next: () => { this.toast('Lending added', 'success'); this.showForm = false; this.loadData(); },
-        error: () => this.toast('Failed to add', 'error')
+        next: () => { this.submitting = false; this.toast('Lending added', 'success'); this.showForm = false; this.loadData(); },
+        error: () => { this.submitting = false; this.toast('Failed to add', 'error'); }
       });
     }
   }
 
   deleteEntry(id: number): void {
     if (confirm('Delete this lending and all its repayments?')) {
+      this.deleting = true;
       this.investmentService.deleteP2P(id).subscribe({
-        next: () => { this.toast('Lending deleted', 'success'); this.loadData(); },
-        error: () => this.toast('Failed to delete', 'error')
+        next: () => { this.deleting = false; this.toast('Lending deleted', 'success'); this.loadData(); },
+        error: () => { this.deleting = false; this.toast('Failed to delete', 'error'); }
       });
     }
   }
@@ -825,24 +833,27 @@ export class P2PComponent implements OnInit {
       }
     };
 
+    this.submittingRepayment = true;
     if (this.editingRepaymentId) {
       this.investmentService.updateP2PRepayment(this.editingRepaymentId, this.repaymentForm).subscribe({
-        next: () => { this.toast('Repayment updated', 'success'); this.showRepaymentForm = false; this.editingRepaymentId = null; afterSave(); },
-        error: () => this.toast('Failed to update repayment', 'error')
+        next: () => { this.submittingRepayment = false; this.toast('Repayment updated', 'success'); this.showRepaymentForm = false; this.editingRepaymentId = null; afterSave(); },
+        error: () => { this.submittingRepayment = false; this.toast('Failed to update repayment', 'error'); }
       });
     } else {
       this.investmentService.addP2PRepayment(this.repaymentForm).subscribe({
-        next: () => { this.toast('Repayment recorded', 'success'); this.showRepaymentForm = false; afterSave(); },
-        error: () => this.toast('Failed to add repayment', 'error')
+        next: () => { this.submittingRepayment = false; this.toast('Repayment recorded', 'success'); this.showRepaymentForm = false; afterSave(); },
+        error: () => { this.submittingRepayment = false; this.toast('Failed to add repayment', 'error'); }
       });
     }
   }
 
   deleteRepayment(id: number): void {
     if (confirm('Delete this repayment entry?')) {
+      this.deletingRepayment = true;
       const rep = this.repayments.find(r => r.id === id);
       this.investmentService.deleteP2PRepayment(id).subscribe({
         next: () => {
+          this.deletingRepayment = false;
           this.toast('Repayment deleted', 'success');
           // Clean up auto-created escrow entry for this repayment
           if (rep) {
@@ -873,7 +884,7 @@ export class P2PComponent implements OnInit {
             }
           });
         },
-        error: () => this.toast('Failed to delete repayment', 'error')
+        error: () => { this.deletingRepayment = false; this.toast('Failed to delete repayment', 'error'); }
       });
     }
   }
@@ -945,24 +956,26 @@ export class P2PComponent implements OnInit {
   }
 
   saveEscrow(): void {
+    this.submittingEscrow = true;
     if (this.editingEscrowId) {
       this.investmentService.updateP2PEscrow(this.editingEscrowId, this.escrowForm).subscribe({
-        next: () => { this.toast('Transaction updated', 'success'); this.showEscrowForm = false; this.editingEscrowId = null; this.loadData(); },
-        error: () => this.toast('Failed to update', 'error')
+        next: () => { this.submittingEscrow = false; this.toast('Transaction updated', 'success'); this.showEscrowForm = false; this.editingEscrowId = null; this.loadData(); },
+        error: () => { this.submittingEscrow = false; this.toast('Failed to update', 'error'); }
       });
     } else {
       this.investmentService.addP2PEscrow(this.escrowForm).subscribe({
-        next: () => { this.toast('Transaction added', 'success'); this.showEscrowForm = false; this.loadData(); },
-        error: () => this.toast('Failed to add', 'error')
+        next: () => { this.submittingEscrow = false; this.toast('Transaction added', 'success'); this.showEscrowForm = false; this.loadData(); },
+        error: () => { this.submittingEscrow = false; this.toast('Failed to add', 'error'); }
       });
     }
   }
 
   deleteEscrow(id: number): void {
     if (!confirm('Delete this escrow transaction?')) return;
+    this.deletingEscrow = true;
     this.investmentService.deleteP2PEscrow(id).subscribe({
-      next: () => { this.toast('Transaction deleted', 'success'); this.loadData(); },
-      error: () => this.toast('Failed to delete', 'error')
+      next: () => { this.deletingEscrow = false; this.toast('Transaction deleted', 'success'); this.loadData(); },
+      error: () => { this.deletingEscrow = false; this.toast('Failed to delete', 'error'); }
     });
   }
 }

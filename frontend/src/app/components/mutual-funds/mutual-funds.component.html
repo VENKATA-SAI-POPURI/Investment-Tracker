@@ -27,10 +27,10 @@
     </div>
   </div>
 
-  <!-- Capital Gains Snapshot -->
+  <!-- Capital Holding Snapshot -->
   <div class="tax-term-card" *ngIf="!loading && taxTermSummary.total > 0">
     <div class="tax-term-header">
-      <span class="tax-term-title">Capital Gains Snapshot</span>
+      <span class="tax-term-title">Capital Holding Snapshot</span>
       <span class="tax-term-note">Equity/ELSS: STCG &lt; 1Y &nbsp;·&nbsp; Debt/Hybrid: STCG &lt; 3Y &nbsp;·&nbsp; FIFO-based</span>
     </div>
     <div class="tax-term-bar">
@@ -162,7 +162,7 @@
         </div>
         <div class="form-actions">
           <button type="button" class="btn btn-secondary" (click)="cancelForm()">Cancel</button>
-          <button type="submit" class="btn btn-primary">{{ editingId ? 'Update' : 'Add' }}</button>
+          <button type="submit" class="btn btn-primary" [disabled]="submitting">{{ editingId ? 'Update' : 'Add' }}</button>
         </div>
       </form>
     </div>
@@ -246,7 +246,7 @@
                       <td class="remarks">{{ t.remarks }}</td>
                       <td class="actions">
                         <button class="btn-icon edit" (click)="openEditForm(t)" title="Edit">✏️</button>
-                        <button class="btn-icon delete" (click)="deleteEntry(t.id!)" title="Delete">🗑️</button>
+                        <button class="btn-icon delete" (click)="deleteEntry(t.id!)" [disabled]="deleting" title="Delete">🗑️</button>
                       </td>
                     </tr>
                   </tbody>
@@ -301,7 +301,7 @@
           <td class="remarks">{{ entry.remarks }}</td>
           <td class="actions">
             <button class="btn-icon edit" (click)="openEditForm(entry)" title="Edit">✏️</button>
-            <button class="btn-icon delete" (click)="deleteEntry(entry.id!)" title="Delete">🗑️</button>
+            <button class="btn-icon delete" (click)="deleteEntry(entry.id!)" [disabled]="deleting" title="Delete">🗑️</button>
           </td>
         </tr>
       </tbody>
@@ -325,7 +325,7 @@
         </div>
         <div class="card-actions">
           <button class="btn-icon edit" (click)="openEditForm(entry)" title="Edit">✏️</button>
-          <button class="btn-icon delete" (click)="deleteEntry(entry.id!)" title="Delete">🗑️</button>
+          <button class="btn-icon delete" (click)="deleteEntry(entry.id!)" [disabled]="deleting" title="Delete">🗑️</button>
         </div>
       </div>
     </div>

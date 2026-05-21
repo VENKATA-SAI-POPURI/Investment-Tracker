@@ -87,6 +87,38 @@ tr.expanded {
   font-size: 0.85rem;
 }
 
+.holding-hint {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: rgba(99, 102, 241, 0.1);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  border-radius: 8px;
+  padding: 0.45rem 0.75rem;
+  flex-wrap: wrap;
+
+  .hint-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #818cf8;
+    margin-right: 0.25rem;
+  }
+
+  .hint-chip {
+    font-size: 0.82rem;
+    color: var(--text-heading, #f1f5f9);
+    strong { color: #a5b4fc; }
+  }
+
+  .hint-sep {
+    color: var(--text-secondary, #64748b);
+    font-size: 0.75rem;
+  }
+}
+
 .allocation-card {
   background: var(--bg-card, #1e293b);
   border-radius: 12px;
