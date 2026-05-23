@@ -4,11 +4,8 @@ import subprocess
 import requests
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-from db_service import DbService
 
-# Load .env file if present (local development)
+# Load .env BEFORE any other imports so env vars are available at module init time
 _env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
 if os.path.exists(_env_path):
     with open(_env_path, encoding='utf-8') as _f:
@@ -17,11 +14,26 @@ if os.path.exists(_env_path):
             if _line and not _line.startswith('#') and '=' in _line:
                 _k, _v = _line.split('=', 1)
                 _k, _v = _k.strip(), _v.strip()
-                if _v:  # only set if value is non-empty
+                if _v:
                     os.environ[_k] = _v
 
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+from db_service import DbService
+from auth_service import (
+    verify_google_token, check_allowlist, add_to_allowlist,
+    create_user_session, require_auth, get_allowlist, set_db_service
+)
+
 app = Flask(__name__)
-CORS(app)
+
+# Restrict CORS to known frontend origins
+_ALLOWED_ORIGINS = [
+    "http://localhost:4200",
+    "http://127.0.0.1:4200",
+    "https://investment-tracker-nrm5.onrender.com",
+]
+CORS(app, origins=_ALLOWED_ORIGINS)
 
 
 @app.errorhandler(Exception)
@@ -34,6 +46,37 @@ TURSO_URL = os.environ.get("TURSO_DATABASE_URL")
 TURSO_TOKEN = os.environ.get("TURSO_AUTH_TOKEN")
 
 db_service = DbService(DB_PATH, turso_url=TURSO_URL, turso_token=TURSO_TOKEN)
+
+# Initialize auth service
+set_db_service(db_service)
+
+
+# ── Global auth guard — all /api/* routes except /api/auth/* require a valid JWT ──
+_AUTH_EXEMPT = {
+    "google_login",   # POST /api/auth/google-login
+}
+
+@app.before_request
+def require_auth_global():
+    from auth_service import verify_jwt_token
+    # Only guard /api/ routes
+    if not request.path.startswith("/api/"):
+        return None
+    # Allow CORS preflight requests through (handled by Flask-CORS)
+    if request.method == "OPTIONS":
+        return None
+    # Allow auth endpoints through
+    if request.path.startswith("/api/auth/google-login"):
+        return None
+    # All other /api/ routes need a valid JWT
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return jsonify({"error": "Missing authorization token"}), 401
+    token = auth_header[7:]
+    payload = verify_jwt_token(token)
+    if not payload:
+        return jsonify({"error": "Invalid or expired token"}), 401
+    request.user_email = payload.get("email")
 
 
 def _handle_add(sheet_name):
@@ -48,6 +91,96 @@ def _handle_add(sheet_name):
         return jsonify({"message": "Existing entry updated", "id": result["id"], "upserted": True}), 200
     return jsonify({"message": "Entry added", "id": result["id"], "upserted": False}), 201
 
+def _auto_create_capital_flows(sheet_name, transaction_data):
+    """Automatically create capital flow entries for investment transactions.
+    
+    - Mutual Funds: buy_value -> Deposit, sell_value -> Withdrawal
+    - P2P Lending: amount -> Deposit
+    - P2P Repayments: amount -> Withdrawal
+    """
+    try:
+        if sheet_name == "Mutual Funds":
+            # Create Deposit for buy transactions
+            buy_value = transaction_data.get("buy_value")
+            if buy_value and float(buy_value) > 0:
+                capital_flow = {
+                    "date": transaction_data.get("date", ""),
+                    "amount": float(buy_value),
+                    "type": "Deposit",
+                    "category": "Mutual Funds",
+                    "remarks": f"{transaction_data.get('name', 'MF')} purchase"
+                }
+                db_service.add_row("Capital Flows", capital_flow)
+            
+            # Create Withdrawal for sell transactions
+            sell_value = transaction_data.get("sell_value")
+            if sell_value and float(sell_value) > 0:
+                capital_flow = {
+                    "date": transaction_data.get("date", ""),
+                    "amount": float(sell_value),
+                    "type": "Withdrawal",
+                    "category": "Mutual Funds",
+                    "remarks": f"{transaction_data.get('name', 'MF')} sale"
+                }
+                db_service.add_row("Capital Flows", capital_flow)
+        
+        elif sheet_name == "P2P":
+            # Create Deposit for P2P lending
+            amount = transaction_data.get("amount")
+            if amount and float(amount) > 0:
+                capital_flow = {
+                    "date": transaction_data.get("date", ""),
+                    "amount": float(amount),
+                    "type": "Deposit",
+                    "category": "P2P",
+                    "remarks": f"{transaction_data.get('name', 'P2P')} lending on {transaction_data.get('platform', '')}"
+                }
+                db_service.add_row("Capital Flows", capital_flow)
+        
+        elif sheet_name == "P2P Repayments":
+            # Create Withdrawal for P2P repayment
+            amount = transaction_data.get("amount")
+            if amount and float(amount) > 0:
+                capital_flow = {
+                    "date": transaction_data.get("date", ""),
+                    "amount": float(amount),
+                    "type": "Withdrawal",
+                    "category": "P2P",
+                    "remarks": f"P2P repayment"
+                }
+                db_service.add_row("Capital Flows", capital_flow)
+        
+        elif sheet_name == "Forex":
+            # Create capital flows for Forex transactions (using INR value)
+            forex_type = transaction_data.get("type", "").lower()
+            inr_amount = transaction_data.get("inr_amount")
+            usd_amount = transaction_data.get("usd_amount")
+            rate = transaction_data.get("rate", "")
+            
+            if forex_type == "deposit" and inr_amount and float(inr_amount) > 0:
+                # Forex deposit = capital inflow
+                capital_flow = {
+                    "date": transaction_data.get("date", ""),
+                    "amount": float(inr_amount),
+                    "type": "Deposit",
+                    "category": "Equity/Commodity",
+                    "remarks": f"Forex deposit: ${usd_amount} at ₹{rate}/USD"
+                }
+                db_service.add_row("Capital Flows", capital_flow)
+            
+            elif forex_type == "withdrawal" and inr_amount and float(inr_amount) > 0:
+                # Forex withdrawal = capital outflow
+                capital_flow = {
+                    "date": transaction_data.get("date", ""),
+                    "amount": float(inr_amount),
+                    "type": "Withdrawal",
+                    "category": "Equity/Commodity",
+                    "remarks": f"Forex withdrawal: ${usd_amount} at ₹{rate}/USD"
+                }
+                db_service.add_row("Capital Flows", capital_flow)
+    except Exception as e:
+        print(f"[Warning] Failed to auto-create capital flow: {e}")
+        # Don't fail the main transaction if capital flow creation fails
 # â”€â”€ Equity Endpoints â”€â”€
 
 @app.route("/api/equity", methods=["GET"])
@@ -90,7 +223,18 @@ def get_mutual_funds():
 
 @app.route("/api/mutual-funds", methods=["POST"])
 def add_mutual_fund():
-    return _handle_add("Mutual Funds")
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+    try:
+        result = db_service.add_row("Mutual Funds", data)
+        # Auto-create capital flows for this transaction
+        _auto_create_capital_flows("Mutual Funds", data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    if result["upserted"]:
+        return jsonify({"message": "Existing entry updated", "id": result["id"], "upserted": True}), 200
+    return jsonify({"message": "Entry added", "id": result["id"], "upserted": False}), 201
 
 
 @app.route("/api/mutual-funds/<int:row_id>", methods=["PUT"])
@@ -154,7 +298,18 @@ def get_p2p():
 
 @app.route("/api/p2p", methods=["POST"])
 def add_p2p():
-    return _handle_add("P2P")
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+    try:
+        result = db_service.add_row("P2P", data)
+        # Auto-create capital flows for this transaction
+        _auto_create_capital_flows("P2P", data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    if result["upserted"]:
+        return jsonify({"message": "Existing entry updated", "id": result["id"], "upserted": True}), 200
+    return jsonify({"message": "Entry added", "id": result["id"], "upserted": False}), 201
 
 
 @app.route("/api/p2p/<int:row_id>", methods=["PUT"])
@@ -203,8 +358,13 @@ def add_p2p_repayment():
     data = request.get_json()
     if not data:
         return jsonify({"error": "No data provided"}), 400
-    result = db_service.add_row("P2P Repayments", data)
-    return jsonify({"message": "Repayment added", "id": result["id"]}), 201
+    try:
+        result = db_service.add_row("P2P Repayments", data)
+        # Auto-create capital flows for this transaction
+        _auto_create_capital_flows("P2P Repayments", data)
+        return jsonify({"message": "Repayment added", "id": result["id"]}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/p2p-repayments/<int:row_id>", methods=["PUT"])
@@ -326,6 +486,7 @@ def add_forex():
     except (ValueError, TypeError):
         data["rate"] = 0
     result = db_service.add_row("Forex", data)
+    _auto_create_capital_flows("Forex", data)
     return jsonify({"message": "Entry added", "id": result["id"]}), 201
 
 
@@ -345,6 +506,7 @@ def update_forex(row_id):
         data["rate"] = 0
     success = db_service.update_row("Forex", row_id, data)
     if success:
+        _auto_create_capital_flows("Forex", data)
         return jsonify({"message": "Entry updated"})
     return jsonify({"error": "Row not found"}), 404
 
@@ -355,6 +517,113 @@ def delete_forex(row_id):
     if success:
         return jsonify({"message": "Entry deleted"})
     return jsonify({"error": "Row not found"}), 404
+
+
+# ── Capital Flows Endpoints ──
+
+@app.route("/api/capital-flows", methods=["GET"])
+def get_capital_flows():
+    rows = db_service.get_all("Capital Flows")
+    return jsonify(rows)
+
+
+@app.route("/api/capital-flows", methods=["POST"])
+def add_capital_flow():
+    return _handle_add("Capital Flows")
+
+
+@app.route("/api/capital-flows/<int:row_id>", methods=["PUT"])
+def update_capital_flow(row_id):
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+    success = db_service.update_row("Capital Flows", row_id, data)
+    if success:
+        return jsonify({"message": "Entry updated"})
+    return jsonify({"error": "Row not found"}), 404
+
+
+@app.route("/api/capital-flows/<int:row_id>", methods=["DELETE"])
+def delete_capital_flow(row_id):
+    success = db_service.delete_row("Capital Flows", row_id)
+    if success:
+        return jsonify({"message": "Entry deleted"})
+    return jsonify({"error": "Row not found"}), 404
+
+
+@app.route("/api/capital-flows/summary", methods=["GET"])
+def get_capital_flows_summary():
+    summary = db_service.get_capital_flows_summary()
+    return jsonify(summary)
+
+
+# ── Authentication Endpoints ──
+
+@app.route("/api/auth/google-login", methods=["POST"])
+def google_login():
+    """Verify Google OAuth token and create session"""
+    data = request.get_json(silent=True) or {}
+    token = data.get("token")
+    
+    if not token:
+        return jsonify({"error": "Token is required"}), 400
+    
+    # Verify Google token
+    user_info = verify_google_token(token)
+    if not user_info:
+        return jsonify({"error": "Invalid Google token"}), 401
+    
+    email = user_info.get("email")
+    
+    # Check if email is in allowlist
+    if not check_allowlist(email):
+        return jsonify({"error": "Access denied. Your email is not authorized."}), 403
+    
+    # Create user session
+    jwt_token = create_user_session(user_info)
+    if not jwt_token:
+        return jsonify({"error": "Failed to create session"}), 500
+    
+    return jsonify({
+        "token": jwt_token,
+        "user": {
+            "email": email,
+            "name": user_info.get("name"),
+            "picture": user_info.get("picture"),
+        }
+    }), 200
+
+
+@app.route("/api/auth/verify", methods=["GET"])
+@require_auth
+def verify_auth():
+    """Verify token validity"""
+    return jsonify({"email": request.user_email}), 200
+
+
+@app.route("/api/auth/allowlist", methods=["GET"])
+@require_auth
+def get_allowlist_endpoint():
+    """Get allowlist (admin only - for now, all authenticated users can view)"""
+    allowlist = get_allowlist()
+    return jsonify({"allowlist": allowlist}), 200
+
+
+@app.route("/api/auth/allowlist", methods=["POST"])
+@require_auth
+def add_allowlist_entry():
+    """Add email to allowlist (admin only)"""
+    # In a real app, check if user is admin
+    data = request.get_json(silent=True) or {}
+    email = data.get("email", "").strip()
+    
+    if not email:
+        return jsonify({"error": "Email is required"}), 400
+    
+    if add_to_allowlist(email):
+        return jsonify({"message": f"Added {email} to allowlist"}), 201
+    else:
+        return jsonify({"error": "Failed to add to allowlist"}), 500
 
 
 # ── AI Analysis Endpoint ──

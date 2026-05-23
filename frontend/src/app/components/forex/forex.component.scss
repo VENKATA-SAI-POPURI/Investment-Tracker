@@ -1,8 +1,37 @@
 @use '../shared';
 
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+:host([hidden]) {
+  display: none !important;
+}
+
+.page {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 1rem 1.5rem;
+}
+
+.table-wrapper {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  width: 100%;
+}
+
 .forex-summary {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(4, 1fr);
   gap: 1rem;
   margin-bottom: 1.5rem;
 }
@@ -38,53 +67,67 @@
 .allocation-bar {
   display: flex;
   height: 36px;
-  border-radius: 8px;
-  overflow: hidden;
-  margin-bottom: 0.75rem;
+  gap: 5px;
+  overflow: visible;
+  margin-bottom: 0.25rem;
 }
 
 .alloc-segment {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   font-weight: 700;
-  color: #fff;
   transition: width 0.4s ease;
   white-space: nowrap;
-  overflow: hidden;
-}
+  overflow: visible;
+  position: relative;
+  cursor: pointer;
+  border-radius: 8px;
 
-.alloc-india { background: #3b82f6; }
-.alloc-usa   { background: #f97316; }
+  &[data-tooltip]:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(15, 23, 42, 0.92);
+    color: #f1f5f9;
+    padding: 0.45rem 0.85rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 100;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  }
 
-.allocation-legend {
-  display: flex;
-  gap: 1.5rem;
-  flex-wrap: wrap;
-}
-
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.82rem;
-  color: var(--text-secondary, #94a3b8);
-
-  strong {
-    color: var(--text-heading, #f1f5f9);
+  &[data-tooltip]:hover::before {
+    content: '';
+    position: absolute;
+    bottom: calc(100% + 2px);
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-top-color: rgba(15, 23, 42, 0.92);
+    pointer-events: none;
+    z-index: 100;
   }
 }
 
-.legend-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  flex-shrink: 0;
+.alloc-india {
+  background: rgba(59, 130, 246, 0.08);
+  border: 1.5px solid #3b82f6;
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.3);
+  color: #3b82f6;
 }
-
-.dot-india { background: #3b82f6; }
-.dot-usa   { background: #f97316; }
+.alloc-usa {
+  background: rgba(249, 115, 22, 0.08);
+  border: 1.5px solid #f97316;
+  box-shadow: 0 0 10px rgba(249, 115, 22, 0.3);
+  color: #f97316;
+}
 
 .forex-stat {
   background: var(--bg-card, #fff);

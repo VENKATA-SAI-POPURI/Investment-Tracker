@@ -1,10 +1,20 @@
 <div class="page">
-  <div class="page-header">
-    <div>
-      <a routerLink="/" class="back-link">← Dashboard</a>
-      <h1>Forex (INR ↔ USD)</h1>
+  <!-- India vs USA Allocation -->
+  <div class="allocation-section" *ngIf="totalPortfolioINR > 0">
+    <div class="allocation-header">
+      <span class="allocation-title">Equity Allocation — India vs USA</span>
+      <span class="allocation-total">Total: ₹{{ totalPortfolioINR | number:'1.0-0' }}</span>
     </div>
-    <button class="btn btn-primary" (click)="openAddForm()">+ Add Entry</button>
+    <div class="allocation-bar">
+      <div class="alloc-segment alloc-india" [style.width]="indiaPct + '%'" *ngIf="indiaPct > 0"
+           [attr.data-tooltip]="'🇮🇳 India  ₹' + (indiaInvestedINR | number:'1.0-0') + '  (' + indiaPct + '%)'">
+        <span *ngIf="indiaPct > 8">🇮🇳 India - {{ indiaPct }}%</span>
+      </div>
+      <div class="alloc-segment alloc-usa" [style.width]="usaPct + '%'" *ngIf="usaPct > 0"
+           [attr.data-tooltip]="'🇺🇸 USA  $' + (totalInvestedUSD | number:'1.2-2') + '  ·  ₹' + (usaInvestedINR | number:'1.0-0') + '  (' + usaPct + '%)'">
+        <span *ngIf="usaPct > 8">🇺🇸 USA - {{ usaPct }}%</span>
+      </div>
+    </div>
   </div>
 
   <!-- Summary Cards -->
@@ -57,32 +67,6 @@
       <span class="stat-label">Forex Impact on Deposits</span>
       <span class="stat-value" [style.color]="forexDepositImpact >= 0 ? '#f44336' : '#4caf50'">₹{{ (forexDepositImpact < 0 ? -forexDepositImpact : forexDepositImpact) | number:'1.2-2' }}</span>
       <span class="stat-sub">{{ forexDepositImpact >= 0 ? 'extra INR paid vs cheapest deposit rate' : 'INR saved vs cheapest deposit rate' }}</span>
-    </div>
-  </div>
-
-  <!-- India vs USA Allocation -->
-  <div class="allocation-section" *ngIf="totalPortfolioINR > 0">
-    <div class="allocation-header">
-      <span class="allocation-title">Equity Allocation — India vs USA</span>
-      <span class="allocation-total">Total: ₹{{ totalPortfolioINR | number:'1.0-0' }}</span>
-    </div>
-    <div class="allocation-bar">
-      <div class="alloc-segment alloc-india" [style.width]="indiaPct + '%'" *ngIf="indiaPct > 0">
-        <span *ngIf="indiaPct > 8">🇮🇳 {{ indiaPct }}%</span>
-      </div>
-      <div class="alloc-segment alloc-usa" [style.width]="usaPct + '%'" *ngIf="usaPct > 0">
-        <span *ngIf="usaPct > 8">🇺🇸 {{ usaPct }}%</span>
-      </div>
-    </div>
-    <div class="allocation-legend">
-      <div class="legend-item">
-        <span class="legend-dot dot-india"></span>
-        <span>India &nbsp;<strong>₹{{ indiaInvestedINR | number:'1.0-0' }}</strong> ({{ indiaPct }}%)</span>
-      </div>
-      <div class="legend-item">
-        <span class="legend-dot dot-usa"></span>
-        <span>USA &nbsp;<strong>${{ totalInvestedUSD | number:'1.2-2' }}</strong> · ₹{{ usaInvestedINR | number:'1.0-0' }} ({{ usaPct }}%)</span>
-      </div>
     </div>
   </div>
 

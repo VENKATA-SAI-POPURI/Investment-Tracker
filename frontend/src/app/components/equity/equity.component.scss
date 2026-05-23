@@ -1,5 +1,28 @@
 @use '../shared';
 
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+:host([hidden]) {
+  display: none !important;
+}
+
+// Override shared .page to be a full-height flex column
+.page {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 1rem 1.5rem;
+}
+
 // ── Holding-period bucket columns ──
 .bucket-col {
   font-size: 0.75rem;
@@ -145,42 +168,70 @@ tr.expanded {
 
 .allocation-bar {
   display: flex;
-  height: 32px;
-  border-radius: 8px;
-  overflow: hidden;
+  height: 36px;
+  gap: 5px;
+  overflow: visible;
   width: 100%;
+  margin-bottom: 0.25rem;
 }
 
 .bar-segment {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   justify-content: center;
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: #fff;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
   transition: width 0.4s ease;
-  white-space: nowrap;
-  overflow: hidden;
+  overflow: visible;
+  position: relative;
+  cursor: pointer;
+  min-width: 60px;
+
+  .seg-label { font-size: 0.88rem; font-weight: 700; }
+
+  &[data-tooltip]:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(15, 23, 42, 0.92);
+    color: #f1f5f9;
+    padding: 0.45rem 0.85rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 100;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  }
+
+  &[data-tooltip]:hover::before {
+    content: '';
+    position: absolute;
+    bottom: calc(100% + 2px);
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-top-color: rgba(15, 23, 42, 0.92);
+    pointer-events: none;
+    z-index: 100;
+  }
 }
 
-.bar-india { background: #f59e0b; }
-.bar-usa   { background: #3b82f6; }
-
-.allocation-legend {
-  display: flex;
-  gap: 1.5rem;
-  flex-wrap: wrap;
-  font-size: 0.82rem;
-  font-weight: 500;
-  color: var(--text-primary, #f1f5f9);
+.bar-india {
+  background: rgba(245, 158, 11, 0.08);
+  border: 1.5px solid #f59e0b;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.35), inset 0 0 20px rgba(245, 158, 11, 0.05);
+  color: #f59e0b;
 }
-
-.legend-india { color: #f59e0b; }
-.legend-usa   { color: #3b82f6; }
-
-.legend-pct {
-  color: var(--text-secondary, #94a3b8);
-  font-weight: 400;
+.bar-usa {
+  background: rgba(59, 130, 246, 0.08);
+  border: 1.5px solid #3b82f6;
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.35), inset 0 0 20px rgba(59, 130, 246, 0.05);
+  color: #3b82f6;
 }
 
 /* ── Summary Strip ── */
@@ -213,6 +264,13 @@ tr.expanded {
 }
 
 /* ── Mobile: force table min-width so overflow-x: auto triggers ── */
+.table-wrapper {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  width: 100%;
+}
+
 .table-wrapper table {
   min-width: 860px;
 }

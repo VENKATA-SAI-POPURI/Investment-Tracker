@@ -155,6 +155,20 @@ TABLES = {
         "buy_col": "inr_amount",
         "sell_col": "usd_amount",
     },
+    "capital_flows": {
+        "columns": ["date", "amount", "type", "category", "remarks"],
+        "buy_col": None,
+        "sell_col": None,
+        "no_upsert": True,
+    },
+    "allowlist": {
+        "columns": ["email", "added_date"],
+        "no_upsert": True,
+    },
+    "users": {
+        "columns": ["email", "google_id", "name", "picture", "created_at", "last_login"],
+        "no_upsert": True,
+    },
 }
 
 # Map sheet names used in app.py to table names
@@ -167,6 +181,7 @@ SHEET_TO_TABLE = {
     "P2P Escrow": "p2p_escrow",
     "Fixed Deposits": "fixed_deposits",
     "Forex": "forex",
+    "Capital Flows": "capital_flows",
 }
 
 NUMERIC_FIELDS = {
@@ -482,3 +497,34 @@ class DbService:
 
             conn.close()
         return summary
+
+    def get_capital_flows_summary(self):
+        """Calculate total deposits and withdrawals from capital_flows table."""
+        with self._lock:
+            conn = self._connect()
+            
+            # Get total deposits
+            cursor = conn.execute("""
+                SELECT COALESCE(SUM(amount), 0) as total_deposits
+                FROM capital_flows
+                WHERE type = 'Deposit'
+            """)
+            total_deposits = cursor.fetchone()["total_deposits"]
+            
+            # Get total withdrawals
+            cursor = conn.execute("""
+                SELECT COALESCE(SUM(amount), 0) as total_withdrawals
+                FROM capital_flows
+                WHERE type = 'Withdrawal'
+            """)
+            total_withdrawals = cursor.fetchone()["total_withdrawals"]
+            
+            conn.close()
+            
+            actual_investment = total_deposits - total_withdrawals
+            
+            return {
+                "total_deposits": round(total_deposits, 2),
+                "total_withdrawals": round(total_withdrawals, 2),
+                "actual_investment": round(actual_investment, 2)
+            }

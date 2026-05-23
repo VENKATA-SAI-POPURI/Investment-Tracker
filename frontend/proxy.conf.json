@@ -1,6 +1,6 @@
 {
   "/api": {
-    "target": "https://investment-tracker-nrm5.onrender.com",
+    "target": "http://localhost:5001",
     "secure": false,
     "changeOrigin": true
   }

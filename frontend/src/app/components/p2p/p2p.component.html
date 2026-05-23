@@ -1,15 +1,4 @@
 <div class="page">
-  <div class="page-header">
-    <div>
-      <a routerLink="/" class="back-link">← Dashboard</a>
-      <h1>P2P Lending</h1>
-    </div>
-    <div class="header-actions">
-      <button class="btn btn-secondary" (click)="showEscrowPanel = true">💰 Escrow</button>
-      <button class="btn btn-primary" (click)="openAddForm()">+ New Lending</button>
-    </div>
-  </div>
-
   <!-- KPI Tiers -->
   <div class="kpi-tiers-row">
     <div class="kpi-tier">
@@ -17,7 +6,7 @@
       <div class="kpi-tier-cards">
         <div class="kpi-card-mini"><span class="kpi-label">Escrow</span><span class="kpi-value" [style.color]="escrowBalance >= 0 ? '#4caf50' : '#ef4444'">₹{{ escrowBalance | number:'1.2-2' }}</span></div>
         <div class="kpi-card-mini"><span class="kpi-label">Total Lent</span><span class="kpi-value">₹{{ totalLent | number:'1.2-2' }}</span></div>
-        <div class="kpi-card-mini"><span class="kpi-label">Active Lent</span><span class="kpi-value" [style.color]="isEscrowUnderFunded ? '#ef4444' : '#2196f3'">₹{{ activeLentAmount | number:'1.2-2' }}</span></div>
+        <div class="kpi-card-mini"><span class="kpi-label">Active Lent</span><span class="kpi-value" [style.color]="isEscrowUnderFunded ? '#ef4444' : '#667eea'">₹{{ activeLentAmount | number:'1.2-2' }}</span></div>
         <div class="kpi-card-mini"><span class="kpi-label">Pending</span><span class="kpi-value" [style.color]="totalPending > 0 ? '#f59e0b' : '#4caf50'">₹{{ totalPending | number:'1.2-2' }}</span></div>
       </div>
       <div class="escrow-underfunded-flag" *ngIf="isEscrowUnderFunded">
@@ -28,7 +17,7 @@
       <h4 class="kpi-tier-title">Returns</h4>
       <div class="kpi-tier-cards">
         <div class="kpi-card-mini"><span class="kpi-label">Total Return</span><span class="kpi-value" style="color: #4caf50">₹{{ totalReturns | number:'1.2-2' }}</span></div>
-        <div class="kpi-card-mini"><span class="kpi-label">Exp. Return</span><span class="kpi-value" style="color: #2196f3">₹{{ expectedReturn | number:'1.2-2' }}</span></div>
+        <div class="kpi-card-mini"><span class="kpi-label">Exp. Return</span><span class="kpi-value" style="color: #667eea">₹{{ expectedReturn | number:'1.2-2' }}</span></div>
         <div class="kpi-card-mini"><span class="kpi-label">Avg Rate (p.a.)</span><span class="kpi-value">{{ avgInterestRate }}</span></div>
       </div>
     </div>
@@ -37,7 +26,7 @@
       <div class="kpi-tier-cards">
         <div class="kpi-card-mini"><span class="kpi-label">Overdue</span><span class="kpi-value" [style.color]="overdueCount > 0 ? '#f44336' : 'inherit'">{{ overdueCount }} (₹{{ overdueAmount | number:'1.2-2' }})</span></div>
         <div class="kpi-card-mini"><span class="kpi-label">Defaulted</span><span class="kpi-value" [style.color]="defaultedCount > 0 ? '#f44336' : 'inherit'">{{ defaultedCount }}</span></div>
-        <div class="kpi-card-mini"><span class="kpi-label">Foreclosed</span><span class="kpi-value" style="color: #2196f3">{{ foreclosedCount }}</span></div>
+        <div class="kpi-card-mini"><span class="kpi-label">Foreclosed</span><span class="kpi-value" style="color: #667eea">{{ foreclosedCount }}</span></div>
         <div class="kpi-card-mini"><span class="kpi-label">Portfolio IRR</span><span class="kpi-value" style="color: #4caf50">{{ portfolioIRR != null ? (portfolioIRR | number:'1.2-2') + '%' : '-' }}</span></div>
       </div>
     </div>
@@ -45,44 +34,45 @@
 
   <!-- Monthly Inflow + Return Trend Row -->
   <div class="monthly-row">
-    <div class="monthly-inflow-kpis">
-      <div class="kpi-card">
-        <div class="kpi-header">{{ getMonthLabel(-1) }}</div>
-        <div class="kpi-row">
-          <div class="kpi-item">
-            <span class="kpi-label">Expected</span>
-            <span class="kpi-value">₹{{ prevMonthExpected | number:'1.2-2' }}</span>
-          </div>
-          <div class="kpi-item">
-            <span class="kpi-label">Actual</span>
-            <span class="kpi-value" [style.color]="prevMonthActual >= prevMonthExpected ? '#4caf50' : '#f44336'">₹{{ prevMonthActual | number:'1.2-2' }}</span>
-          </div>
+    <div class="kpi-card kpi-prev">
+      <span class="kpi-badge kpi-badge-prev">Previous</span>
+      <div class="kpi-header">{{ getMonthLabel(-1) }}</div>
+      <div class="kpi-row">
+        <div class="kpi-item">
+          <span class="kpi-label">Expected</span>
+          <span class="kpi-value">₹{{ prevMonthExpected | number:'1.2-2' }}</span>
+        </div>
+        <div class="kpi-item">
+          <span class="kpi-label">Actual</span>
+          <span class="kpi-value" [style.color]="prevMonthActual >= prevMonthExpected ? '#4caf50' : '#f44336'">₹{{ prevMonthActual | number:'1.2-2' }}</span>
         </div>
       </div>
-      <div class="kpi-card kpi-current">
-        <div class="kpi-header">{{ getMonthLabel(0) }} <span class="kpi-badge">Current</span></div>
-        <div class="kpi-row">
-          <div class="kpi-item">
-            <span class="kpi-label">Expected</span>
-            <span class="kpi-value">₹{{ currentMonthExpected | number:'1.2-2' }}</span>
-          </div>
-          <div class="kpi-item">
-            <span class="kpi-label">Actual</span>
-            <span class="kpi-value" [style.color]="currentMonthActual >= currentMonthExpected ? '#4caf50' : '#f59e0b'">₹{{ currentMonthActual | number:'1.2-2' }}</span>
-          </div>
+    </div>
+    <div class="kpi-card kpi-current">
+      <span class="kpi-badge">Current</span>
+      <div class="kpi-header">{{ getMonthLabel(0) }}</div>
+      <div class="kpi-row">
+        <div class="kpi-item">
+          <span class="kpi-label">Expected</span>
+          <span class="kpi-value">₹{{ currentMonthExpected | number:'1.2-2' }}</span>
+        </div>
+        <div class="kpi-item">
+          <span class="kpi-label">Actual</span>
+          <span class="kpi-value" [style.color]="currentMonthActual >= currentMonthExpected ? '#4caf50' : '#f59e0b'">₹{{ currentMonthActual | number:'1.2-2' }}</span>
         </div>
       </div>
-      <div class="kpi-card">
-        <div class="kpi-header">{{ getMonthLabel(1) }}</div>
-        <div class="kpi-row">
-          <div class="kpi-item">
-            <span class="kpi-label">Expected</span>
-            <span class="kpi-value">₹{{ nextMonthExpected | number:'1.2-2' }}</span>
-          </div>
-          <div class="kpi-item">
-            <span class="kpi-label">Actual</span>
-            <span class="kpi-value" [style.color]="nextMonthActual >= nextMonthExpected ? '#4caf50' : '#f59e0b'">₹{{ nextMonthActual | number:'1.2-2' }}</span>
-          </div>
+    </div>
+    <div class="kpi-card kpi-next">
+      <span class="kpi-badge kpi-badge-next">Next</span>
+      <div class="kpi-header">{{ getMonthLabel(1) }}</div>
+      <div class="kpi-row">
+        <div class="kpi-item">
+          <span class="kpi-label">Expected</span>
+          <span class="kpi-value">₹{{ nextMonthExpected | number:'1.2-2' }}</span>
+        </div>
+        <div class="kpi-item">
+          <span class="kpi-label">Actual</span>
+          <span class="kpi-value" [style.color]="nextMonthActual >= nextMonthExpected ? '#4caf50' : '#f59e0b'">₹{{ nextMonthActual | number:'1.2-2' }}</span>
         </div>
       </div>
     </div>

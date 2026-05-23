@@ -1,0 +1,27 @@
+<div class="login-container">
+  <div class="login-card">
+    <div class="login-header">
+      <h1>Investment Tracker</h1>
+      <p>Secure Login Required</p>
+    </div>
+
+    <div class="login-content">
+      <div *ngIf="error" class="error-message">
+        <strong>❌ Error:</strong> {{ error }}
+      </div>
+
+      <div class="login-form">
+        <div id="google-signin-button" class="google-button-container"></div>
+      </div>
+
+      <div class="loading" *ngIf="loading">
+        <div class="spinner"></div>
+        <p>Signing in...</p>
+      </div>
+    </div>
+
+    <div class="login-footer">
+      <p>Only authorized users can access this application</p>
+    </div>
+  </div>
+</div>

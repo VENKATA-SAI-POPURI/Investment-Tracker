@@ -1,8 +1,9 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { Subscription } from 'rxjs';
 import { InvestmentService } from '../../services/investment.service';
+import { UiActionService } from '../../services/ui-action.service';
 import { CommodityEntry } from '../../models/investment.model';
 
 function getCurrentFY(): string {
@@ -28,11 +29,11 @@ interface CommodityHoldingRow {
 @Component({
   selector: 'app-commodity',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule],
   templateUrl: './commodity.component.html',
   styleUrl: './commodity.component.scss'
 })
-export class CommodityComponent implements OnInit {
+export class CommodityComponent implements OnInit, OnDestroy {
   allEntries: CommodityEntry[] = [];
   entries: CommodityEntry[] = [];
   loading = true;
@@ -190,11 +191,16 @@ export class CommodityComponent implements OnInit {
     };
   }
 
-  constructor(private investmentService: InvestmentService) {}
+  private addSub?: Subscription;
+
+  constructor(private investmentService: InvestmentService, private uiActionService: UiActionService) {}
 
   ngOnInit(): void {
+    this.addSub = this.uiActionService.addEntry.subscribe(() => this.openAddForm());
     this.loadEntries();
   }
+
+  ngOnDestroy(): void { this.addSub?.unsubscribe(); }
 
   emptyForm(): CommodityEntry {
     return {
@@ -304,12 +310,31 @@ export class CommodityComponent implements OnInit {
     this.submitting = true;
     if (this.editingId) {
       this.investmentService.updateCommodity(this.editingId, this.form).subscribe({
-        next: () => { this.submitting = false; this.toast('Entry updated successfully', 'success'); this.showForm = false; this.editingId = null; this.loadEntries(); },
+        next: () => {
+          const idx = this.allEntries.findIndex(e => e.id === this.editingId!);
+          if (idx >= 0) this.allEntries[idx] = { ...this.form, id: this.editingId! };
+          this.applyFilter();
+          this.submitting = false; this.toast('Entry updated successfully', 'success'); this.showForm = false; this.editingId = null;
+        },
         error: () => { this.submitting = false; this.toast('Failed to update entry', 'error'); }
       });
     } else {
       this.investmentService.addCommodity(this.form).subscribe({
-        next: (res) => { this.submitting = false; this.toast(res.upserted ? 'Existing entry updated (values added)' : 'Entry added successfully', 'success'); this.showForm = false; this.loadEntries(); },
+        next: (res) => {
+          if (res.upserted) {
+            const existing = this.allEntries.find(e => e.id === res.id);
+            if (existing) {
+              existing.buy_quantity = (existing.buy_quantity || 0) + (this.form.buy_quantity || 0);
+              existing.buy_value = (existing.buy_value || 0) + (this.form.buy_value || 0);
+              existing.sell_quantity = (existing.sell_quantity || 0) + (this.form.sell_quantity || 0);
+              existing.sell_value = (existing.sell_value || 0) + (this.form.sell_value || 0);
+            }
+          } else {
+            this.allEntries.push({ ...this.form, id: res.id });
+          }
+          this.applyFilter();
+          this.submitting = false; this.toast(res.upserted ? 'Existing entry updated (values added)' : 'Entry added successfully', 'success'); this.showForm = false;
+        },
         error: () => { this.submitting = false; this.toast('Failed to add entry', 'error'); }
       });
     }
@@ -319,7 +344,11 @@ export class CommodityComponent implements OnInit {
     if (confirm('Are you sure you want to delete this entry?')) {
       this.deleting = true;
       this.investmentService.deleteCommodity(id).subscribe({
-        next: () => { this.deleting = false; this.toast('Entry deleted successfully', 'success'); this.loadEntries(); },
+        next: () => {
+          this.allEntries = this.allEntries.filter(e => e.id !== id);
+          this.applyFilter();
+          this.deleting = false; this.toast('Entry deleted successfully', 'success');
+        },
         error: () => { this.deleting = false; this.toast('Failed to delete entry', 'error'); }
       });
     }

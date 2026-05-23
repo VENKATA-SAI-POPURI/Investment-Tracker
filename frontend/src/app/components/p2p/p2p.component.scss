@@ -1,15 +1,44 @@
 @use '../shared';
 
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+:host([hidden]) {
+  display: none !important;
+}
+
+.page {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 1rem 1.5rem;
+}
+
+.table-wrapper {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  width: 100%;
+}
 .kpi-tiers-row {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 5fr 3fr 4fr;
   gap: 0.75rem;
   margin-bottom: 1rem;
 }
 
 .kpi-tier {
-  background: #1a1a2e;
-  border: 1px solid #2d2d3d;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.12) 0%, rgba(118, 75, 162, 0.12) 100%);
+  border: 1px solid rgba(102, 126, 234, 0.35);
+  border-top: 3px solid #667eea;
   border-radius: 10px;
   padding: 0.75rem;
 }
@@ -18,7 +47,11 @@
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #64748b;
+  font-weight: 700;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
   margin: 0 0 0.5rem 0.25rem;
 }
 
@@ -34,14 +67,16 @@
   justify-content: center;
   gap: 0.2rem;
   padding: 0.5rem 0.75rem;
-  background: #252536;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(102, 126, 234, 0.2);
   border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
 
   .kpi-label {
     font-size: 0.65rem;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    color: #94a3b8;
+    color: #64748b;
     white-space: nowrap;
   }
 
@@ -49,7 +84,15 @@
     font-size: 0.95rem;
     font-weight: 600;
     white-space: nowrap;
+    color: #1e293b;
   }
+}
+
+:host-context(body.dark) .kpi-card-mini {
+  background: rgba(255, 255, 255, 0.07);
+
+  .kpi-label { color: #94a3b8; }
+  .kpi-value  { color: #e2e8f0; }
 }
 
 @media (max-width: 768px) {
@@ -73,13 +116,13 @@
   transition: all 0.2s;
 
   &.active {
-    background: var(--accent, #3b82f6);
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: #fff;
-    border-color: var(--accent, #3b82f6);
+    border-color: #667eea;
   }
 
   &:hover:not(.active) {
-    border-color: var(--accent, #3b82f6);
+    border-color: #667eea;
     color: var(--text-heading, #f1f5f9);
   }
 }
@@ -147,8 +190,8 @@
 
 .escrow-preview {
   margin-top: 1rem;
-  background: #1a1a2e;
-  border: 1px solid #2d2d3d;
+  background: var(--bg-card, #1e293b);
+  border: 1px solid var(--border-color, #334155);
   border-radius: 10px;
   padding: 0.85rem 1rem;
   font-size: 0.85rem;
@@ -182,7 +225,7 @@
   }
 
   .escrow-preview-divider {
-    border-top: 1px solid #2d2d3d;
+    border-top: 1px solid var(--border-color, #334155);
     margin: 0.4rem 0;
   }
 
@@ -264,16 +307,10 @@ tr.overdue {
 // ── Monthly Inflow KPIs ──
 .monthly-row {
   display: grid;
-  grid-template-columns: 3fr 2fr;
+  grid-template-columns: 1fr 1fr 1fr 2fr;
   gap: 1rem;
   margin-bottom: 1.5rem;
   align-items: stretch;
-}
-
-.monthly-inflow-kpis {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1rem;
 }
 
 .kpi-card {
@@ -284,8 +321,21 @@ tr.overdue {
   transition: transform 0.2s;
 
   &.kpi-current {
-    border-color: var(--accent, #3b82f6);
-    box-shadow: 0 0 0 1px var(--accent, #3b82f6), 0 4px 12px rgba(59, 130, 246, 0.15);
+    border-color: #667eea;
+    background: rgba(102, 126, 234, 0.06);
+    position: relative;
+  }
+
+  &.kpi-prev {
+    border-color: #64748b;
+    background: rgba(100, 116, 139, 0.06);
+    position: relative;
+  }
+
+  &.kpi-next {
+    border-color: #0ea5e9;
+    background: rgba(14, 165, 233, 0.06);
+    position: relative;
   }
 }
 
@@ -302,12 +352,25 @@ tr.overdue {
 .kpi-badge {
   font-size: 0.65rem;
   font-weight: 600;
-  background: var(--accent, #3b82f6);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: #fff;
   padding: 0.15rem 0.5rem;
   border-radius: 10px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+
+  &.kpi-badge-prev {
+    background: linear-gradient(135deg, #475569 0%, #64748b 100%);
+  }
+
+  &.kpi-badge-next {
+    background: linear-gradient(135deg, #0284c7 0%, #0ea5e9 100%);
+  }
 }
 
 .kpi-row {
@@ -350,7 +413,7 @@ tr.overdue {
   }
 
   .platform-amount {
-    color: var(--accent, #3b82f6);
+    color: #667eea;
     font-weight: 600;
   }
 
@@ -368,8 +431,8 @@ tr.overdue {
 
 // Monthly Return % trend
 .return-trend-container {
-  background: #1a1a2e;
-  border: 1px solid #2d2d3d;
+  background: var(--bg-card, #1e293b);
+  border: 1px solid var(--border-color, #334155);
   border-radius: 10px;
   padding: 0.75rem 1rem;
   display: flex;
@@ -415,7 +478,7 @@ tr.overdue {
     .trend-divider {
       width: 1px;
       height: 60px;
-      background: #2d2d3d;
+      background: var(--border-color, #334155);
       align-self: flex-end;
       flex-shrink: 0;
     }

@@ -1,18 +1,19 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { Subscription } from 'rxjs';
 import { InvestmentService } from '../../services/investment.service';
+import { UiActionService } from '../../services/ui-action.service';
 import { ForexEntry, EquityEntry } from '../../models/investment.model';
 
 @Component({
   selector: 'app-forex',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule],
   templateUrl: './forex.component.html',
   styleUrl: './forex.component.scss'
 })
-export class ForexComponent implements OnInit {
+export class ForexComponent implements OnInit, OnDestroy {
   allEntries: ForexEntry[] = [];
   entries: ForexEntry[] = [];
   equityData: EquityEntry[] = [];
@@ -28,15 +29,20 @@ export class ForexComponent implements OnInit {
 
   form: ForexEntry = this.emptyForm();
 
-  constructor(private investmentService: InvestmentService) {}
+  private addSub?: Subscription;
+
+  constructor(private investmentService: InvestmentService, private uiActionService: UiActionService) {}
 
   ngOnInit(): void {
+    this.addSub = this.uiActionService.addEntry.subscribe(() => this.openAddForm());
     this.loadEntries();
     this.investmentService.getEquity().subscribe({
       next: (data) => this.equityData = data,
       error: () => {}
     });
   }
+
+  ngOnDestroy(): void { this.addSub?.unsubscribe(); }
 
   emptyForm(): ForexEntry {
     return {
@@ -253,21 +259,24 @@ export class ForexComponent implements OnInit {
     if (this.editingId) {
       this.investmentService.updateForex(this.editingId, this.form).subscribe({
         next: () => {
+          const idx = this.allEntries.findIndex(e => e.id === this.editingId!);
+          if (idx >= 0) this.allEntries[idx] = { ...this.form, id: this.editingId! };
+          this.applyFilter();
           this.submitting = false;
           this.toast('Entry updated', 'success');
           this.showForm = false;
           this.editingId = null;
-          this.loadEntries();
         },
         error: () => { this.submitting = false; this.toast('Failed to update', 'error'); }
       });
     } else {
       this.investmentService.addForex(this.form).subscribe({
-        next: () => {
+        next: (res) => {
+          this.allEntries.push({ ...this.form, id: res.id });
+          this.applyFilter();
           this.submitting = false;
           this.toast('Entry added', 'success');
           this.showForm = false;
-          this.loadEntries();
         },
         error: () => { this.submitting = false; this.toast('Failed to add', 'error'); }
       });
@@ -279,9 +288,10 @@ export class ForexComponent implements OnInit {
     this.deleting = true;
     this.investmentService.deleteForex(id).subscribe({
       next: () => {
+        this.allEntries = this.allEntries.filter(e => e.id !== id);
+        this.applyFilter();
         this.deleting = false;
         this.toast('Entry deleted', 'success');
-        this.loadEntries();
       },
       error: () => { this.deleting = false; this.toast('Failed to delete', 'error'); }
     });

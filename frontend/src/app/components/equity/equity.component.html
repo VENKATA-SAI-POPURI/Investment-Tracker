@@ -1,12 +1,4 @@
 <div class="page">
-  <div class="page-header">
-    <div>
-      <a routerLink="/" class="back-link">← Dashboard</a>
-      <h1>Equity Investments</h1>
-    </div>
-    <button class="btn btn-primary" (click)="openAddForm()">+ Add Entry</button>
-  </div>
-
   <!-- Market Allocation -->
   <div class="allocation-card" *ngIf="!loading && totalNetINR > 0">
     <div style="display:flex;justify-content:space-between;align-items:baseline;">
@@ -14,16 +6,16 @@
       <span class="allocation-total">₹{{ totalNetINR | number:'1.0-0' }} &nbsp;·&nbsp; {{ uniqueStocksCount }} stocks</span>
     </div>
     <div class="allocation-bar">
-      <div class="bar-segment bar-india" [style.width.%]="indiaPct" [title]="'India ' + (indiaPct | number:'1.1-1') + '%'">
-        <span *ngIf="indiaPct > 8">🇮🇳 {{ indiaPct | number:'1.0-0' }}%</span>
+      <div class="bar-segment bar-india" [style.width.%]="indiaPct"
+           [attr.data-tooltip]="'🇮🇳 India  ₹' + (indiaNetINR | number:'1.0-0') + '  (' + (indiaPct | number:'1.0-0') + '%)'"
+           *ngIf="indiaPct > 0">
+        <span class="seg-label" *ngIf="indiaPct > 8">🇮🇳 India - {{ indiaPct | number:'1.0-0' }}%</span>
       </div>
-      <div class="bar-segment bar-usa" [style.width.%]="usaPct" [title]="'USA ' + (usaPct | number:'1.1-1') + '%'">
-        <span *ngIf="usaPct > 8">🇺🇸 {{ usaPct | number:'1.0-0' }}%</span>
+      <div class="bar-segment bar-usa" [style.width.%]="usaPct"
+           [attr.data-tooltip]="'🇺🇸 USA  $' + (usaNetUSD | number:'1.2-2') + '  ·  ₹' + (usaNetINR | number:'1.0-0') + '  (' + (usaPct | number:'1.0-0') + '%)'"
+           *ngIf="usaPct > 0">
+        <span class="seg-label" *ngIf="usaPct > 8">🇺🇸 USA - {{ usaPct | number:'1.0-0' }}%</span>
       </div>
-    </div>
-    <div class="allocation-legend">
-      <span class="legend-india">🇮🇳 India &nbsp;₹{{ indiaNetINR | number:'1.0-0' }}&nbsp;<span class="legend-pct">({{ indiaPct | number:'1.1-1' }}%)</span></span>
-      <span class="legend-usa">🇺🇸 USA &nbsp;${{ usaNetUSD | number:'1.2-2' }} · ₹{{ usaNetINR | number:'1.0-0' }}&nbsp;<span class="legend-pct">({{ usaPct | number:'1.1-1' }}%)</span></span>
     </div>
   </div>
 

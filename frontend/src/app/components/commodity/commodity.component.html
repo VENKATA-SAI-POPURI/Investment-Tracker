@@ -1,12 +1,4 @@
 <div class="page">
-  <div class="page-header">
-    <div>
-      <a routerLink="/" class="back-link">← Dashboard</a>
-      <h1>Commodity Investments</h1>
-    </div>
-    <button class="btn btn-primary" (click)="openAddForm()">+ Add Entry</button>
-  </div>
-
   <!-- Allocation Card -->
   <div class="allocation-card" *ngIf="!loading && allEntries.length > 0">
     <div style="display:flex;justify-content:space-between;align-items:baseline;">
@@ -16,14 +8,13 @@
     <div class="allocation-bar">
       <div class="bar-segment" *ngFor="let c of commodityTotals"
            [style.width]="c.pct + '%'"
-           [style.background]="c.color">
-        {{ c.pct > 8 ? c.commodity : '' }}
+           [style.borderColor]="c.color"
+           [style.color]="c.color"
+           [style.background]="c.color + '14'"
+           [style.boxShadow]="'0 0 10px ' + c.color + '60'"
+           [attr.data-tooltip]="c.commodity + '  ₹' + (c.value | number:'1.0-0')">
+        <span *ngIf="c.pct > 8">{{ c.commodity }} - {{ c.pct }}%</span>
       </div>
-    </div>
-    <div class="allocation-legend">
-      <span *ngFor="let c of commodityTotals" [style.color]="c.color">
-        {{ c.commodity }} <span class="legend-pct">{{ c.pct }}%</span>
-      </span>
     </div>
   </div>
 

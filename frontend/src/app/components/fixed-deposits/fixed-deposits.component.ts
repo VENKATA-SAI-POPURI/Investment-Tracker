@@ -1,8 +1,9 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { Subscription } from 'rxjs';
 import { InvestmentService } from '../../services/investment.service';
+import { UiActionService } from '../../services/ui-action.service';
 import { FixedDepositEntry } from '../../models/investment.model';
 
 function getCurrentFY(): string {
@@ -20,11 +21,11 @@ function getFYOptions(): string[] {
 @Component({
   selector: 'app-fixed-deposits',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule],
   templateUrl: './fixed-deposits.component.html',
   styleUrl: './fixed-deposits.component.scss'
 })
-export class FixedDepositsComponent implements OnInit {
+export class FixedDepositsComponent implements OnInit, OnDestroy {
   entries: FixedDepositEntry[] = [];
   allEntries: FixedDepositEntry[] = [];
   loading = true;
@@ -44,9 +45,16 @@ export class FixedDepositsComponent implements OnInit {
     return [...new Set(this.allEntries.map(e => e.bank_name).filter(Boolean))];
   }
 
-  constructor(private investmentService: InvestmentService) {}
+  private addSub?: Subscription;
 
-  ngOnInit(): void { this.loadEntries(); }
+  constructor(private investmentService: InvestmentService, private uiActionService: UiActionService) {}
+
+  ngOnInit(): void {
+    this.addSub = this.uiActionService.addEntry.subscribe(() => this.openAddForm());
+    this.loadEntries();
+  }
+
+  ngOnDestroy(): void { this.addSub?.unsubscribe(); }
 
   emptyForm(): FixedDepositEntry {
     return {
@@ -125,12 +133,21 @@ export class FixedDepositsComponent implements OnInit {
     this.submitting = true;
     if (this.editingId) {
       this.investmentService.updateFixedDeposit(this.editingId, this.form).subscribe({
-        next: () => { this.submitting = false; this.toast('Entry updated successfully', 'success'); this.showForm = false; this.editingId = null; this.loadEntries(); },
+        next: () => {
+          const idx = this.allEntries.findIndex(e => e.id === this.editingId!);
+          if (idx >= 0) this.allEntries[idx] = { ...this.form, id: this.editingId! };
+          this.applyFilter();
+          this.submitting = false; this.toast('Entry updated successfully', 'success'); this.showForm = false; this.editingId = null;
+        },
         error: () => { this.submitting = false; this.toast('Failed to update entry', 'error'); }
       });
     } else {
       this.investmentService.addFixedDeposit(this.form).subscribe({
-        next: (res) => { this.submitting = false; this.toast(res.upserted ? 'Existing entry updated (values added)' : 'Entry added successfully', 'success'); this.showForm = false; this.loadEntries(); },
+        next: (res) => {
+          this.allEntries.push({ ...this.form, id: res.id });
+          this.applyFilter();
+          this.submitting = false; this.toast(res.upserted ? 'Existing entry updated (values added)' : 'Entry added successfully', 'success'); this.showForm = false;
+        },
         error: () => { this.submitting = false; this.toast('Failed to add entry', 'error'); }
       });
     }
@@ -140,7 +157,11 @@ export class FixedDepositsComponent implements OnInit {
     if (confirm('Are you sure you want to delete this entry?')) {
       this.deleting = true;
       this.investmentService.deleteFixedDeposit(id).subscribe({
-        next: () => { this.deleting = false; this.toast('Entry deleted successfully', 'success'); this.loadEntries(); },
+        next: () => {
+          this.allEntries = this.allEntries.filter(e => e.id !== id);
+          this.applyFilter();
+          this.deleting = false; this.toast('Entry deleted successfully', 'success');
+        },
         error: () => { this.deleting = false; this.toast('Failed to delete entry', 'error'); }
       });
     }

@@ -178,6 +178,27 @@ export class InvestmentService {
     return this.http.delete(`${this.baseUrl}/forex/${id}`).pipe(tap(() => this.invalidate('forex')));
   }
 
+  // ── Capital Flows ──
+  getCapitalFlows(): Observable<any[]> {
+    return this.cached<any[]>('capital-flows', `${this.baseUrl}/capital-flows`);
+  }
+
+  addCapitalFlow(entry: any): Observable<any> {
+    return this.http.post(`${this.baseUrl}/capital-flows`, entry).pipe(tap(() => this.invalidate('capital-flows')));
+  }
+
+  updateCapitalFlow(id: number, entry: any): Observable<any> {
+    return this.http.put(`${this.baseUrl}/capital-flows/${id}`, entry).pipe(tap(() => this.invalidate('capital-flows')));
+  }
+
+  deleteCapitalFlow(id: number): Observable<any> {
+    return this.http.delete(`${this.baseUrl}/capital-flows/${id}`).pipe(tap(() => this.invalidate('capital-flows')));
+  }
+
+  getCapitalFlowsSummary(): Observable<{ total_deposits: number; total_withdrawals: number; actual_investment: number }> {
+    return this.http.get<{ total_deposits: number; total_withdrawals: number; actual_investment: number }>(`${this.baseUrl}/capital-flows/summary`);
+  }
+
   // ── AI Analysis ──
   aiCache: { text: string; html: string; time: Date } | null = null;
   chatHistory: { role: 'user' | 'assistant'; content: string; html?: string; time: Date }[] = [];

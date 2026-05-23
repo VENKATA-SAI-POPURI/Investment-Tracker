@@ -1,9 +1,9 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, Subscription } from 'rxjs';
 import { InvestmentService } from '../../services/investment.service';
+import { UiActionService } from '../../services/ui-action.service';
 import { EquityEntry, ForexEntry } from '../../models/investment.model';
 
 
@@ -33,16 +33,17 @@ interface HoldingRow {
 @Component({
   selector: 'app-equity',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule],
   templateUrl: './equity.component.html',
   styleUrl: './equity.component.scss'
 })
-export class EquityComponent implements OnInit {
+export class EquityComponent implements OnInit, OnDestroy {
   allEntries: EquityEntry[] = [];
   entries: EquityEntry[] = [];
   forexEntries: ForexEntry[] = [];
   loading = true;
   showForm = false;
+
   submitting = false;
   deleting = false;
   editingId: number | null = null;
@@ -218,12 +219,17 @@ export class EquityComponent implements OnInit {
     }).sort((a, b) => b.netValue - a.netValue);
   }
 
-  constructor(private investmentService: InvestmentService) {}
+  private addSub?: Subscription;
+
+  constructor(private investmentService: InvestmentService, private uiActionService: UiActionService) {}
 
   ngOnInit(): void {
+    this.addSub = this.uiActionService.addEntry.subscribe(() => this.openAddForm());
     this.loadForexData();
     this.loadEntries();
   }
+
+  ngOnDestroy(): void { this.addSub?.unsubscribe(); }
 
   loadForexData(): void {
     this.investmentService.getForex().subscribe({
@@ -455,21 +461,24 @@ export class EquityComponent implements OnInit {
     if (this.editingId) {
       this.investmentService.updateEquity(this.editingId, formToSave).subscribe({
         next: () => {
+          const idx = this.allEntries.findIndex(e => e.id === this.editingId!);
+          if (idx >= 0) this.allEntries[idx] = { ...formToSave, id: this.editingId! };
+          this.applyFilter();
           this.submitting = false;
           this.toast('Entry updated successfully', 'success');
           this.showForm = false;
           this.editingId = null;
-          this.loadEntries();
         },
         error: () => { this.submitting = false; this.toast('Failed to update entry', 'error'); }
       });
     } else {
       this.investmentService.addEquity(formToSave).subscribe({
-        next: () => {
+        next: (res) => {
+          this.allEntries.push({ ...formToSave, id: res.id });
+          this.applyFilter();
           this.submitting = false;
           this.toast('Entry added successfully', 'success');
           this.showForm = false;
-          this.loadEntries();
         },
         error: () => { this.submitting = false; this.toast('Failed to add entry', 'error'); }
       });
@@ -481,9 +490,10 @@ export class EquityComponent implements OnInit {
       this.deleting = true;
       this.investmentService.deleteEquity(id).subscribe({
         next: () => {
+          this.allEntries = this.allEntries.filter(e => e.id !== id);
+          this.applyFilter();
           this.deleting = false;
           this.toast('Entry deleted successfully', 'success');
-          this.loadEntries();
         },
         error: () => { this.deleting = false; this.toast('Failed to delete entry', 'error'); }
       });

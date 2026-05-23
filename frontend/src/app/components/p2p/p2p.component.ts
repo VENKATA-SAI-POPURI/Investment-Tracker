@@ -1,18 +1,19 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { Subscription } from 'rxjs';
 import { InvestmentService } from '../../services/investment.service';
+import { UiActionService } from '../../services/ui-action.service';
 import { P2PEntry, P2PRepayment, P2PEscrow } from '../../models/investment.model';
 
 @Component({
   selector: 'app-p2p',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule],
   templateUrl: './p2p.component.html',
   styleUrl: './p2p.component.scss'
 })
-export class P2PComponent implements OnInit {
+export class P2PComponent implements OnInit, OnDestroy {
   entries: P2PEntry[] = [];
   allEntries: P2PEntry[] = [];
   repayments: P2PRepayment[] = [];
@@ -42,9 +43,16 @@ export class P2PComponent implements OnInit {
   repaymentForm: P2PRepayment = this.emptyRepaymentForm();
   escrowForm: P2PEscrow = this.emptyEscrowForm();
 
-  constructor(private investmentService: InvestmentService) {}
+  private addSub?: Subscription;
 
-  ngOnInit(): void { this.loadData(); }
+  constructor(private investmentService: InvestmentService, private uiActionService: UiActionService) {}
+
+  ngOnInit(): void {
+    this.addSub = this.uiActionService.addEntry.subscribe(() => this.openAddForm());
+    this.loadData();
+  }
+
+  ngOnDestroy(): void { this.addSub?.unsubscribe(); }
 
   emptyForm(): P2PEntry {
     return {
@@ -727,12 +735,21 @@ export class P2PComponent implements OnInit {
     this.submitting = true;
     if (this.editingId) {
       this.investmentService.updateP2P(this.editingId, this.form).subscribe({
-        next: () => { this.submitting = false; this.toast('Lending updated', 'success'); this.showForm = false; this.editingId = null; this.loadData(); },
+        next: () => {
+          const idx = this.allEntries.findIndex(e => e.id === this.editingId!);
+          if (idx >= 0) this.allEntries[idx] = { ...this.form, id: this.editingId! };
+          this.applyFilter();
+          this.submitting = false; this.toast('Lending updated', 'success'); this.showForm = false; this.editingId = null;
+        },
         error: () => { this.submitting = false; this.toast('Failed to update', 'error'); }
       });
     } else {
       this.investmentService.addP2P(this.form).subscribe({
-        next: () => { this.submitting = false; this.toast('Lending added', 'success'); this.showForm = false; this.loadData(); },
+        next: (res) => {
+          this.allEntries.push({ ...this.form, id: res.id });
+          this.applyFilter();
+          this.submitting = false; this.toast('Lending added', 'success'); this.showForm = false;
+        },
         error: () => { this.submitting = false; this.toast('Failed to add', 'error'); }
       });
     }
@@ -742,7 +759,18 @@ export class P2PComponent implements OnInit {
     if (confirm('Delete this lending and all its repayments?')) {
       this.deleting = true;
       this.investmentService.deleteP2P(id).subscribe({
-        next: () => { this.deleting = false; this.toast('Lending deleted', 'success'); this.loadData(); },
+        next: () => {
+          const entry = this.allEntries.find(e => e.id === id);
+          if (entry) {
+            this.repayments = this.repayments.filter(r => r.lending_id !== entry.lending_id);
+            this.escrowTransactions = this.escrowTransactions.filter(t =>
+              !t.remarks?.startsWith(`Auto: ${entry.lending_id}`)
+            );
+          }
+          this.allEntries = this.allEntries.filter(e => e.id !== id);
+          this.applyFilter();
+          this.deleting = false; this.toast('Lending deleted', 'success');
+        },
         error: () => { this.deleting = false; this.toast('Failed to delete', 'error'); }
       });
     }
@@ -804,8 +832,16 @@ export class P2PComponent implements OnInit {
       this.repaymentForm.remarks = `Final Settlement (Principal: ₹${pending.toFixed(2)}, Interest: ₹${(this.repaymentForm.amount - pending).toFixed(2)})`;
     }
 
-    const afterSave = () => {
-      // Auto-post full repayment as escrow withdrawal (entire repayment goes to bank, not escrow)
+    const afterSave = (savedRepaymentId?: number) => {
+      // Update local repayments array
+      if (this.editingRepaymentId) {
+        const idx = this.repayments.findIndex(r => r.id === this.editingRepaymentId!);
+        if (idx >= 0) this.repayments[idx] = { ...this.repaymentForm, id: this.editingRepaymentId! };
+      } else if (savedRepaymentId !== undefined) {
+        this.repayments.push({ ...this.repaymentForm, id: savedRepaymentId });
+      }
+
+      // Auto-post full repayment as escrow withdrawal
       if (!this.editingRepaymentId && entry) {
         const fullAmount = this.repaymentForm.amount!;
         if (fullAmount > 0) {
@@ -816,7 +852,9 @@ export class P2PComponent implements OnInit {
             platform: entry.platform,
             remarks: `Auto: ${entry.lending_id} - ${entry.name}`
           };
-          this.investmentService.addP2PEscrow(escrowEntry).subscribe();
+          this.investmentService.addP2PEscrow(escrowEntry).subscribe({
+            next: (esc) => { this.escrowTransactions.push({ ...escrowEntry, id: esc.id }); this.applyFilter(); }
+          });
         }
       }
 
@@ -824,11 +862,16 @@ export class P2PComponent implements OnInit {
         // Auto-close the lending, update maturity_date to repayment date
         const updated = { ...entry, status: 'Closed', maturity_date: this.repaymentForm.date };
         this.investmentService.updateP2P(entry.id!, updated).subscribe({
-          next: () => { this.toast('Lending closed (full & final settlement)', 'success'); this.loadData(); },
-          error: () => this.loadData()
+          next: () => {
+            const idx = this.allEntries.findIndex(e => e.id === entry!.id);
+            if (idx >= 0) this.allEntries[idx] = updated;
+            this.applyFilter();
+            this.toast('Lending closed (full & final settlement)', 'success');
+          },
+          error: () => this.applyFilter()
         });
       } else {
-        this.loadData();
+        this.applyFilter();
         this.checkAutoClose(this.repaymentForm.lending_id);
       }
     };
@@ -841,7 +884,7 @@ export class P2PComponent implements OnInit {
       });
     } else {
       this.investmentService.addP2PRepayment(this.repaymentForm).subscribe({
-        next: () => { this.submittingRepayment = false; this.toast('Repayment recorded', 'success'); this.showRepaymentForm = false; afterSave(); },
+        next: (res) => { this.submittingRepayment = false; this.toast('Repayment recorded', 'success'); this.showRepaymentForm = false; afterSave(res.id); },
         error: () => { this.submittingRepayment = false; this.toast('Failed to add repayment', 'error'); }
       });
     }
@@ -855,6 +898,8 @@ export class P2PComponent implements OnInit {
         next: () => {
           this.deletingRepayment = false;
           this.toast('Repayment deleted', 'success');
+          // Remove from local repayments
+          this.repayments = this.repayments.filter(r => r.id !== id);
           // Clean up auto-created escrow entry for this repayment
           if (rep) {
             const entry = this.allEntries.find(e => e.lending_id === rep.lending_id);
@@ -865,24 +910,32 @@ export class P2PComponent implements OnInit {
               );
               if (matchingEscrow) {
                 this.investmentService.deleteP2PEscrow(matchingEscrow.id!).subscribe();
+                this.escrowTransactions = this.escrowTransactions.filter(t => t.id !== matchingEscrow.id);
               }
             }
           }
+          // Check if lending needs re-activation
           const lendingId = rep?.lending_id;
-          this.loadData(() => {
-            if (!lendingId) return;
+          if (lendingId) {
             const entry = this.allEntries.find(e => e.lending_id === lendingId);
             if (entry && entry.status === 'Closed') {
               const pending = this.getPendingAmount(entry);
               if (pending > 0) {
                 const updated = { ...entry, status: 'Active' };
                 this.investmentService.updateP2P(entry.id!, updated).subscribe({
-                  next: () => { this.toast('Lending re-activated (pending amount remaining)', 'success'); this.loadData(); },
-                  error: () => {}
+                  next: () => {
+                    const idx = this.allEntries.findIndex(e => e.lending_id === lendingId);
+                    if (idx >= 0) this.allEntries[idx] = updated;
+                    this.applyFilter();
+                    this.toast('Lending re-activated (pending amount remaining)', 'success');
+                  },
+                  error: () => this.applyFilter()
                 });
+                return;
               }
             }
-          });
+          }
+          this.applyFilter();
         },
         error: () => { this.deletingRepayment = false; this.toast('Failed to delete repayment', 'error'); }
       });
@@ -896,22 +949,23 @@ export class P2PComponent implements OnInit {
   }
 
   checkAutoClose(lendingId: string): void {
-    // Wait for loadData to complete, then check
-    setTimeout(() => {
-      const entry = this.allEntries.find(e => e.lending_id === lendingId);
-      if (!entry || entry.status === 'Closed' || entry.status === 'Defaulted') return;
-      const received = this.getTotalRepaid(lendingId);
-      if (received >= (entry.amount || 0)) {
-        // Auto-close, update maturity_date to last repayment date
-        const reps = this.getRepayments(lendingId);
-        const lastRepDate = reps.length > 0 ? reps[reps.length - 1].date : entry.maturity_date;
-        const updated = { ...entry, status: 'Closed', maturity_date: lastRepDate };
-        this.investmentService.updateP2P(entry.id!, updated).subscribe({
-          next: () => { this.toast('Lending auto-closed (fully repaid)', 'success'); this.loadData(); },
-          error: () => {}
-        });
-      }
-    }, 1000);
+    const entry = this.allEntries.find(e => e.lending_id === lendingId);
+    if (!entry || entry.status === 'Closed' || entry.status === 'Defaulted') return;
+    const received = this.getTotalRepaid(lendingId);
+    if (received >= (entry.amount || 0)) {
+      const reps = this.getRepayments(lendingId);
+      const lastRepDate = reps.length > 0 ? reps[reps.length - 1].date : entry.maturity_date;
+      const updated = { ...entry, status: 'Closed', maturity_date: lastRepDate };
+      this.investmentService.updateP2P(entry.id!, updated).subscribe({
+        next: () => {
+          const idx = this.allEntries.findIndex(e => e.lending_id === lendingId);
+          if (idx >= 0) this.allEntries[idx] = updated;
+          this.applyFilter();
+          this.toast('Lending auto-closed (fully repaid)', 'success');
+        },
+        error: () => {}
+      });
+    }
   }
 
   // ── Escrow ──
@@ -959,12 +1013,21 @@ export class P2PComponent implements OnInit {
     this.submittingEscrow = true;
     if (this.editingEscrowId) {
       this.investmentService.updateP2PEscrow(this.editingEscrowId, this.escrowForm).subscribe({
-        next: () => { this.submittingEscrow = false; this.toast('Transaction updated', 'success'); this.showEscrowForm = false; this.editingEscrowId = null; this.loadData(); },
+        next: () => {
+          const idx = this.escrowTransactions.findIndex(t => t.id === this.editingEscrowId!);
+          if (idx >= 0) this.escrowTransactions[idx] = { ...this.escrowForm, id: this.editingEscrowId! };
+          this.applyFilter();
+          this.submittingEscrow = false; this.toast('Transaction updated', 'success'); this.showEscrowForm = false; this.editingEscrowId = null;
+        },
         error: () => { this.submittingEscrow = false; this.toast('Failed to update', 'error'); }
       });
     } else {
       this.investmentService.addP2PEscrow(this.escrowForm).subscribe({
-        next: () => { this.submittingEscrow = false; this.toast('Transaction added', 'success'); this.showEscrowForm = false; this.loadData(); },
+        next: (res) => {
+          this.escrowTransactions.push({ ...this.escrowForm, id: res.id });
+          this.applyFilter();
+          this.submittingEscrow = false; this.toast('Transaction added', 'success'); this.showEscrowForm = false;
+        },
         error: () => { this.submittingEscrow = false; this.toast('Failed to add', 'error'); }
       });
     }
@@ -974,7 +1037,11 @@ export class P2PComponent implements OnInit {
     if (!confirm('Delete this escrow transaction?')) return;
     this.deletingEscrow = true;
     this.investmentService.deleteP2PEscrow(id).subscribe({
-      next: () => { this.deletingEscrow = false; this.toast('Transaction deleted', 'success'); this.loadData(); },
+      next: () => {
+        this.escrowTransactions = this.escrowTransactions.filter(t => t.id !== id);
+        this.applyFilter();
+        this.deletingEscrow = false; this.toast('Transaction deleted', 'success');
+      },
       error: () => { this.deletingEscrow = false; this.toast('Failed to delete', 'error'); }
     });
   }

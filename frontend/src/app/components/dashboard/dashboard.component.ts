@@ -1,9 +1,10 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ChangeDetectorRef, ViewEncapsulation, Input } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
-import { forkJoin } from 'rxjs';
+import { RouterLink, Router } from '@angular/router';
+import { forkJoin, Observable } from 'rxjs';
 import { InvestmentService } from '../../services/investment.service';
+import { AuthService, AuthUser } from '../../services/auth.service';
 import { Summary, EquityEntry, CommodityEntry, MutualFundEntry, P2PEntry, P2PRepayment, FixedDepositEntry, ForexEntry } from '../../models/investment.model';
 
 interface PieSlice {
@@ -59,9 +60,12 @@ const DEFAULT_TARGET_ALLOCATION: Record<string, number> = {
   standalone: true,
   imports: [CommonModule, RouterLink, FormsModule],
   templateUrl: './dashboard.component.html',
-  styleUrl: './dashboard.component.scss'
+  styleUrl: './dashboard.component.scss',
+  encapsulation: ViewEncapsulation.None
 })
 export class DashboardComponent implements OnInit {
+  @Input() view: 'home' | 'analysis' | 'chatbot' = 'home';
+
   summary: Summary = {};
   loading = true;
   refreshing = false;
@@ -84,11 +88,45 @@ export class DashboardComponent implements OnInit {
   p2pRepayments: P2PRepayment[] = [];
   fdData: FixedDepositEntry[] = [];
   forexData: ForexEntry[] = [];
+  capitalFlowsSummary: { total_deposits: number; total_withdrawals: number; actual_investment: number } | null = null;
+  capitalFlows: any[] = [];
   showForexPopup = false;
+  showCapitalFlowsForm = false;
+  
+  // Capital Flows form state
+  capitalFlowForm = {
+    date: new Date().toISOString().split('T')[0],
+    amount: '',
+    type: 'Deposit',
+    category: 'Equity/Commodity',
+    remarks: ''
+  };
+  
+  capitalFlowCategories = ['Equity/Commodity', 'Mutual Funds', 'P2P', 'Fixed Deposit', 'Others'];
+  capitalFlowTypes = ['Deposit', 'Withdrawal'];
 
   selectedCategory = 'Equity';
   selectedMetric = 'Current Holdings';
   selectedYear = 'All';
+  selectedSector: string | null = null;
+  selectedMarket: string | null = null;
+  selectedCapCategory: string | null = null;
+  
+  // Mutual Funds filters
+  selectedMFCategory: string | null = null;
+  selectedMFType: string | null = null;
+  
+  // Commodity filters
+  selectedCommodity: string | null = null;
+  
+  // P2P filters
+  selectedPlatform: string | null = null;
+  selectedP2PStatus: string | null = null;
+  
+  // FD filters
+  selectedBank: string | null = null;
+  
+  tooltip: { visible: boolean; text: string; x: number; y: number } = { visible: false, text: '', x: 0, y: 0 };
 
   metrics = ['Current Holdings', 'Total Investments', 'Net P&L'];
 
@@ -110,10 +148,19 @@ export class DashboardComponent implements OnInit {
   ];
 
   private systemDarkQuery = window.matchMedia('(prefers-color-scheme: dark)');
+  currentUser$: Observable<AuthUser | null>;
 
-  constructor(private investmentService: InvestmentService) {}
+  constructor(
+    private investmentService: InvestmentService,
+    private authService: AuthService,
+    private router: Router,
+    private cdr: ChangeDetectorRef
+  ) {
+    this.currentUser$ = this.authService.getUser$();
+  }
 
   ngOnInit(): void {
+    // Check localStorage first, then fall back to system preference
     const saved = localStorage.getItem('darkMode');
     if (saved !== null) {
       this.darkMode = saved === 'true';
@@ -122,6 +169,7 @@ export class DashboardComponent implements OnInit {
     }
     this.applyDarkMode();
 
+    // Listen for system preference changes only if no manual override
     this.systemDarkQuery.addEventListener('change', (e) => {
       if (localStorage.getItem('darkMode') === null) {
         this.darkMode = e.matches;
@@ -151,6 +199,11 @@ export class DashboardComponent implements OnInit {
     document.body.classList.toggle('light', !this.darkMode);
   }
 
+  logout(): void {
+    this.authService.logout();
+    this.router.navigate(['/login']);
+  }
+
   refreshData(): void {
     if (this.refreshing) return;
     this.investmentService.clearAllCache();
@@ -163,7 +216,9 @@ export class DashboardComponent implements OnInit {
       p2p: this.investmentService.getP2P(),
       p2pRep: this.investmentService.getP2PRepayments(),
       fd: this.investmentService.getFixedDeposits(),
-      forex: this.investmentService.getForex()
+      forex: this.investmentService.getForex(),
+      capitalFlows: this.investmentService.getCapitalFlowsSummary(),
+      capitalFlowsList: this.investmentService.getCapitalFlows()
     }).subscribe({
       next: (data) => {
         this.summary = data.summary;
@@ -174,6 +229,8 @@ export class DashboardComponent implements OnInit {
         this.p2pRepayments = data.p2pRep;
         this.fdData = data.fd;
         this.forexData = data.forex;
+        this.capitalFlowsSummary = data.capitalFlows;
+        this.capitalFlows = (data.capitalFlowsList || []).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         this.refreshing = false;
       },
       error: () => this.refreshing = false
@@ -190,7 +247,9 @@ export class DashboardComponent implements OnInit {
       p2p: this.investmentService.getP2P(),
       p2pRep: this.investmentService.getP2PRepayments(),
       fd: this.investmentService.getFixedDeposits(),
-      forex: this.investmentService.getForex()
+      forex: this.investmentService.getForex(),
+      capitalFlows: this.investmentService.getCapitalFlowsSummary(),
+      capitalFlowsList: this.investmentService.getCapitalFlows()
     }).subscribe({
       next: (data) => {
         this.summary = data.summary;
@@ -201,6 +260,8 @@ export class DashboardComponent implements OnInit {
         this.p2pRepayments = data.p2pRep;
         this.fdData = data.fd;
         this.forexData = data.forex;
+        this.capitalFlowsSummary = data.capitalFlows;
+        this.capitalFlows = (data.capitalFlowsList || []).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         this.loading = false;
       },
       error: () => this.loading = false
@@ -220,7 +281,111 @@ export class DashboardComponent implements OnInit {
   }
 
   selectYear(year: string): void {
-    this.selectedYear = year;
+    if (this.selectedYear === year) {
+      this.selectedYear = 'All';
+    } else {
+      this.selectedYear = year;
+    }
+    console.log('selectYear called with:', year, 'now selectedYear is:', this.selectedYear);
+  }
+
+  showTooltip(event: MouseEvent, text: string): void {
+    this.tooltip = { visible: true, text, x: event.clientX + 14, y: event.clientY - 40 };
+  }
+
+  moveTooltip(event: MouseEvent): void {
+    this.tooltip.x = event.clientX + 14;
+    this.tooltip.y = event.clientY - 40;
+  }
+
+  hideTooltip(): void {
+    this.tooltip.visible = false;
+  }
+
+  toggleSectorFilter(sector: string): void {
+    this.selectedSector = this.selectedSector === sector ? null : sector;
+    console.log('toggleSectorFilter called with:', sector, 'now selectedSector is:', this.selectedSector);
+  }
+
+  selectMarket(market: string): void {
+    this.selectedMarket = this.selectedMarket === market ? null : market;
+  }
+
+  selectCapCategory(cap: string): void {
+    this.selectedCapCategory = this.selectedCapCategory === cap ? null : cap;
+  }
+
+  clearFilters(): void {
+    this.selectedYear = 'All';
+    this.selectedSector = null;
+    this.selectedMarket = null;
+    this.selectedCapCategory = null;
+    this.selectedMFCategory = null;
+    this.selectedMFType = null;
+    this.selectedCommodity = null;
+    this.selectedPlatform = null;
+    this.selectedP2PStatus = null;
+    this.selectedBank = null;
+  }
+
+  fmtINR(val: number): string {
+    return '\u20B9' + Math.abs(Math.round(val)).toLocaleString('en-IN');
+  }
+
+  selectMFCategory(cat: string): void {
+    this.selectedMFCategory = this.selectedMFCategory === cat ? null : cat;
+  }
+
+  selectMFType(type: string): void {
+    this.selectedMFType = this.selectedMFType === type ? null : type;
+  }
+
+  selectCommodity(commodity: string): void {
+    this.selectedCommodity = this.selectedCommodity === commodity ? null : commodity;
+  }
+
+  selectPlatform(platform: string): void {
+    this.selectedPlatform = this.selectedPlatform === platform ? null : platform;
+  }
+
+  selectP2PStatus(status: string): void {
+    this.selectedP2PStatus = this.selectedP2PStatus === status ? null : status;
+  }
+
+  selectBank(bank: string): void {
+    this.selectedBank = this.selectedBank === bank ? null : bank;
+  }
+
+  trackByYear(index: number, item: any): string {
+    return item.year || index.toString();
+  }
+
+  trackBySector(index: number, item: any): string {
+    return item.sector || index.toString();
+  }
+
+  trackByMarketCap(index: number, item: any): string {
+    return item.cap || index.toString();
+  }
+
+  trackByMFCategory(index: number, item: any): string {
+    return item.cat || index.toString();
+  }
+
+  trackByMFType(index: number, item: any): string {
+    return item.type || index.toString();
+  }
+
+  trackByCommodity(index: number, item: any): string {
+    return item.commodity || index.toString();
+  }
+
+  trackByPlatform(index: number, item: any): string {
+    return item.platform || index.toString();
+  }
+
+  trackByP2PStatus(index: number, item: any): string {
+    return item.status || index.toString();
   }
 
   // ── Global KPIs ──
@@ -308,6 +473,14 @@ export class DashboardComponent implements OnInit {
   get netPnLPct(): number {
     const exitedValue = this.totalInvestment - this.currentInvestment;
     return exitedValue > 0 ? Math.round((this.netPnL / exitedValue) * 10000) / 100 : 0;
+  }
+
+  get actualInvestment(): number {
+    return this.capitalFlowsSummary?.actual_investment || 0;
+  }
+
+  get reinvestedProfit(): number {
+    return this.currentInvestment - this.actualInvestment;
   }
 
   // ── Equity FIFO holdings (per-stock cost of remaining lots, always from all data) ──
@@ -407,6 +580,123 @@ export class DashboardComponent implements OnInit {
     return { title: 'Category Allocation', total, slices, gradient };
   }
 
+  // ── Actual Investment Allocation by Category ──
+
+  get actualInvestmentAllocationPie(): PieChart {
+    const catData: { label: string; value: number }[] = [];
+
+    // Group capital flows by category and calculate net investment per category
+    const capitalFlowsByCategory: { [key: string]: { deposits: number; withdrawals: number } } = {};
+
+    const categoryMapping: { [key: string]: string } = {
+      'Equity/Commodity': 'Equity/Commodity',
+      'Mutual Funds': 'Mutual Funds',
+      'P2P': 'P2P',
+      'Fixed Deposit': 'Fixed Deposits',
+      'Others': 'Others'
+    };
+
+    // Initialize categories
+    Object.values(categoryMapping).forEach(cat => {
+      capitalFlowsByCategory[cat] = { deposits: 0, withdrawals: 0 };
+    });
+
+    // Sum deposits and withdrawals per category
+    (this.capitalFlows || []).forEach(flow => {
+      const category = categoryMapping[flow.category] || flow.category;
+      if (!capitalFlowsByCategory[category]) {
+        capitalFlowsByCategory[category] = { deposits: 0, withdrawals: 0 };
+      }
+      const amount = parseFloat(flow.amount) || 0;
+      if (flow.type === 'Deposit') {
+        capitalFlowsByCategory[category].deposits += amount;
+      } else if (flow.type === 'Withdrawal') {
+        capitalFlowsByCategory[category].withdrawals += amount;
+      }
+    });
+
+    // Calculate net investment per category
+    Object.entries(capitalFlowsByCategory).forEach(([category, data]) => {
+      const netInvestment = data.deposits - data.withdrawals;
+      if (netInvestment > 0) {
+        catData.push({ label: category, value: Math.round(netInvestment * 100) / 100 });
+      }
+    });
+
+    const total = catData.reduce((s, d) => s + d.value, 0);
+    const slices: PieSlice[] = catData.map((d, i) => ({
+      label: d.label,
+      value: d.value,
+      pct: total > 0 ? Math.round((d.value / total) * 1000) / 10 : 0,
+      color: PIE_COLORS[i % PIE_COLORS.length]
+    })).sort((a, b) => b.pct - a.pct);
+
+    let gradientParts: string[] = [];
+    let cumPct = 0;
+    slices.forEach(s => {
+      const start = cumPct;
+      cumPct += s.pct;
+      gradientParts.push(`${s.color} ${start}% ${cumPct}%`);
+    });
+    const gradient = slices.length > 0 ? `conic-gradient(${gradientParts.join(', ')})` : 'conic-gradient(#e2e8f0 0% 100%)';
+
+    return { title: 'Actual Investment Allocation', total, slices, gradient };
+  }
+
+  // ── Actual Investment Allocation - Horizontal Bar Chart ──
+
+  get actualInvestmentBars(): { label: string; value: number; pct: number; color: string }[] {
+    const catData: { label: string; value: number }[] = [];
+
+    // Group capital flows by category and calculate net investment per category
+    const categoryMapping: { [key: string]: string } = {
+      'Equity/Commodity': 'Equity/Commodity',
+      'Mutual Funds': 'Mutual Funds',
+      'P2P': 'P2P',
+      'Fixed Deposit': 'Fixed Deposits',
+      'Others': 'Others'
+    };
+
+    const capitalFlowsByCategory: { [key: string]: { deposits: number; withdrawals: number } } = {};
+    Object.values(categoryMapping).forEach(cat => {
+      capitalFlowsByCategory[cat] = { deposits: 0, withdrawals: 0 };
+    });
+
+    // Sum deposits and withdrawals per category
+    (this.capitalFlows || []).forEach(flow => {
+      const category = categoryMapping[flow.category] || flow.category;
+      if (!capitalFlowsByCategory[category]) {
+        capitalFlowsByCategory[category] = { deposits: 0, withdrawals: 0 };
+      }
+      const amount = parseFloat(flow.amount) || 0;
+      if (flow.type === 'Deposit') {
+        capitalFlowsByCategory[category].deposits += amount;
+      } else if (flow.type === 'Withdrawal') {
+        capitalFlowsByCategory[category].withdrawals += amount;
+      }
+    });
+
+    // Calculate net investment per category
+    Object.entries(capitalFlowsByCategory).forEach(([category, data]) => {
+      const netInvestment = data.deposits - data.withdrawals;
+      if (netInvestment > 0) {
+        catData.push({ label: category, value: Math.round(netInvestment * 100) / 100 });
+      }
+    });
+
+    const total = catData.reduce((s, d) => s + d.value, 0);
+    const colors = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981'];
+
+    return catData
+      .map((d, i) => ({
+        label: d.label,
+        value: d.value,
+        pct: total > 0 ? Math.round((d.value / total) * 1000) / 10 : 0,
+        color: colors[i % colors.length]
+      }))
+      .sort((a, b) => b.value - a.value);
+  }
+
   // ── Equity Analysis ──
 
   // Per-stock realized P&L helper: sell value − proportional buy cost.
@@ -464,9 +754,20 @@ export class DashboardComponent implements OnInit {
   }
 
   get equityFilteredEntries(): EquityEntry[] {
-    return this.selectedYear === 'All'
-      ? this.equityData
-      : this.equityData.filter(e => this.dateToFY(e.date) === this.selectedYear);
+    let filtered = this.equityData;
+    if (this.selectedYear !== 'All') {
+      filtered = filtered.filter(e => this.dateToFY(e.date) === this.selectedYear);
+    }
+    if (this.selectedMarket !== null) {
+      filtered = filtered.filter(e => e.market === this.selectedMarket);
+    }
+    if (this.selectedCapCategory !== null) {
+      filtered = filtered.filter(e => e.market_cap === this.selectedCapCategory);
+    }
+    if (this.selectedSector !== null) {
+      filtered = filtered.filter(e => e.sector === this.selectedSector);
+    }
+    return filtered;
   }
 
   get equityPnLDiverging(): { dimension: string; items: { label: string; pnl: number; barPct: number }[] }[] {
@@ -645,7 +946,17 @@ export class DashboardComponent implements OnInit {
   }
 
   get mfFilteredEntries(): MutualFundEntry[] {
-    return this.selectedYear === 'All' ? this.mfData : this.mfData.filter(e => e.year === this.selectedYear);
+    let filtered = this.mfData;
+    if (this.selectedYear !== 'All') {
+      filtered = filtered.filter(e => e.year === this.selectedYear);
+    }
+    if (this.selectedMFCategory !== null) {
+      filtered = filtered.filter(e => e.category === this.selectedMFCategory);
+    }
+    if (this.selectedMFType !== null) {
+      filtered = filtered.filter(e => e.fund_type === this.selectedMFType);
+    }
+    return filtered;
   }
 
   get mfCategorySplit(): { cat: string; value: number; pct: number; color: string }[] {
@@ -736,7 +1047,14 @@ export class DashboardComponent implements OnInit {
   }
 
   get commFilteredEntries(): CommodityEntry[] {
-    return this.selectedYear === 'All' ? this.commodityData : this.commodityData.filter(e => e.year === this.selectedYear);
+    let filtered = this.commodityData;
+    if (this.selectedYear !== 'All') {
+      filtered = filtered.filter(e => e.year === this.selectedYear);
+    }
+    if (this.selectedCommodity !== null) {
+      filtered = filtered.filter(e => e.commodity === this.selectedCommodity);
+    }
+    return filtered;
   }
 
   get commCommoditySplit(): { commodity: string; value: number; pct: number; color: string }[] {
@@ -806,8 +1124,17 @@ export class DashboardComponent implements OnInit {
   }
 
   get p2pFilteredEntries(): P2PEntry[] {
-    if (this.selectedYear === 'All') return this.p2pData;
-    return this.p2pData.filter(e => this.dateToFY(e.date) === this.selectedYear);
+    let filtered = this.p2pData;
+    if (this.selectedYear !== 'All') {
+      filtered = filtered.filter(e => this.dateToFY(e.date) === this.selectedYear);
+    }
+    if (this.selectedPlatform !== null) {
+      filtered = filtered.filter(e => e.platform === this.selectedPlatform);
+    }
+    if (this.selectedP2PStatus !== null) {
+      filtered = filtered.filter(e => e.status === this.selectedP2PStatus);
+    }
+    return filtered;
   }
 
   get p2pPlatformSplit(): { platform: string; value: number; pct: number; color: string }[] {
@@ -853,20 +1180,20 @@ export class DashboardComponent implements OnInit {
 
   getAllocationFlag(slice: PieSlice): string {
     const target = this.targetAllocation[slice.label];
-    if (target == null) return '';
-    const variance = Math.abs(slice.pct - target) / target * 100;
-    if (variance < 10) return '✔';
-    const diff = slice.pct - target;
-    return diff > 0 ? '▲' : '▼';
+    if (target == null || target === 0) return '';
+    const threshold = target * 0.1;
+    if (slice.pct > target + threshold) return '▲';
+    if (slice.pct < target - threshold) return '▼';
+    return '✔';
   }
 
   getAllocationFlagColor(slice: PieSlice): string {
     const target = this.targetAllocation[slice.label];
-    if (target == null) return 'inherit';
-    const variance = Math.abs(slice.pct - target) / target * 100;
-    if (variance < 10) return '#4caf50';
-    if (variance < 25) return '#f59e0b';
-    return '#ef4444';
+    if (target == null || target === 0) return 'inherit';
+    const threshold = target * 0.1;
+    if (slice.pct > target + threshold) return '#ef4444';
+    if (slice.pct < target - threshold) return '#f59e0b';
+    return '#4caf50';
   }
 
   selectCategory(key: string): void {
@@ -1074,6 +1401,86 @@ export class DashboardComponent implements OnInit {
 
   toggleForexPopup(): void {
     this.showForexPopup = !this.showForexPopup;
+  }
+
+  toggleCapitalFlowsForm(): void {
+    this.showCapitalFlowsForm = !this.showCapitalFlowsForm;
+    if (!this.showCapitalFlowsForm) {
+      this.resetCapitalFlowForm();
+    }
+  }
+
+  resetCapitalFlowForm(): void {
+    this.capitalFlowForm = {
+      date: new Date().toISOString().split('T')[0],
+      amount: '',
+      type: 'Deposit',
+      category: 'Equity/Commodity',
+      remarks: ''
+    };
+  }
+
+  submitCapitalFlow(): void {
+    if (!this.capitalFlowForm.date || !this.capitalFlowForm.amount) {
+      alert('Please fill in Date and Amount');
+      return;
+    }
+
+    const amount = parseFloat(this.capitalFlowForm.amount);
+    if (isNaN(amount) || amount <= 0) {
+      alert('Please enter a valid amount');
+      return;
+    }
+
+    const entry = {
+      date: this.capitalFlowForm.date,
+      amount: amount,
+      type: this.capitalFlowForm.type,
+      category: this.capitalFlowForm.category,
+      remarks: this.capitalFlowForm.remarks || ''
+    };
+
+    this.investmentService.addCapitalFlow(entry).subscribe({
+      next: (response: any) => {
+        // Add new entry to local data instead of full refresh
+        const newEntry = { ...entry, id: response.id };
+        this.capitalFlows = [newEntry, ...this.capitalFlows].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        
+        // Recalculate summary locally
+        const deposits = this.capitalFlows.filter(cf => cf.type === 'Deposit').reduce((sum, cf) => sum + cf.amount, 0);
+        const withdrawals = this.capitalFlows.filter(cf => cf.type === 'Withdrawal').reduce((sum, cf) => sum + cf.amount, 0);
+        this.capitalFlowsSummary = {
+          total_deposits: deposits,
+          total_withdrawals: withdrawals,
+          actual_investment: deposits - withdrawals
+        };
+        
+        this.toggleCapitalFlowsForm();
+      },
+      error: (e) => alert('Error adding capital flow: ' + e.message)
+    });
+  }
+
+  deleteCapitalFlow(id: number): void {
+    if (confirm('Are you sure you want to delete this entry?')) {
+      this.investmentService.deleteCapitalFlow(id).subscribe({
+        next: () => {
+          // Remove entry from local data instead of full refresh
+          const deletedEntry = this.capitalFlows.find(cf => cf.id === id);
+          this.capitalFlows = this.capitalFlows.filter(cf => cf.id !== id);
+          
+          // Recalculate summary locally
+          const deposits = this.capitalFlows.filter(cf => cf.type === 'Deposit').reduce((sum, cf) => sum + cf.amount, 0);
+          const withdrawals = this.capitalFlows.filter(cf => cf.type === 'Withdrawal').reduce((sum, cf) => sum + cf.amount, 0);
+          this.capitalFlowsSummary = {
+            total_deposits: deposits,
+            total_withdrawals: withdrawals,
+            actual_investment: deposits - withdrawals
+          };
+        },
+        error: (e) => alert('Error deleting entry: ' + e.message)
+      });
+    }
   }
 
   private getAvgDepositRate(tradeDate: string): number | null {

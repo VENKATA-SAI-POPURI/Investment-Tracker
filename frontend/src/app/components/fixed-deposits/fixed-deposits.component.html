@@ -1,12 +1,4 @@
 <div class="page">
-  <div class="page-header">
-    <div>
-      <a routerLink="/" class="back-link">← Dashboard</a>
-      <h1>Fixed Deposits</h1>
-    </div>
-    <button class="btn btn-primary" (click)="openAddForm()">+ Add Entry</button>
-  </div>
-
   <div class="filter-bar">
     <input type="text" class="search-input" placeholder="Search by bank, platform, year..." [(ngModel)]="searchQuery" (input)="onSearch()">
     <span class="entry-count">{{ entries.length }} entries</span>

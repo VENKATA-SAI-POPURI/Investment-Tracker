@@ -1,20 +1,4 @@
 <div class="dashboard" *ngIf="!loading">
-  <div class="dashboard-header">
-    <div class="header-left">
-      <button class="refresh-btn" (click)="refreshData()" [disabled]="refreshing" title="Refresh all data">
-        <span [class.spinning]="refreshing">🔄</span> <span class="forex-label">{{ refreshing ? 'Refreshing...' : 'Refresh' }}</span>
-      </button>
-    </div>
-    <h1><img src="profit.png" alt="" class="app-logo">Investment Tracker</h1>
-    <div class="header-actions">
-      <button class="forex-btn" (click)="toggleForexPopup()" title="Forex Analysis">
-        💱 <span class="forex-label">Forex</span>
-      </button>
-      <button class="dark-mode-toggle" (click)="toggleDarkMode()" [title]="darkMode ? 'Light Mode' : 'Dark Mode'">
-        {{ darkMode ? '☀️' : '🌙' }}
-      </button>
-    </div>
-  </div>
 
   <!-- Target Allocation Editor Popup -->
   <div class="form-overlay" *ngIf="showTargetEditor" (click)="showTargetEditor = false">
@@ -87,8 +71,73 @@
     </div>
   </div>
 
-  <!-- PART 1: Category Allocation + KPI Cards side by side -->
-  <section class="top-section">
+  <!-- PART 1: KPI Cards + Allocation Charts -->
+  <section class="top-section" *ngIf="view === 'home'">
+
+    <!-- KPI Row -->
+    <div class="kpi-grid">
+      <div class="kpi-card holdings">
+        <div class="kpi-icon">💼</div>
+        <div class="kpi-content">
+          <div class="kpi-label">Total Investment</div>
+          <div class="kpi-value">₹{{ totalInvestment | number:'1.2-2' }}</div>
+        </div>
+      </div>
+      <div class="kpi-card invested">
+        <div class="kpi-icon">🎯</div>
+        <div class="kpi-content">
+          <div class="kpi-label">Current Investment</div>
+          <div class="kpi-value">₹{{ currentInvestment | number:'1.2-2' }}</div>
+          <div class="kpi-sub" *ngIf="forexWalletBalanceUSD > 0">Wallet: ${{ forexWalletBalanceUSD | number:'1.2-2' }} · &#8377;{{ forexWalletBalanceINR | number:'1.2-2' }}</div>
+        </div>
+        <button class="kpi-forex-btn" (click)="toggleForexPopup()" title="Forex Analysis">💱</button>
+      </div>
+      <div class="kpi-card returns">
+        <div class="kpi-icon">💸</div>
+        <div class="kpi-content">
+          <div class="kpi-label">Total Sale Value</div>
+          <div class="kpi-value">₹{{ totalSaleValue | number:'1.2-2' }}</div>
+          <div class="kpi-sub" *ngIf="totalSaleValue > 0">
+            Cost ₹{{ costOfSold | number:'1.2-2' }}
+            &nbsp;&middot;&nbsp;
+            <span [style.color]="netPnL >= 0 ? '#10b981' : '#ef4444'">
+              {{ netPnL >= 0 ? '+' : '-' }}₹{{ (netPnL >= 0 ? netPnL : -netPnL) | number:'1.2-2' }}
+            </span>
+          </div>
+        </div>
+      </div>
+      <div class="kpi-card" [class.profit]="netPnL >= 0" [class.loss]="netPnL < 0">
+        <div class="kpi-icon">{{ netPnL >= 0 ? '📈' : '📉' }}</div>
+        <div class="kpi-content">
+          <div class="kpi-label">Net P&L</div>
+          <div class="kpi-value" [class.pnl-positive]="netPnL >= 0" [class.pnl-negative]="netPnL < 0">
+            {{ netPnL >= 0 ? '' : '-' }}₹{{ (netPnL >= 0 ? netPnL : -netPnL) | number:'1.2-2' }}
+            <span class="pnl-pct">({{ netPnLPct >= 0 ? '+' : '' }}{{ netPnLPct | number:'1.2-2' }}%)</span>
+          </div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon">💳</div>
+        <div class="kpi-content">
+          <div class="kpi-label">Actual Investment</div>
+          <div class="kpi-value">₹{{ actualInvestment | number:'1.2-2' }}</div>
+          <div class="kpi-sub">Net capital deployed</div>
+        </div>
+        <button class="kpi-add-btn" (click)="toggleCapitalFlowsForm()" title="Add Capital Flow">+</button>
+      </div>
+      <div class="kpi-card" [class.profit]="reinvestedProfit >= 0">
+        <div class="kpi-icon">🔄</div>
+        <div class="kpi-content">
+          <div class="kpi-label">Reinvested Profit</div>
+          <div class="kpi-value" [style.color]="reinvestedProfit >= 0 ? '#10b981' : '#ef4444'">
+            {{ reinvestedProfit >= 0 ? '' : '-' }}₹{{ (reinvestedProfit >= 0 ? reinvestedProfit : -reinvestedProfit) | number:'1.2-2' }}
+          </div>
+          <div class="kpi-sub">Current - Actual Investment</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Charts Row -->
     <div class="allocation-panel">
       <div class="pie-card allocation-pie">
         <div class="pie-card-header">
@@ -119,64 +168,94 @@
           </div>
         </div>
       </div>
-    </div>
 
-    <div class="kpi-grid">
-      <div class="kpi-card holdings">
-        <div class="kpi-icon">💼</div>
-        <div class="kpi-content">
-          <div class="kpi-label">Total Investment</div>
-          <div class="kpi-value">₹{{ totalInvestment | number:'1.2-2' }}</div>
+      <div class="pie-card allocation-pie">
+        <div class="pie-card-header">
+          <h3>Actual Investment Allocation</h3>
         </div>
-      </div>
-      <div class="kpi-card invested">
-        <div class="kpi-icon">💰</div>
-        <div class="kpi-content">
-          <div class="kpi-label">Current Investment</div>
-          <div class="kpi-value">₹{{ currentInvestment | number:'1.2-2' }}</div>
-          <div class="kpi-sub" *ngIf="forexWalletBalanceUSD > 0">Wallet: ${{ forexWalletBalanceUSD | number:'1.2-2' }} · &#8377;{{ forexWalletBalanceINR | number:'1.2-2' }}</div>
-        </div>
-      </div>
-      <div class="kpi-card returns">
-        <div class="kpi-icon">💸</div>
-        <div class="kpi-content">
-          <div class="kpi-label">Total Sale Value</div>
-          <div class="kpi-value">₹{{ totalSaleValue | number:'1.2-2' }}</div>
-          <div class="kpi-sub" *ngIf="totalSaleValue > 0">
-            Cost ₹{{ costOfSold | number:'1.2-2' }}
-            &nbsp;&middot;&nbsp;
-            <span [style.color]="netPnL >= 0 ? '#10b981' : '#ef4444'">
-              {{ netPnL >= 0 ? '+' : '-' }}₹{{ (netPnL >= 0 ? netPnL : -netPnL) | number:'1.2-2' }}
-            </span>
-          </div>
-        </div>
-      </div>
-      <div class="kpi-card" [class.profit]="netPnL >= 0" [class.loss]="netPnL < 0">
-        <div class="kpi-icon">{{ netPnL >= 0 ? '📈' : '📉' }}</div>
-        <div class="kpi-content">
-          <div class="kpi-label">Net P&L</div>
-          <div class="kpi-value" [class.pnl-positive]="netPnL >= 0" [class.pnl-negative]="netPnL < 0">
-            {{ netPnL >= 0 ? '' : '-' }}₹{{ (netPnL >= 0 ? netPnL : -netPnL) | number:'1.2-2' }}
-            <span class="pnl-pct">({{ netPnLPct >= 0 ? '+' : '' }}{{ netPnLPct | number:'1.2-2' }}%)</span>
+        <div class="bar-chart-container">
+          <div class="bar-row" *ngFor="let bar of actualInvestmentBars">
+            <div class="bar-label">{{ bar.label }}</div>
+            <div class="bar-track">
+              <div class="bar-fill" [style.width]="bar.pct + '%'" [style.background]="bar.color"></div>
+              <span class="bar-label-inside" [style.color]="darkMode ? 'white' : 'black'">{{ bar.pct }}% • ₹{{ bar.value | number:'1.2-2' }}</span>
+            </div>
           </div>
         </div>
       </div>
     </div>
+
   </section>
 
-  <!-- PART 2: Category Navigation Buttons -->
-  <section class="category-section">
-    <div class="category-buttons">
-      <a *ngFor="let cat of categories" class="category-btn" [routerLink]="cat.route">
-        <span class="cat-icon">{{ cat.icon }}</span>
-        <span class="cat-name">{{ cat.key }}</span>
-        <span class="cat-count" *ngIf="cat.key !== 'Forex'">{{ getCategoryActiveCount(cat.key) }} active</span>
-      </a>
+  <!-- Capital Flows Form Modal -->
+  <div class="form-overlay" *ngIf="showCapitalFlowsForm" (click)="toggleCapitalFlowsForm()">
+    <div class="capital-flows-modal" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h2>💰 Track Capital Flow</h2>
+        <button class="close-btn" (click)="toggleCapitalFlowsForm()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Date</label>
+          <input type="date" [(ngModel)]="capitalFlowForm.date" class="form-input">
+        </div>
+        <div class="form-group">
+          <label>Amount</label>
+          <input type="number" [(ngModel)]="capitalFlowForm.amount" placeholder="e.g., 30000" class="form-input">
+        </div>
+        <div class="form-group">
+          <label>Type</label>
+          <select [(ngModel)]="capitalFlowForm.type" class="form-input">
+            <option *ngFor="let t of capitalFlowTypes" [value]="t">{{ t }}</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Category</label>
+          <select [(ngModel)]="capitalFlowForm.category" class="form-input">
+            <option *ngFor="let c of capitalFlowCategories" [value]="c">{{ c }}</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Remarks (Optional)</label>
+          <input type="text" [(ngModel)]="capitalFlowForm.remarks" placeholder="e.g., Initial investment" class="form-input">
+        </div>
+        <div class="form-actions">
+          <button (click)="submitCapitalFlow()" class="btn-primary">Add Entry</button>
+          <button (click)="toggleCapitalFlowsForm()" class="btn-secondary">Cancel</button>
+        </div>
+      </div>
+      
+      <!-- Capital Flows List -->
+      <div class="modal-list" *ngIf="capitalFlows.length > 0">
+        <h3>Recent Entries</h3>
+        <table class="capital-flows-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Type</th>
+              <th>Amount</th>
+              <th>Category</th>
+              <th>Remarks</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let flow of capitalFlows">
+              <td>{{ flow.date }}</td>
+              <td><span class="badge" [class.deposit]="flow.type === 'Deposit'" [class.withdrawal]="flow.type === 'Withdrawal'">{{ flow.type }}</span></td>
+              <td class="amount">₹{{ flow.amount | number:'1.2-2' }}</td>
+              <td>{{ flow.category }}</td>
+              <td class="remarks">{{ flow.remarks || '-' }}</td>
+              <td><button class="delete-btn" (click)="deleteCapitalFlow(flow.id)">🗑️</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
-  </section>
+  </div>
 
   <!-- PART 3: Investment Analysis -->
-  <section class="analysis-section">
+  <section class="analysis-section" *ngIf="view === 'analysis'">
     <div class="analysis-header">
       <h2>Investment Analysis</h2>
 
@@ -250,16 +329,31 @@
     <!-- Equity Analysis Panel -->
     <div class="eq-analysis" *ngIf="selectedCategory === 'Equity'">
 
+      <!-- Active Filters Badge -->
+      <div class="eq-filters-badge" *ngIf="selectedMarket !== null || selectedCapCategory !== null || selectedYear !== 'All' || selectedSector !== null">
+        <span class="eq-filter-item" *ngIf="selectedMarket">🔍 Market: {{ selectedMarket }}</span>
+        <span class="eq-filter-item" *ngIf="selectedCapCategory">🔍 Cap: {{ selectedCapCategory }}</span>
+        <span class="eq-filter-item" *ngIf="selectedYear !== 'All'">🔍 Year: {{ selectedYear }}</span>
+        <span class="eq-filter-item" *ngIf="selectedSector">🔍 Sector: {{ selectedSector }}</span>
+        <button class="eq-filter-clear" (click)="clearFilters()">✕ Clear Filters</button>
+      </div>
+
       <!-- Row 1: Market Allocation + Market Cap Distribution (both as split bars) -->
       <div class="eq-row">
 
         <div class="eq-card eq-card-grow">
           <p class="eq-card-title">Market Allocation</p>
           <div class="eq-split-bar" *ngIf="equityMarketSplit.india !== 0 || equityMarketSplit.usa !== 0">
-            <div class="eq-seg eq-india" [style.width]="equityMarketSplit.indiaPct + '%'">
+            <div class="eq-seg eq-india eq-market-seg" [class.active]="selectedMarket === 'India'" [class.dimmed]="selectedMarket === 'USA'" [style.width]="equityMarketSplit.indiaPct + '%'"
+              (click)="selectMarket('India')"
+              (mouseenter)="showTooltip($event, 'India: ' + fmtINR(equityMarketSplit.india) + ' (' + equityMarketSplit.indiaPct + '%)')"
+              (mousemove)="moveTooltip($event)" (mouseleave)="hideTooltip()">
               {{ equityMarketSplit.indiaPct > 12 ? ('India ' + equityMarketSplit.indiaPct + '%') : '' }}
             </div>
-            <div class="eq-seg eq-usa" [style.width]="equityMarketSplit.usaPct + '%'">
+            <div class="eq-seg eq-usa eq-market-seg" [class.active]="selectedMarket === 'USA'" [class.dimmed]="selectedMarket === 'India'" [style.width]="equityMarketSplit.usaPct + '%'"
+              (click)="selectMarket('USA')"
+              (mouseenter)="showTooltip($event, 'USA: ' + fmtINR(equityMarketSplit.usa) + ' (' + equityMarketSplit.usaPct + '%)')"
+              (mousemove)="moveTooltip($event)" (mouseleave)="hideTooltip()">
               {{ equityMarketSplit.usaPct > 12 ? ('USA ' + equityMarketSplit.usaPct + '%') : '' }}
             </div>
           </div>
@@ -282,9 +376,14 @@
         <div class="eq-card eq-card-grow">
           <p class="eq-card-title">Market Cap Distribution</p>
           <div class="eq-split-bar">
-            <div class="eq-seg" *ngFor="let cap of equityMarketCapSplit"
+            <div class="eq-seg" *ngFor="let cap of equityMarketCapSplit; trackBy: trackByMarketCap"
+                 [class.active]="selectedCapCategory === cap.cap"
+                 [class.dimmed]="selectedCapCategory !== null && selectedCapCategory !== cap.cap"
                  [style.width]="cap.pct + '%'"
-                 [style.background]="cap.color">
+                 [style.background]="cap.color"
+                 (click)="selectCapCategory(cap.cap)"
+                 (mouseenter)="showTooltip($event, cap.cap + ': ' + fmtINR(cap.value) + ' (' + cap.pct + '%)')"
+                 (mousemove)="moveTooltip($event)" (mouseleave)="hideTooltip()">
               {{ cap.pct > 10 ? cap.pct + '%' : '' }}
             </div>
           </div>
@@ -306,14 +405,20 @@
         <div class="eq-card eq-card-grow">
           <p class="eq-card-title">Year-wise Market Split</p>
           <div class="eq-yearly">
-            <div class="eq-yearly-row" *ngFor="let y of equityYearlyBreakdown">
+            <div class="eq-yearly-row" *ngFor="let y of equityYearlyBreakdown; trackBy: trackByYear"
+              [class.active]="selectedYear === y.year"
+              (click)="selectYear(y.year)">
               <span class="eq-year-lbl">{{ y.year }}</span>
               <div class="eq-year-track-outer">
                 <div class="eq-year-track" [style.width]="y.barPct + '%'">
-                  <div class="eq-seg eq-india" [style.width]="y.indiaPct + '%'">
+                  <div class="eq-seg eq-india" [style.width]="y.indiaPct + '%'"
+                    (mouseenter)="showTooltip($event, y.year + ' India: ' + fmtINR(y.india) + ' (' + y.indiaPct + '%)')"
+                    (mousemove)="moveTooltip($event)" (mouseleave)="hideTooltip()" (click)="$event.stopPropagation()">
                     {{ y.indiaPct > 12 ? y.indiaPct + '%' : '' }}
                   </div>
-                  <div class="eq-seg eq-usa" [style.width]="y.usaPct + '%'">
+                  <div class="eq-seg eq-usa" [style.width]="y.usaPct + '%'"
+                    (mouseenter)="showTooltip($event, y.year + ' USA: ' + fmtINR(y.usa) + ' (' + y.usaPct + '%)')"
+                    (mousemove)="moveTooltip($event)" (mouseleave)="hideTooltip()" (click)="$event.stopPropagation()">
                     {{ y.usaPct > 12 ? y.usaPct + '%' : '' }}
                   </div>
                 </div>
@@ -324,14 +429,21 @@
         </div>
 
         <div class="eq-card eq-card-grow">
-          <p class="eq-card-title">Sector Breakdown</p>
+          <p class="eq-card-title">Sector Breakdown
+            <span *ngIf="selectedSector" class="eq-sector-clear" (click)="toggleSectorFilter(selectedSector!)">✕ {{ selectedSector }}</span>
+          </p>
           <div class="eq-treemap">
-            <div class="eq-tile" *ngFor="let s of equitySectorData"
+            <div class="eq-tile" *ngFor="let s of equitySectorData; trackBy: trackBySector"
               [style.flex-basis]="'calc(' + (s.pct < 8 ? 8 : s.pct) + '% - 6px)'"
               [style.min-height]="(s.pct * 2.8 + 36) + 'px'"
-              [style.background]="s.color + '22'"
-              [style.border-color]="s.color + '88'"
-              [title]="s.sector + ': \u20B9' + s.value + ' (' + s.pct + '%)'">
+              [style.background]="s.color + (selectedSector === s.sector ? '44' : '22')"
+              [style.border-color]="s.color + (selectedSector === s.sector ? 'ff' : '88')"
+              [class.eq-tile-active]="selectedSector === s.sector"
+              [class.eq-tile-dimmed]="selectedSector !== null && selectedSector !== s.sector"
+              (click)="toggleSectorFilter(s.sector)"
+              (mouseenter)="showTooltip($event, s.sector + ': ' + fmtINR(s.value) + ' (' + s.pct + '%)')"
+              (mousemove)="moveTooltip($event)"
+              (mouseleave)="hideTooltip()">
               <span class="eq-tile-name" [style.color]="s.color">{{ s.sector }}</span>
               <span class="eq-tile-pct">{{ s.pct }}%</span>
             </div>
@@ -368,11 +480,18 @@
 
     <!-- Mutual Funds Analysis Panel -->
     <div class="eq-analysis" *ngIf="selectedCategory === 'Mutual Funds'">
+      <!-- Active Filters Badge -->
+      <div class="eq-filters-badge" *ngIf="selectedMFCategory !== null || selectedMFType !== null || selectedYear !== 'All'">
+        <span class="eq-filter-item" *ngIf="selectedMFCategory">🔍 Category: {{ selectedMFCategory }}</span>
+        <span class="eq-filter-item" *ngIf="selectedMFType">🔍 Type: {{ selectedMFType }}</span>
+        <span class="eq-filter-item" *ngIf="selectedYear !== 'All'">🔍 Year: {{ selectedYear }}</span>
+        <button class="eq-filter-clear" (click)="clearFilters()">✕ Clear Filters</button>
+      </div>
       <div class="eq-row">
         <div class="eq-card eq-card-grow">
           <p class="eq-card-title">Category Allocation</p>
           <div class="eq-split-bar">
-            <div class="eq-seg" *ngFor="let c of mfCategorySplit" [style.width]="c.pct + '%'" [style.background]="c.color">
+            <div class="eq-seg" *ngFor="let c of mfCategorySplit; trackBy: trackByMFCategory" [class.active]="selectedMFCategory === c.cat" [class.dimmed]="selectedMFCategory !== null && selectedMFCategory !== c.cat" [style.width]="c.pct + '%'" [style.background]="c.color" (click)="selectMFCategory(c.cat)" (mouseenter)="showTooltip($event, c.cat + ': ' + fmtINR(c.value) + ' (' + c.pct + '%)')" (mousemove)="moveTooltip($event)" (mouseleave)="hideTooltip()">
               {{ c.pct > 10 ? c.pct + '%' : '' }}
             </div>
           </div>
@@ -388,7 +507,7 @@
         <div class="eq-card eq-card-grow">
           <p class="eq-card-title">Fund Type Split</p>
           <div class="eq-split-bar">
-            <div class="eq-seg" *ngFor="let t of mfFundTypeSplit" [style.width]="t.pct + '%'" [style.background]="t.color">
+            <div class="eq-seg" *ngFor="let t of mfFundTypeSplit; trackBy: trackByMFType" [class.active]="selectedMFType === t.type" [class.dimmed]="selectedMFType !== null && selectedMFType !== t.type" [style.width]="t.pct + '%'" [style.background]="t.color" (click)="selectMFType(t.type)" (mouseenter)="showTooltip($event, t.type + ': ' + fmtINR(t.value) + ' (' + t.pct + '%)')" (mousemove)="moveTooltip($event)" (mouseleave)="hideTooltip()">
               {{ t.pct > 10 ? t.pct + '%' : '' }}
             </div>
           </div>
@@ -444,11 +563,17 @@
 
     <!-- Commodity Analysis Panel -->
     <div class="eq-analysis" *ngIf="selectedCategory === 'Commodity'">
+      <!-- Active Filters Badge -->
+      <div class="eq-filters-badge" *ngIf="selectedCommodity !== null || selectedYear !== 'All'">
+        <span class="eq-filter-item" *ngIf="selectedCommodity">🔍 Commodity: {{ selectedCommodity }}</span>
+        <span class="eq-filter-item" *ngIf="selectedYear !== 'All'">🔍 Year: {{ selectedYear }}</span>
+        <button class="eq-filter-clear" (click)="clearFilters()">✕ Clear Filters</button>
+      </div>
       <div class="eq-row">
         <div class="eq-card eq-card-grow">
           <p class="eq-card-title">Commodity Allocation</p>
           <div class="eq-split-bar">
-            <div class="eq-seg" *ngFor="let c of commCommoditySplit" [style.width]="c.pct + '%'" [style.background]="c.color">
+            <div class="eq-seg" *ngFor="let c of commCommoditySplit; trackBy: trackByCommodity" [class.active]="selectedCommodity === c.commodity" [class.dimmed]="selectedCommodity !== null && selectedCommodity !== c.commodity" [style.width]="c.pct + '%'" [style.background]="c.color" (click)="selectCommodity(c.commodity)" (mouseenter)="showTooltip($event, c.commodity + ': ' + fmtINR(c.value) + ' (' + c.pct + '%)')" (mousemove)="moveTooltip($event)" (mouseleave)="hideTooltip()">
               {{ c.pct > 10 ? c.pct + '%' : '' }}
             </div>
           </div>
@@ -504,11 +629,18 @@
 
     <!-- P2P Analysis Panel -->
     <div class="eq-analysis" *ngIf="selectedCategory === 'P2P'">
+      <!-- Active Filters Badge -->
+      <div class="eq-filters-badge" *ngIf="selectedPlatform !== null || selectedP2PStatus !== null || selectedYear !== 'All'">
+        <span class="eq-filter-item" *ngIf="selectedPlatform">🔍 Platform: {{ selectedPlatform }}</span>
+        <span class="eq-filter-item" *ngIf="selectedP2PStatus">🔍 Status: {{ selectedP2PStatus }}</span>
+        <span class="eq-filter-item" *ngIf="selectedYear !== 'All'">🔍 Year: {{ selectedYear }}</span>
+        <button class="eq-filter-clear" (click)="clearFilters()">✕ Clear Filters</button>
+      </div>
       <div class="eq-row">
         <div class="eq-card eq-card-grow">
           <p class="eq-card-title">Platform Allocation</p>
           <div class="eq-split-bar">
-            <div class="eq-seg" *ngFor="let p of p2pPlatformSplit" [style.width]="p.pct + '%'" [style.background]="p.color">
+            <div class="eq-seg" *ngFor="let p of p2pPlatformSplit; trackBy: trackByPlatform" [class.active]="selectedPlatform === p.platform" [class.dimmed]="selectedPlatform !== null && selectedPlatform !== p.platform" [style.width]="p.pct + '%'" [style.background]="p.color" (click)="selectPlatform(p.platform)" (mouseenter)="showTooltip($event, p.platform + ': ' + fmtINR(p.value) + ' (' + p.pct + '%)')" (mousemove)="moveTooltip($event)" (mouseleave)="hideTooltip()">
               {{ p.pct > 10 ? p.pct + '%' : '' }}
             </div>
           </div>
@@ -551,7 +683,7 @@
         <div class="eq-card eq-card-grow">
           <p class="eq-card-title">Portfolio Status</p>
           <div class="eq-split-bar">
-            <div class="eq-seg" *ngFor="let s of p2pStatusSplit" [style.width]="s.pct + '%'" [style.background]="s.color">
+            <div class="eq-seg" *ngFor="let s of p2pStatusSplit; trackBy: trackByP2PStatus" [class.active]="selectedP2PStatus === s.status" [class.dimmed]="selectedP2PStatus !== null && selectedP2PStatus !== s.status" [style.width]="s.pct + '%'" [style.background]="s.color" (click)="selectP2PStatus(s.status)" (mouseenter)="showTooltip($event, s.status + ': ' + fmtINR(s.value) + ' (' + s.pct + '%)')" (mousemove)="moveTooltip($event)" (mouseleave)="hideTooltip()">
               {{ s.pct > 10 ? s.pct + '%' : '' }}
             </div>
           </div>
@@ -638,7 +770,7 @@
   </section>
 
   <!-- AI Chat Section -->
-  <section class="ai-section">
+  <section class="ai-section" *ngIf="view === 'chatbot'">
     <div class="ai-card">
       <div class="ai-header">
         <div class="ai-title-area">
@@ -697,6 +829,12 @@
       </div>
     </div>
   </section>
+</div>
+
+<!-- Floating Tooltip -->
+<div class="eq-tooltip" *ngIf="tooltip.visible"
+  [style.left.px]="tooltip.x" [style.top.px]="tooltip.y">
+  {{ tooltip.text }}
 </div>
 
 <!-- Skeleton Loading -->
