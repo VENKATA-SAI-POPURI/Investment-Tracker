@@ -32,6 +32,7 @@ _ALLOWED_ORIGINS = [
     "http://localhost:4200",
     "http://127.0.0.1:4200",
     "https://investment-tracker-nrm5.onrender.com",
+    "https://my-investment-tracker.netlify.app",
 ]
 CORS(app, origins=_ALLOWED_ORIGINS)
 
