@@ -1,4 +1,4 @@
-<div class="dashboard" *ngIf="!loading">
+<div class="dashboard" *ngIf="!loading" [class.home-view]="view === 'home'" [class.analysis-view]="view === 'analysis'">
 
   <!-- Target Allocation Editor Popup -->
   <div class="form-overlay" *ngIf="showTargetEditor" (click)="showTargetEditor = false">
@@ -113,6 +113,7 @@
           <div class="kpi-value" [class.pnl-positive]="netPnL >= 0" [class.pnl-negative]="netPnL < 0">
             {{ netPnL >= 0 ? '' : '-' }}₹{{ (netPnL >= 0 ? netPnL : -netPnL) | number:'1.2-2' }}
             <span class="pnl-pct">({{ netPnLPct >= 0 ? '+' : '' }}{{ netPnLPct | number:'1.2-2' }}%)</span>
+            <span class="pnl-pct" style="color: #3b82f6">({{ netPnLVsActualPct >= 0 ? '+' : '' }}{{ netPnLVsActualPct | number:'1.2-2' }}% / actual)</span>
           </div>
         </div>
       </div>
@@ -137,14 +138,14 @@
       </div>
     </div>
 
-    <!-- Charts Row -->
-    <div class="allocation-panel">
+    <!-- 2-column main grid: cards auto-flow L→R so row heights match automatically -->
+    <div class="home-main-grid">
+
+      <!-- Row 1, Col 1: Category Allocation Pie -->
       <div class="pie-card allocation-pie">
         <div class="pie-card-header">
           <h3>{{ categoryAllocationPie.title }}</h3>
-          <button class="target-edit-btn" (click)="showTargetEditor = true">
-            Edit Targets
-          </button>
+          <button class="target-edit-btn" (click)="showTargetEditor = true">Edit Targets</button>
         </div>
         <div class="pie-content">
           <div class="pie-chart" [style.background]="categoryAllocationPie.gradient"></div>
@@ -169,6 +170,7 @@
         </div>
       </div>
 
+      <!-- Row 1, Col 2: Actual Investment Allocation -->
       <div class="pie-card allocation-pie">
         <div class="pie-card-header">
           <h3>Actual Investment Allocation</h3>
@@ -177,12 +179,76 @@
           <div class="bar-row" *ngFor="let bar of actualInvestmentBars">
             <div class="bar-label">{{ bar.label }}</div>
             <div class="bar-track">
-              <div class="bar-fill" [style.width]="bar.pct + '%'" [style.background]="bar.color"></div>
+              <div class="bar-fill" [style.width]="(bar.pct / maxActualPct * 100) + '%'" [style.background]="bar.color"></div>
               <span class="bar-label-inside" [style.color]="darkMode ? 'white' : 'black'">{{ bar.pct }}% • ₹{{ bar.value | number:'1.2-2' }}</span>
             </div>
           </div>
         </div>
       </div>
+
+      <!-- Row 2, Col 1: Category P&L Summary -->
+      <div class="insights-card">
+        <div class="insights-header">
+          <h3>📋 Category P&amp;L Summary</h3>
+          <span class="xirr-badge" *ngIf="portfolioXIRR !== null" [style.color]="portfolioXIRR >= 0 ? '#10b981' : '#ef4444'">
+            XIRR: {{ portfolioXIRR >= 0 ? '+' : '' }}{{ portfolioXIRR | number:'1.2-2' }}% p.a.
+          </span>
+        </div>
+        <div class="cat-pnl-table-wrap">
+          <table class="cat-pnl-table">
+            <thead>
+              <tr>
+                <th>Category</th>
+                <th class="num-col">Invested</th>
+                <th class="num-col">Current</th>
+                <th class="num-col">Sales</th>
+                <th class="num-col">Net P&amp;L</th>
+                <th class="num-col">Return</th>
+                <th class="num-col">XIRR p.a.</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let row of categorySummaryRows">
+                <td class="cat-name-cell">{{ row.icon }} {{ row.category }}</td>
+                <td class="num-col">₹{{ row.totalInvested | number:'1.0-0' }}</td>
+                <td class="num-col">₹{{ row.currentHoldings | number:'1.0-0' }}</td>
+                <td class="num-col">{{ row.totalSales > 0 ? ('₹' + (row.totalSales | number:'1.0-0')) : '—' }}</td>
+                <td class="num-col" [class.pnl-pos]="row.netPnL > 0" [class.pnl-neg]="row.netPnL < 0">
+                  {{ row.netPnL === 0 ? '—' : ((row.netPnL > 0 ? '+' : '') + '₹' + (row.netPnL | number:'1.0-0')) }}
+                </td>                  <td class="num-col" [class.pnl-pos]="row.returnPct > 0" [class.pnl-neg]="row.returnPct < 0">
+                    {{ row.totalSales === 0 ? '—' : ((row.returnPct >= 0 ? '+' : '') + (row.returnPct | number:'1.1-1') + '%') }}
+                  </td>                  <td class="num-col" [class.pnl-pos]="row.xirr !== null && row.xirr > 0" [class.pnl-neg]="row.xirr !== null && row.xirr < 0">
+                    {{ row.xirr === null ? '—' : ((row.xirr >= 0 ? '+' : '') + (row.xirr | number:'1.1-1') + '%') }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Row 2, Col 2: Monthly Capital Deployment -->
+      <div class="insights-card" *ngIf="monthlyDeploymentBars.length > 0">
+        <div class="insights-header">
+          <h3>📅 Monthly Capital Deployment</h3>
+          <span class="chart-legend">
+            <span class="legend-dot" style="background:#6366f1"></span> Deposits
+            <span class="legend-dot" style="background:#ef4444"></span> Withdrawals
+          </span>
+        </div>
+        <div class="monthly-chart">
+          <div class="monthly-bar-col" *ngFor="let bar of monthlyDeploymentBars">
+            <div class="monthly-bars">
+              <div class="monthly-bar deposit" [style.height]="bar.depositPct + '%'" [title]="'Deposit ₹' + (bar.deposits | number:'1.0-0')"></div>
+              <div class="monthly-bar withdrawal" [style.height]="bar.withdrawalPct + '%'" *ngIf="bar.withdrawals > 0" [title]="'Withdrawal ₹' + (bar.withdrawals | number:'1.0-0')"></div>
+            </div>
+            <div class="monthly-label">{{ bar.month }}</div>
+            <div class="monthly-net" [class.pnl-pos]="bar.net >= 0" [class.pnl-neg]="bar.net < 0">
+              ₹{{ bar.net | number:'1.0-0' }}
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
 
   </section>
@@ -220,7 +286,7 @@
           <input type="text" [(ngModel)]="capitalFlowForm.remarks" placeholder="e.g., Initial investment" class="form-input">
         </div>
         <div class="form-actions">
-          <button (click)="submitCapitalFlow()" class="btn-primary">Add Entry</button>
+          <button (click)="submitCapitalFlow()" class="btn-primary" [disabled]="submittingCapitalFlow">{{ submittingCapitalFlow ? 'Saving...' : 'Add Entry' }}</button>
           <button (click)="toggleCapitalFlowsForm()" class="btn-secondary">Cancel</button>
         </div>
       </div>
@@ -256,37 +322,65 @@
 
   <!-- PART 3: Investment Analysis -->
   <section class="analysis-section" *ngIf="view === 'analysis'">
+
+    <!-- Category Ribbon -->
+    <div class="category-ribbon">
+      <button
+        *ngFor="let cat of analysisCategories"
+        class="ribbon-btn"
+        [class.active]="selectedCategory === cat.key"
+        (click)="selectCategory(cat.key)"
+      >
+        <span class="ribbon-icon">{{ cat.icon }}</span>
+        <span class="ribbon-label">{{ cat.key }}</span>
+      </button>
+    </div>
+
     <div class="analysis-header">
-      <h2>Investment Analysis</h2>
 
-      <!-- Category Tabs -->
-      <div class="analysis-tabs">
-        <button
-          *ngFor="let cat of analysisCategories"
-          class="analysis-tab"
-          [class.active]="selectedCategory === cat.key"
-          (click)="selectCategory(cat.key)"
-        >
-          {{ cat.icon }} {{ cat.key }}
-        </button>
-      </div>
+      <!-- Filter Bar -->
+      <div class="analysis-filters">
 
-      <!-- Year filter -->
-      <div class="year-filter">
-        <span class="year-filter-label">📅 Filter by Year</span>
-        <div class="year-pills">
-          <button
-            *ngFor="let yr of availableYears"
-            class="year-pill"
-            [class.active]="selectedYear === yr"
-            (click)="selectYear(yr)"
-          >
-            {{ yr }}
-          </button>
+        <!-- Year multi-select dropdown -->
+        <div class="filter-group">
+          <span class="filter-label">📅 Filter by Year</span>
+          <div class="filter-dropdown" [class.open]="yearDropdownOpen">
+            <button class="filter-dropdown-trigger" (click)="toggleYearDropdown($event)">
+              <span class="trigger-text">{{ yearDropdownLabel }}</span>
+              <span class="dropdown-caret">{{ yearDropdownOpen ? '▴' : '▾' }}</span>
+            </button>
+            <div class="filter-dropdown-panel" *ngIf="yearDropdownOpen" (click)="stopProp($event)">
+              <div class="dropdown-item" (click)="clearYears()">
+                <span class="dd-check">{{ selectedYears.length === 0 ? '✓' : '' }}</span> All Years
+              </div>
+              <div class="dropdown-item" *ngFor="let yr of availableYears" (click)="toggleYear(yr)">
+                <span class="dd-check">{{ isYearSelected(yr) ? '✓' : '' }}</span> {{ yr }}
+              </div>
+            </div>
+          </div>
         </div>
+
+        <div class="filter-divider"></div>
+
+        <!-- Analysis Basis single-select dropdown -->
+        <div class="filter-group">
+          <span class="filter-label">📊 Analysis Basis</span>
+          <div class="filter-dropdown" [class.open]="metricDropdownOpen">
+            <button class="filter-dropdown-trigger" (click)="toggleMetricDropdown($event)">
+              <span class="trigger-text">{{ selectedMetric }}</span>
+              <span class="dropdown-caret">{{ metricDropdownOpen ? '▴' : '▾' }}</span>
+            </button>
+            <div class="filter-dropdown-panel" *ngIf="metricDropdownOpen" (click)="stopProp($event)">
+              <div class="dropdown-item" *ngFor="let m of metrics" [class.selected]="selectedMetric === m" (click)="selectMetric(m); metricDropdownOpen = false">
+                {{ m }}
+              </div>
+            </div>
+          </div>
+        </div>
+
       </div>
 
-      <!-- Category-level KPIs -->
+      <!-- Category KPIs -->
       <div class="cat-kpis">
         <div class="cat-kpi">
           <span class="cat-kpi-label">Total Invested</span>
@@ -312,28 +406,16 @@
         </div>
       </div>
 
-      <!-- Metric Selector -->
-      <div class="metric-tabs">
-        <span class="metric-label">Analyse by:</span>
-        <button
-          *ngFor="let m of metrics"
-          class="metric-tab"
-          [class.active]="selectedMetric === m"
-          (click)="selectMetric(m)"
-        >
-          {{ m }}
-        </button>
-      </div>
     </div>
 
     <!-- Equity Analysis Panel -->
     <div class="eq-analysis" *ngIf="selectedCategory === 'Equity'">
 
       <!-- Active Filters Badge -->
-      <div class="eq-filters-badge" *ngIf="selectedMarket !== null || selectedCapCategory !== null || selectedYear !== 'All' || selectedSector !== null">
+      <div class="eq-filters-badge" *ngIf="selectedMarket !== null || selectedCapCategory !== null || selectedYears.length > 0 || selectedSector !== null">
         <span class="eq-filter-item" *ngIf="selectedMarket">🔍 Market: {{ selectedMarket }}</span>
         <span class="eq-filter-item" *ngIf="selectedCapCategory">🔍 Cap: {{ selectedCapCategory }}</span>
-        <span class="eq-filter-item" *ngIf="selectedYear !== 'All'">🔍 Year: {{ selectedYear }}</span>
+        <span class="eq-filter-item" *ngIf="selectedYears.length > 0">🔍 Year: {{ yearDropdownLabel }}</span>
         <span class="eq-filter-item" *ngIf="selectedSector">🔍 Sector: {{ selectedSector }}</span>
         <button class="eq-filter-clear" (click)="clearFilters()">✕ Clear Filters</button>
       </div>
@@ -406,7 +488,7 @@
           <p class="eq-card-title">Year-wise Market Split</p>
           <div class="eq-yearly">
             <div class="eq-yearly-row" *ngFor="let y of equityYearlyBreakdown; trackBy: trackByYear"
-              [class.active]="selectedYear === y.year"
+              [class.active]="isYearSelected(y.year)"
               (click)="selectYear(y.year)">
               <span class="eq-year-lbl">{{ y.year }}</span>
               <div class="eq-year-track-outer">
@@ -481,10 +563,10 @@
     <!-- Mutual Funds Analysis Panel -->
     <div class="eq-analysis" *ngIf="selectedCategory === 'Mutual Funds'">
       <!-- Active Filters Badge -->
-      <div class="eq-filters-badge" *ngIf="selectedMFCategory !== null || selectedMFType !== null || selectedYear !== 'All'">
+      <div class="eq-filters-badge" *ngIf="selectedMFCategory !== null || selectedMFType !== null || selectedYears.length > 0">
         <span class="eq-filter-item" *ngIf="selectedMFCategory">🔍 Category: {{ selectedMFCategory }}</span>
         <span class="eq-filter-item" *ngIf="selectedMFType">🔍 Type: {{ selectedMFType }}</span>
-        <span class="eq-filter-item" *ngIf="selectedYear !== 'All'">🔍 Year: {{ selectedYear }}</span>
+        <span class="eq-filter-item" *ngIf="selectedYears.length > 0">🔍 Year: {{ yearDropdownLabel }}</span>
         <button class="eq-filter-clear" (click)="clearFilters()">✕ Clear Filters</button>
       </div>
       <div class="eq-row">
@@ -564,9 +646,9 @@
     <!-- Commodity Analysis Panel -->
     <div class="eq-analysis" *ngIf="selectedCategory === 'Commodity'">
       <!-- Active Filters Badge -->
-      <div class="eq-filters-badge" *ngIf="selectedCommodity !== null || selectedYear !== 'All'">
+      <div class="eq-filters-badge" *ngIf="selectedCommodity !== null || selectedYears.length > 0">
         <span class="eq-filter-item" *ngIf="selectedCommodity">🔍 Commodity: {{ selectedCommodity }}</span>
-        <span class="eq-filter-item" *ngIf="selectedYear !== 'All'">🔍 Year: {{ selectedYear }}</span>
+        <span class="eq-filter-item" *ngIf="selectedYears.length > 0">🔍 Year: {{ yearDropdownLabel }}</span>
         <button class="eq-filter-clear" (click)="clearFilters()">✕ Clear Filters</button>
       </div>
       <div class="eq-row">
@@ -630,10 +712,10 @@
     <!-- P2P Analysis Panel -->
     <div class="eq-analysis" *ngIf="selectedCategory === 'P2P'">
       <!-- Active Filters Badge -->
-      <div class="eq-filters-badge" *ngIf="selectedPlatform !== null || selectedP2PStatus !== null || selectedYear !== 'All'">
+      <div class="eq-filters-badge" *ngIf="selectedPlatform !== null || selectedP2PStatus !== null || selectedYears.length > 0">
         <span class="eq-filter-item" *ngIf="selectedPlatform">🔍 Platform: {{ selectedPlatform }}</span>
         <span class="eq-filter-item" *ngIf="selectedP2PStatus">🔍 Status: {{ selectedP2PStatus }}</span>
-        <span class="eq-filter-item" *ngIf="selectedYear !== 'All'">🔍 Year: {{ selectedYear }}</span>
+        <span class="eq-filter-item" *ngIf="selectedYears.length > 0">🔍 Year: {{ yearDropdownLabel }}</span>
         <button class="eq-filter-clear" (click)="clearFilters()">✕ Clear Filters</button>
       </div>
       <div class="eq-row">

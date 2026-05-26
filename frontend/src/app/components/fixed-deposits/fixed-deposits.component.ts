@@ -50,7 +50,8 @@ export class FixedDepositsComponent implements OnInit, OnDestroy {
   constructor(private investmentService: InvestmentService, private uiActionService: UiActionService) {}
 
   ngOnInit(): void {
-    this.addSub = this.uiActionService.addEntry.subscribe(() => this.openAddForm());
+    this.addSub = this.uiActionService.addEntry.subscribe(page => { if (page === 'fixed-deposits') this.openAddForm(); });
+    this.addSub.add(this.uiActionService.refresh.subscribe(() => { this.uiActionService.beginRefresh(); this.loadEntries(() => this.uiActionService.endRefresh()); }));
     this.loadEntries();
   }
 
@@ -70,11 +71,11 @@ export class FixedDepositsComponent implements OnInit, OnDestroy {
     };
   }
 
-  loadEntries(): void {
+  loadEntries(onComplete?: () => void): void {
     this.loading = true;
     this.investmentService.getFixedDeposits().subscribe({
-      next: (data) => { this.allEntries = data; this.applyFilter(); this.loading = false; },
-      error: () => { this.toast('Failed to load entries', 'error'); this.loading = false; }
+      next: (data) => { this.allEntries = data; this.applyFilter(); this.loading = false; onComplete?.(); },
+      error: () => { this.toast('Failed to load entries', 'error'); this.loading = false; onComplete?.(); }
     });
   }
 

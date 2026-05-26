@@ -196,7 +196,8 @@ export class CommodityComponent implements OnInit, OnDestroy {
   constructor(private investmentService: InvestmentService, private uiActionService: UiActionService) {}
 
   ngOnInit(): void {
-    this.addSub = this.uiActionService.addEntry.subscribe(() => this.openAddForm());
+    this.addSub = this.uiActionService.addEntry.subscribe(page => { if (page === 'commodity') this.openAddForm(); });
+    this.addSub.add(this.uiActionService.refresh.subscribe(() => { this.uiActionService.beginRefresh(); this.loadEntries(() => this.uiActionService.endRefresh()); }));
     this.loadEntries();
   }
 
@@ -217,15 +218,16 @@ export class CommodityComponent implements OnInit, OnDestroy {
     };
   }
 
-  loadEntries(): void {
+  loadEntries(onComplete?: () => void): void {
     this.loading = true;
     this.investmentService.getCommodity().subscribe({
       next: (data) => {
         this.allEntries = data;
         this.applyFilter();
         this.loading = false;
+        onComplete?.();
       },
-      error: () => { this.toast('Failed to load entries', 'error'); this.loading = false; }
+      error: () => { this.toast('Failed to load entries', 'error'); this.loading = false; onComplete?.(); }
     });
   }
 

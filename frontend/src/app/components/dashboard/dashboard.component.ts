@@ -1,10 +1,11 @@
-import { Component, OnInit, ChangeDetectorRef, ViewEncapsulation, Input } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef, ViewEncapsulation, Input, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink, Router } from '@angular/router';
-import { forkJoin, Observable } from 'rxjs';
+import { forkJoin, Observable, Subscription } from 'rxjs';
 import { InvestmentService } from '../../services/investment.service';
 import { AuthService, AuthUser } from '../../services/auth.service';
+import { UiActionService } from '../../services/ui-action.service';
 import { Summary, EquityEntry, CommodityEntry, MutualFundEntry, P2PEntry, P2PRepayment, FixedDepositEntry, ForexEntry } from '../../models/investment.model';
 
 interface PieSlice {
@@ -63,7 +64,7 @@ const DEFAULT_TARGET_ALLOCATION: Record<string, number> = {
   styleUrl: './dashboard.component.scss',
   encapsulation: ViewEncapsulation.None
 })
-export class DashboardComponent implements OnInit {
+export class DashboardComponent implements OnInit, OnDestroy {
   @Input() view: 'home' | 'analysis' | 'chatbot' = 'home';
 
   summary: Summary = {};
@@ -92,6 +93,7 @@ export class DashboardComponent implements OnInit {
   capitalFlows: any[] = [];
   showForexPopup = false;
   showCapitalFlowsForm = false;
+  submittingCapitalFlow = false;
   
   // Capital Flows form state
   capitalFlowForm = {
@@ -102,12 +104,14 @@ export class DashboardComponent implements OnInit {
     remarks: ''
   };
   
-  capitalFlowCategories = ['Equity/Commodity', 'Mutual Funds', 'P2P', 'Fixed Deposit', 'Others'];
-  capitalFlowTypes = ['Deposit', 'Withdrawal'];
+  capitalFlowCategories = ['Equity/Commodity', 'Equity USA', 'Mutual Funds', 'P2P', 'Fixed Deposit', 'Others'];
+  capitalFlowTypes = ['Deposit', 'Withdrawal', 'Profit Withdrawal'];
 
   selectedCategory = 'Equity';
   selectedMetric = 'Current Holdings';
-  selectedYear = 'All';
+  selectedYears: string[] = [];
+  yearDropdownOpen = false;
+  metricDropdownOpen = false;
   selectedSector: string | null = null;
   selectedMarket: string | null = null;
   selectedCapCategory: string | null = null;
@@ -149,12 +153,14 @@ export class DashboardComponent implements OnInit {
 
   private systemDarkQuery = window.matchMedia('(prefers-color-scheme: dark)');
   currentUser$: Observable<AuthUser | null>;
+  private refreshSub?: Subscription;
 
   constructor(
     private investmentService: InvestmentService,
     private authService: AuthService,
     private router: Router,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
+    private uiActionService: UiActionService
   ) {
     this.currentUser$ = this.authService.getUser$();
   }
@@ -178,6 +184,7 @@ export class DashboardComponent implements OnInit {
     });
 
     this.loadAll();
+    this.refreshSub = this.uiActionService.refresh.subscribe(() => { this.uiActionService.beginRefresh(); this.loadAll(() => this.uiActionService.endRefresh()); });
     this.restoreAICache();
     this.investmentService.getSetting('targetAllocation').subscribe(res => {
       if (res.value) {
@@ -187,6 +194,8 @@ export class DashboardComponent implements OnInit {
       }
     });
   }
+
+  ngOnDestroy(): void { this.refreshSub?.unsubscribe(); }
 
   toggleDarkMode(): void {
     this.darkMode = !this.darkMode;
@@ -237,7 +246,7 @@ export class DashboardComponent implements OnInit {
     });
   }
 
-  loadAll(): void {
+  loadAll(onComplete?: () => void): void {
     this.loading = true;
     forkJoin({
       summary: this.investmentService.getSummary(),
@@ -263,8 +272,9 @@ export class DashboardComponent implements OnInit {
         this.capitalFlowsSummary = data.capitalFlows;
         this.capitalFlows = (data.capitalFlowsList || []).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         this.loading = false;
+        onComplete?.();
       },
-      error: () => this.loading = false
+      error: () => { this.loading = false; onComplete?.(); }
     });
   }
 
@@ -272,21 +282,60 @@ export class DashboardComponent implements OnInit {
 
   get availableYears(): string[] {
     const years = new Set<string>();
-    // Equity: derive FY from date (no year field)
     this.equityData.forEach(e => { const fy = this.dateToFY(e.date); if (fy) years.add(fy); });
-    // Others still use year field
     [...this.commodityData, ...this.mfData, ...this.fdData]
       .forEach((e: any) => { if (e.year) years.add(e.year); });
-    return ['All', ...Array.from(years).sort()];
+    return Array.from(years).sort();
   }
 
-  selectYear(year: string): void {
-    if (this.selectedYear === year) {
-      this.selectedYear = 'All';
+  get yearDropdownLabel(): string {
+    if (this.selectedYears.length === 0) return 'All Years';
+    return this.selectedYears.join(', ');
+  }
+
+  isYearSelected(yr: string): boolean {
+    return this.selectedYears.includes(yr);
+  }
+
+  toggleYear(year: string): void {
+    const idx = this.selectedYears.indexOf(year);
+    if (idx > -1) {
+      this.selectedYears = this.selectedYears.filter(y => y !== year);
     } else {
-      this.selectedYear = year;
+      this.selectedYears = [...this.selectedYears, year].sort();
     }
-    console.log('selectYear called with:', year, 'now selectedYear is:', this.selectedYear);
+  }
+
+  clearYears(): void {
+    this.selectedYears = [];
+  }
+
+  toggleYearDropdown(event: MouseEvent): void {
+    event.stopPropagation();
+    this.yearDropdownOpen = !this.yearDropdownOpen;
+    this.metricDropdownOpen = false;
+  }
+
+  toggleMetricDropdown(event: MouseEvent): void {
+    event.stopPropagation();
+    this.metricDropdownOpen = !this.metricDropdownOpen;
+    this.yearDropdownOpen = false;
+  }
+
+  stopProp(event: MouseEvent): void {
+    event.stopPropagation();
+  }
+
+  // kept for any remaining template refs
+  selectYear(year: string): void { this.toggleYear(year); }
+
+  @HostListener('document:click', ['$event'])
+  onDocumentClick(event: MouseEvent): void {
+    const target = event.target as HTMLElement;
+    if (!target.closest('.filter-dropdown')) {
+      this.yearDropdownOpen = false;
+      this.metricDropdownOpen = false;
+    }
   }
 
   showTooltip(event: MouseEvent, text: string): void {
@@ -316,7 +365,7 @@ export class DashboardComponent implements OnInit {
   }
 
   clearFilters(): void {
-    this.selectedYear = 'All';
+    this.selectedYears = [];
     this.selectedSector = null;
     this.selectedMarket = null;
     this.selectedCapCategory = null;
@@ -475,43 +524,239 @@ export class DashboardComponent implements OnInit {
     return exitedValue > 0 ? Math.round((this.netPnL / exitedValue) * 10000) / 100 : 0;
   }
 
+  get netPnLVsActualPct(): number {
+    return this.actualInvestment > 0 ? Math.round((this.netPnL / this.actualInvestment) * 10000) / 100 : 0;
+  }
+
   get actualInvestment(): number {
     return this.capitalFlowsSummary?.actual_investment || 0;
   }
 
+  get totalProfitWithdrawals(): number {
+    return (this.capitalFlows || [])
+      .filter(cf => cf.type === 'Profit Withdrawal')
+      .reduce((s, cf) => s + (parseFloat(cf.amount) || 0), 0);
+  }
+
   get reinvestedProfit(): number {
-    return this.currentInvestment - this.actualInvestment;
+    return this.currentInvestment - this.actualInvestment - this.totalProfitWithdrawals;
+  }
+
+  // ── Category P&L Summary ──
+
+  get categorySummaryRows(): { category: string; icon: string; totalInvested: number; currentHoldings: number; totalSales: number; netPnL: number; returnPct: number; xirr: number | null }[] {
+    const r = <T>(v: T) => Math.round((v as any) * 100) / 100;
+    const pct = (pnl: number, cost: number) => cost > 0 ? Math.round((pnl / cost) * 10000) / 100 : 0;
+    const today = new Date();
+
+    // Equity India
+    const eqIndFifo  = this.equityFifoHoldings.filter(h => h.market !== 'USA').reduce((s, h) => s + h.value, 0);
+    const eqIndInv   = this.equityData.filter(e => e.market !== 'USA' && e.buy_sell === 'Buy').reduce((s, e) => s + (e.value || 0), 0);
+    const eqIndSales = this.equityData.filter(e => e.market !== 'USA' && e.buy_sell === 'Sell').reduce((s, e) => s + (e.value || 0), 0);
+    const eqIndCost  = eqIndInv - eqIndFifo;
+    const eqIndFlows = [
+      ...this.equityData.filter(e => e.market !== 'USA').map(e => ({ date: new Date(e.date), amount: e.buy_sell === 'Buy' ? -(e.value || 0) : +(e.value || 0) })),
+      { date: today, amount: eqIndFifo }   // terminal = remaining cost basis only (sells already in flows)
+    ];
+
+    // Equity USA
+    const eqUsaFifo  = this.equityFifoHoldings.filter(h => h.market === 'USA').reduce((s, h) => s + h.value, 0);
+    const eqUsaInv   = this.equityData.filter(e => e.market === 'USA' && e.buy_sell === 'Buy').reduce((s, e) => s + (e.value || 0), 0);
+    const eqUsaSales = this.equityData.filter(e => e.market === 'USA' && e.buy_sell === 'Sell').reduce((s, e) => s + (e.value || 0), 0);
+    const eqUsaCost  = eqUsaInv - eqUsaFifo;
+    const eqUsaFlows = [
+      ...this.equityData.filter(e => e.market === 'USA').map(e => ({ date: new Date(e.date), amount: e.buy_sell === 'Buy' ? -(e.value || 0) : +(e.value || 0) })),
+      { date: today, amount: eqUsaFifo }   // terminal = remaining cost basis only
+    ];
+
+    // Mutual Funds
+    const mfInv   = this.mfData.reduce((s, e) => s + (e.buy_value || 0), 0);
+    const mfCurr  = this.mfData.reduce((s, e) => s + this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value), 0);
+    const mfSales = this.mfData.reduce((s, e) => s + (e.sell_value || 0), 0);
+    const mfCost  = mfInv - mfCurr;
+    const mfFlows = [
+      ...this.mfData.map(e => ({ date: new Date(e.date), amount: e.buy_sell === 'Buy' ? -(e.buy_value || 0) : +(e.sell_value || 0) })),
+      { date: today, amount: mfCurr }   // terminal = remaining cost basis only
+    ];
+
+    // Commodity
+    const cmdInv   = this.commodityData.reduce((s, e) => s + (e.buy_value || 0), 0);
+    const cmdCurr  = this.commodityData.reduce((s, e) => s + this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value), 0);
+    const cmdSales = this.commodityData.reduce((s, e) => s + (e.sell_value || 0), 0);
+    const cmdCost  = cmdInv - cmdCurr;
+    const cmdFlows = [
+      ...this.commodityData.map(e => ({ date: new Date(e.date), amount: e.buy_sell === 'Buy' ? -(e.buy_value || 0) : +(e.sell_value || 0) })),
+      { date: today, amount: cmdCurr }   // terminal = remaining cost basis only
+    ];
+
+    // P2P
+    const p2pInv   = this.p2pData.reduce((s, e) => s + (e.amount || 0), 0);
+    const p2pCurr  = (this.summary['P2P'] as any)?.current_invested || 0;
+    const p2pSales = this.p2pRepayments.reduce((s, rep) => s + (rep.amount || 0), 0);
+    const p2pCost  = p2pInv - p2pCurr;
+    const p2pFlows = [
+      ...this.p2pData.map(e => ({ date: new Date(e.date), amount: -(e.amount || 0) })),
+      ...this.p2pRepayments.map(rp => ({ date: new Date(rp.date), amount: +(rp.amount || 0) })),
+      { date: today, amount: p2pCurr }
+    ];
+
+    // Fixed Deposits
+    const fdInv   = this.fdData.reduce((s, e) => s + (e.fd_value || 0), 0);
+    const fdCurr  = this.fdData.filter(e => !e.return_value || e.return_value === 0).reduce((s, e) => s + (e.fd_value || 0), 0);
+    const fdSales = this.fdData.filter(e => (e.return_value || 0) > 0).reduce((s, e) => s + (e.return_value || 0), 0);
+    const fdCost  = fdInv - fdCurr;
+    const fdFlows = [
+      ...this.fdData.map(e => ({ date: new Date(e.date), amount: -(e.fd_value || 0) })),
+      ...this.fdData.filter(e => (e.return_value || 0) > 0).map(e => ({ date: new Date(e.maturity_date || e.date), amount: +(e.return_value || 0) })),
+      { date: today, amount: fdCurr }
+    ];
+
+    return [
+      { category: 'Equity India',   icon: '📈', totalInvested: r(eqIndInv), currentHoldings: r(eqIndFifo), totalSales: r(eqIndSales), netPnL: r(eqIndSales - eqIndCost), returnPct: pct(eqIndSales - eqIndCost, eqIndCost), xirr: this.xirrSafe(eqIndFlows) },
+      { category: 'Equity USA',     icon: '🌐', totalInvested: r(eqUsaInv), currentHoldings: r(eqUsaFifo), totalSales: r(eqUsaSales), netPnL: r(eqUsaSales - eqUsaCost), returnPct: pct(eqUsaSales - eqUsaCost, eqUsaCost), xirr: this.xirrSafe(eqUsaFlows) },
+      { category: 'Mutual Funds',   icon: '📊', totalInvested: r(mfInv),  currentHoldings: r(mfCurr),  totalSales: r(mfSales),  netPnL: r(mfSales  - mfCost),  returnPct: pct(mfSales  - mfCost,  mfCost),  xirr: this.xirrSafe(mfFlows)  },
+      { category: 'Commodity',      icon: '🥇', totalInvested: r(cmdInv), currentHoldings: r(cmdCurr), totalSales: r(cmdSales), netPnL: r(cmdSales - cmdCost), returnPct: pct(cmdSales - cmdCost, cmdCost), xirr: this.xirrSafe(cmdFlows) },
+      { category: 'P2P',            icon: '🤝', totalInvested: r(p2pInv), currentHoldings: r(p2pCurr), totalSales: r(p2pSales), netPnL: r(p2pSales - p2pCost), returnPct: pct(p2pSales - p2pCost, p2pCost), xirr: this.xirrSafe(p2pFlows) },
+      { category: 'Fixed Deposits', icon: '🏦', totalInvested: r(fdInv),  currentHoldings: r(fdCurr),  totalSales: r(fdSales),  netPnL: r(fdSales  - fdCost),  returnPct: pct(fdSales  - fdCost,  fdCost),  xirr: this.xirrSafe(fdFlows)  },
+    ].filter(row => row.currentHoldings > 0);
+  }
+
+  // ── XIRR ──
+
+  private xirrSafe(flows: { date: Date; amount: number }[]): number | null {
+    flows.sort((a, b) => a.date.getTime() - b.date.getTime());
+    if (!flows.some(f => f.amount < 0) || !flows.some(f => f.amount > 0)) return null;
+    return this.xirr(flows);
+  }
+
+  private xirr(flows: { date: Date; amount: number }[]): number | null {
+    const d0 = flows[0].date.getTime();
+    const years = flows.map(f => (f.date.getTime() - d0) / (365.25 * 86400000));
+    const npv  = (r: number) => flows.reduce((s, f, i) => s + f.amount / Math.pow(1 + r, years[i]), 0);
+    const dnpv = (r: number) => flows.reduce((s, f, i) => s - f.amount * years[i] / Math.pow(1 + r, years[i] + 1), 0);
+    let r = 0.1;
+    for (let i = 0; i < 200; i++) {
+      const dr = dnpv(r);
+      if (Math.abs(dr) < 1e-14) break;
+      const r1 = r - npv(r) / dr;
+      if (!isFinite(r1) || r1 < -0.9999) break;
+      if (Math.abs(r1 - r) < 1e-9) { r = r1; break; }
+      r = r1;
+    }
+    return Math.abs(npv(r)) < 10 ? Math.round(r * 10000) / 100 : null;
+  }
+
+  get portfolioXIRR(): number | null {
+    if (!this.capitalFlows?.length) return null;
+    const flows: { date: Date; amount: number }[] = this.capitalFlows
+      .filter(cf => cf.type !== 'Profit Withdrawal')
+      .map(cf => ({
+        date: new Date(cf.date),
+        amount: cf.type === 'Deposit' ? -(parseFloat(cf.amount) || 0) : (parseFloat(cf.amount) || 0)
+      }));
+    // Terminal = remaining cost basis + all realized sale proceeds still inside the portfolio
+    const terminal = this.currentInvestment + this.totalSaleValue;
+    if (terminal <= 0) return null;
+    flows.push({ date: new Date(), amount: terminal });
+    flows.sort((a, b) => a.date.getTime() - b.date.getTime());
+    if (!flows.some(f => f.amount < 0) || !flows.some(f => f.amount > 0)) return null;
+    return this.xirr(flows);
+  }
+
+  // ── Monthly Deployment Chart ──
+
+  get monthlyDeploymentBars(): { month: string; deposits: number; withdrawals: number; net: number; depositPct: number; withdrawalPct: number }[] {
+    if (!this.capitalFlows?.length) return [];
+    const monthMap = new Map<string, { deposits: number; withdrawals: number }>();
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    this.capitalFlows.forEach(cf => {
+      const d = new Date(cf.date);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const prev = monthMap.get(key) || { deposits: 0, withdrawals: 0 };
+      const amt = parseFloat(cf.amount) || 0;
+      if (cf.type === 'Deposit') prev.deposits += amt; else prev.withdrawals += amt;
+      monthMap.set(key, prev);
+    });
+    const maxDep = Math.max(...[...monthMap.values()].map(v => v.deposits), 1);
+    return [...monthMap.keys()].sort().map(key => {
+      const v = monthMap.get(key)!;
+      const [yr, mo] = key.split('-');
+      return {
+        month: `${monthNames[+mo - 1]} '${yr.slice(2)}`,
+        deposits: Math.round(v.deposits * 100) / 100,
+        withdrawals: Math.round(v.withdrawals * 100) / 100,
+        net: Math.round((v.deposits - v.withdrawals) * 100) / 100,
+        depositPct: Math.round((v.deposits / maxDep) * 100),
+        withdrawalPct: Math.round((v.withdrawals / maxDep) * 100),
+      };
+    });
   }
 
   // ── Equity FIFO holdings (per-stock cost of remaining lots, always from all data) ──
 
   private get equityFifoHoldings(): { name: string; value: number; market: string; market_cap: string; sector: string }[] {
-    const buyLots = new Map<string, { date: string; qty: number; value: number; meta: { market: string; market_cap: string; sector: string } }[]>();
-    const totalSells = new Map<string, number>();
+    // Group buys and sells by (name, date) for same-day netting
+    const buysByNameDate = new Map<string, Map<string, { qty: number; value: number }>>();
+    const sellsByNameDate = new Map<string, Map<string, number>>();
+    const metaByName = new Map<string, { market: string; market_cap: string; sector: string }>();
+
     for (const e of this.equityData) {
       if (e.buy_sell === 'Buy') {
-        if (!buyLots.has(e.name)) buyLots.set(e.name, []);
-        buyLots.get(e.name)!.push({ date: e.date, qty: e.quantity || 0, value: e.value || 0,
-          meta: { market: e.market, market_cap: e.market_cap, sector: e.sector } });
+        metaByName.set(e.name, { market: e.market, market_cap: e.market_cap, sector: e.sector });
+        if (!buysByNameDate.has(e.name)) buysByNameDate.set(e.name, new Map());
+        const dm = buysByNameDate.get(e.name)!;
+        const prev = dm.get(e.date) || { qty: 0, value: 0 };
+        dm.set(e.date, { qty: prev.qty + (e.quantity || 0), value: prev.value + (e.value || 0) });
       } else {
-        totalSells.set(e.name, (totalSells.get(e.name) || 0) + (e.quantity || 0));
+        if (!sellsByNameDate.has(e.name)) sellsByNameDate.set(e.name, new Map());
+        const dm = sellsByNameDate.get(e.name)!;
+        dm.set(e.date, (dm.get(e.date) || 0) + (e.quantity || 0));
       }
     }
+
     const result: { name: string; value: number; market: string; market_cap: string; sector: string }[] = [];
-    for (const [name, lots] of buyLots) {
-      const sorted = [...lots].sort((a, b) => a.date.localeCompare(b.date));
-      let sells = totalSells.get(name) || 0;
+
+    for (const [name, buyDateMap] of buysByNameDate) {
+      // Mutable copies for same-day netting
+      const buyMap = new Map<string, { qty: number; value: number }>();
+      for (const [d, v] of buyDateMap) buyMap.set(d, { ...v });
+      const sellMap = new Map<string, number>();
+      for (const [d, q] of (sellsByNameDate.get(name) || new Map())) sellMap.set(d, q);
+
+      // Priority: net off sells against same-day buys first
+      for (const [date, sellQty] of sellMap) {
+        const bd = buyMap.get(date);
+        if (bd && bd.qty > 0 && sellQty > 0) {
+          const netted = Math.min(bd.qty, sellQty);
+          const ratio = (bd.qty - netted) / bd.qty;
+          buyMap.set(date, { qty: bd.qty - netted, value: bd.value * ratio });
+          sellMap.set(date, sellQty - netted);
+        }
+      }
+
+      // Effective buy lots remaining after same-day netting, sorted oldest-first
+      const effectiveLots = [...buyMap.entries()]
+        .filter(([, bd]) => bd.qty > 0)
+        .map(([date, bd]) => ({ date, qty: bd.qty, value: bd.value }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+
+      let remSells = 0;
+      for (const q of sellMap.values()) remSells += q;
+
       let fifoValue = 0;
-      for (const lot of sorted) {
+      for (const lot of effectiveLots) {
         let rem = lot.qty;
-        if (sells >= rem) { sells -= rem; continue; }
-        rem -= sells; sells = 0;
+        if (remSells >= rem) { remSells -= rem; continue; }
+        rem -= remSells; remSells = 0;
         fifoValue += rem * (lot.qty > 0 ? lot.value / lot.qty : 0);
       }
+
       if (fifoValue > 0) {
-        result.push({ name, value: Math.round(fifoValue * 100) / 100, ...sorted[0].meta });
+        const meta = metaByName.get(name) || { market: '', market_cap: '', sector: '' };
+        result.push({ name, value: Math.round(fifoValue * 100) / 100, ...meta });
       }
     }
+
     return result;
   }
 
@@ -590,6 +835,7 @@ export class DashboardComponent implements OnInit {
 
     const categoryMapping: { [key: string]: string } = {
       'Equity/Commodity': 'Equity/Commodity',
+      'Equity USA': 'Equity USA',
       'Mutual Funds': 'Mutual Funds',
       'P2P': 'P2P',
       'Fixed Deposit': 'Fixed Deposits',
@@ -651,6 +897,7 @@ export class DashboardComponent implements OnInit {
     // Group capital flows by category and calculate net investment per category
     const categoryMapping: { [key: string]: string } = {
       'Equity/Commodity': 'Equity/Commodity',
+      'Equity USA': 'Equity USA',
       'Mutual Funds': 'Mutual Funds',
       'P2P': 'P2P',
       'Fixed Deposit': 'Fixed Deposits',
@@ -687,7 +934,7 @@ export class DashboardComponent implements OnInit {
     const total = catData.reduce((s, d) => s + d.value, 0);
     const colors = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981'];
 
-    return catData
+    const sorted = catData
       .map((d, i) => ({
         label: d.label,
         value: d.value,
@@ -695,6 +942,13 @@ export class DashboardComponent implements OnInit {
         color: colors[i % colors.length]
       }))
       .sort((a, b) => b.value - a.value);
+
+    return sorted;
+  }
+
+  get maxActualPct(): number {
+    const bars = this.actualInvestmentBars;
+    return bars.length > 0 ? bars[0].pct : 100;
   }
 
   // ── Equity Analysis ──
@@ -702,44 +956,82 @@ export class DashboardComponent implements OnInit {
   // Per-stock realized P&L helper: sell value − proportional buy cost.
   // Stocks with no sells contribute 0 (unrealized P&L is unknown without live prices).
   private equityPnL(entries: EquityEntry[]): { name: string; pnl: number; market: string; market_cap: string; sector: string }[] {
-    // Collect sells from passed (possibly year-filtered) entries
-    const sellsByName = new Map<string, { qty: number; value: number; market: string; market_cap: string; sector: string }>();
     const metaByName = new Map<string, { market: string; market_cap: string; sector: string }>();
+    const sellsByNameDate = new Map<string, Map<string, { qty: number; value: number; market: string; market_cap: string; sector: string }>>();
+
     for (const e of entries) {
       metaByName.set(e.name, { market: e.market, market_cap: e.market_cap, sector: e.sector });
       if (e.buy_sell === 'Sell') {
-        const d = sellsByName.get(e.name) || { qty: 0, value: 0, market: e.market, market_cap: e.market_cap, sector: e.sector };
-        d.qty += e.quantity || 0;
-        d.value += e.value || 0;
-        sellsByName.set(e.name, d);
+        if (!sellsByNameDate.has(e.name)) sellsByNameDate.set(e.name, new Map());
+        const dm = sellsByNameDate.get(e.name)!;
+        const prev = dm.get(e.date) || { qty: 0, value: 0, market: e.market, market_cap: e.market_cap, sector: e.sector };
+        dm.set(e.date, { qty: prev.qty + (e.quantity || 0), value: prev.value + (e.value || 0), market: e.market, market_cap: e.market_cap, sector: e.sector });
       }
     }
-    // Build ALL buy lots per stock from all equity data, sorted oldest-first (FIFO)
-    const allBuyLots = new Map<string, { date: string; qty: number; value: number }[]>();
+
+    // Build buy lots per (name, date) from ALL equity data
+    const buysByNameDate = new Map<string, Map<string, { qty: number; value: number }>>();
     for (const e of this.equityData) {
       if (e.buy_sell === 'Buy') {
-        if (!allBuyLots.has(e.name)) allBuyLots.set(e.name, []);
-        allBuyLots.get(e.name)!.push({ date: e.date, qty: e.quantity || 0, value: e.value || 0 });
+        if (!buysByNameDate.has(e.name)) buysByNameDate.set(e.name, new Map());
+        const dm = buysByNameDate.get(e.name)!;
+        const prev = dm.get(e.date) || { qty: 0, value: 0 };
+        dm.set(e.date, { qty: prev.qty + (e.quantity || 0), value: prev.value + (e.value || 0) });
       }
     }
+
     const result: { name: string; pnl: number; market: string; market_cap: string; sector: string }[] = [];
+
     // Stocks with no sells → pnl 0
     for (const [name, meta] of metaByName) {
-      if (!sellsByName.has(name)) result.push({ name, pnl: 0, ...meta });
+      if (!sellsByNameDate.has(name)) result.push({ name, pnl: 0, ...meta });
     }
-    // Stocks with sells → FIFO cost
-    for (const [name, sellData] of sellsByName) {
-      const lots = [...(allBuyLots.get(name) || [])].sort((a, b) => a.date.localeCompare(b.date));
-      let remaining = sellData.qty;
+
+    // Stocks with sells → same-day netting first, then FIFO for remainder
+    for (const [name, sellDateMap] of sellsByNameDate) {
+      const meta = metaByName.get(name) || { market: '', market_cap: '', sector: '' };
+
+      const buyMap = new Map<string, { qty: number; value: number }>();
+      for (const [d, v] of (buysByNameDate.get(name) || new Map())) buyMap.set(d, { ...v });
+
+      let intradayPnL = 0;
+      let remSellQty = 0;
+      let remSellValue = 0;
+
+      for (const [date, sd] of sellDateMap) {
+        const bd = buyMap.get(date);
+        if (bd && bd.qty > 0 && sd.qty > 0) {
+          const netted = Math.min(bd.qty, sd.qty);
+          const intradaySellVal = sd.qty > 0 ? sd.value * (netted / sd.qty) : 0;
+          const intradayBuyCost = bd.qty > 0 ? bd.value * (netted / bd.qty) : 0;
+          intradayPnL += intradaySellVal - intradayBuyCost;
+          buyMap.set(date, { qty: bd.qty - netted, value: bd.value - intradayBuyCost });
+          remSellQty += sd.qty - netted;
+          remSellValue += sd.value - intradaySellVal;
+        } else {
+          remSellQty += sd.qty;
+          remSellValue += sd.value;
+        }
+      }
+
+      // FIFO on remaining (non-intraday) sells
+      const remainingLots = [...buyMap.entries()]
+        .filter(([, bd]) => bd.qty > 0)
+        .map(([date, bd]) => ({ date, qty: bd.qty, value: bd.value }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+
+      let remaining = remSellQty;
       let fifoCost = 0;
-      for (const lot of lots) {
+      for (const lot of remainingLots) {
         if (remaining <= 0) break;
         const used = Math.min(lot.qty, remaining);
         fifoCost += used * (lot.qty > 0 ? lot.value / lot.qty : 0);
         remaining -= used;
       }
-      result.push({ name, pnl: Math.round((sellData.value - fifoCost) * 100) / 100, market: sellData.market, market_cap: sellData.market_cap, sector: sellData.sector });
+
+      result.push({ name, pnl: Math.round((intradayPnL + remSellValue - fifoCost) * 100) / 100, ...meta });
     }
+
     return result;
   }
 
@@ -755,8 +1047,8 @@ export class DashboardComponent implements OnInit {
 
   get equityFilteredEntries(): EquityEntry[] {
     let filtered = this.equityData;
-    if (this.selectedYear !== 'All') {
-      filtered = filtered.filter(e => this.dateToFY(e.date) === this.selectedYear);
+    if (this.selectedYears.length > 0) {
+      filtered = filtered.filter(e => this.selectedYears.includes(this.dateToFY(e.date)));
     }
     if (this.selectedMarket !== null) {
       filtered = filtered.filter(e => e.market === this.selectedMarket);
@@ -947,8 +1239,8 @@ export class DashboardComponent implements OnInit {
 
   get mfFilteredEntries(): MutualFundEntry[] {
     let filtered = this.mfData;
-    if (this.selectedYear !== 'All') {
-      filtered = filtered.filter(e => e.year === this.selectedYear);
+    if (this.selectedYears.length > 0) {
+      filtered = filtered.filter(e => this.selectedYears.includes(e.year));
     }
     if (this.selectedMFCategory !== null) {
       filtered = filtered.filter(e => e.category === this.selectedMFCategory);
@@ -1048,8 +1340,8 @@ export class DashboardComponent implements OnInit {
 
   get commFilteredEntries(): CommodityEntry[] {
     let filtered = this.commodityData;
-    if (this.selectedYear !== 'All') {
-      filtered = filtered.filter(e => e.year === this.selectedYear);
+    if (this.selectedYears.length > 0) {
+      filtered = filtered.filter(e => this.selectedYears.includes(e.year));
     }
     if (this.selectedCommodity !== null) {
       filtered = filtered.filter(e => e.commodity === this.selectedCommodity);
@@ -1125,8 +1417,8 @@ export class DashboardComponent implements OnInit {
 
   get p2pFilteredEntries(): P2PEntry[] {
     let filtered = this.p2pData;
-    if (this.selectedYear !== 'All') {
-      filtered = filtered.filter(e => this.dateToFY(e.date) === this.selectedYear);
+    if (this.selectedYears.length > 0) {
+      filtered = filtered.filter(e => this.selectedYears.includes(this.dateToFY(e.date)));
     }
     if (this.selectedPlatform !== null) {
       filtered = filtered.filter(e => e.platform === this.selectedPlatform);
@@ -1215,7 +1507,7 @@ export class DashboardComponent implements OnInit {
     }
     // MF and Commodity: aggregate per instrument name to correctly apply calcInvestment
     if (this.selectedCategory === 'Mutual Funds' || this.selectedCategory === 'Commodity') {
-      const yearFilter = (e: any) => this.selectedYear === 'All' || e.year === this.selectedYear;
+      const yearFilter = (e: any) => this.selectedYears.length === 0 || this.selectedYears.includes(e.year);
       const data = this.selectedCategory === 'Mutual Funds'
         ? this.mfData.filter(yearFilter)
         : this.commodityData.filter(yearFilter);
@@ -1259,10 +1551,10 @@ export class DashboardComponent implements OnInit {
 
   // Normalize all category entries to a common shape for calculations
   private get catEntries(): { group: Record<string, string>; buyQty: number | null; sellQty: number | null; buyVal: number | null; sellVal: number | null }[] {
-    const yearFilter = (e: any) => this.selectedYear === 'All' || e.year === this.selectedYear;
+    const yearFilter = (e: any) => this.selectedYears.length === 0 || this.selectedYears.includes(e.year);
     switch (this.selectedCategory) {
       case 'Equity':
-        return this.equityData.filter(e => this.dateToFY(e.date) === this.selectedYear || this.selectedYear === 'All').map(e => ({
+        return this.equityData.filter(e => this.selectedYears.length === 0 || this.selectedYears.includes(this.dateToFY(e.date))).map(e => ({
           group: { FY: this.dateToFY(e.date) || 'N/A', Market: e.market, 'Market Cap': e.market_cap, Sector: e.sector },
           buyQty: e.buy_sell === 'Buy' ? (e.quantity || 0) : null,
           sellQty: e.buy_sell === 'Sell' ? (e.quantity || 0) : null,
@@ -1440,6 +1732,7 @@ export class DashboardComponent implements OnInit {
       remarks: this.capitalFlowForm.remarks || ''
     };
 
+    this.submittingCapitalFlow = true;
     this.investmentService.addCapitalFlow(entry).subscribe({
       next: (response: any) => {
         // Add new entry to local data instead of full refresh
@@ -1455,9 +1748,10 @@ export class DashboardComponent implements OnInit {
           actual_investment: deposits - withdrawals
         };
         
+        this.submittingCapitalFlow = false;
         this.toggleCapitalFlowsForm();
       },
-      error: (e) => alert('Error adding capital flow: ' + e.message)
+      error: (e) => { this.submittingCapitalFlow = false; alert('Error adding capital flow: ' + e.message); }
     });
   }
 

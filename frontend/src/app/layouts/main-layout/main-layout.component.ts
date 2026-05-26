@@ -1,6 +1,7 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
+import { Subscription } from 'rxjs';
 import { DashboardComponent } from '../../components/dashboard/dashboard.component';
 import { EquityComponent } from '../../components/equity/equity.component';
 import { CommodityComponent } from '../../components/commodity/commodity.component';
@@ -31,10 +32,12 @@ const PAGES_WITH_ADD: Page[] = ['equity', 'mutual-funds', 'commodity', 'p2p', 'f
   templateUrl: './main-layout.component.html',
   styleUrl: './main-layout.component.scss'
 })
-export class MainLayoutComponent implements OnInit {
+export class MainLayoutComponent implements OnInit, OnDestroy {
   currentPage: Page = 'home';
   darkMode = false;
+  isRefreshing = false;
   readonly visitedPages = new Set<Page>(['home']);
+  private refreshDoneSub?: Subscription;
 
   constructor(
     private uiActionService: UiActionService,
@@ -46,7 +49,10 @@ export class MainLayoutComponent implements OnInit {
     this.darkMode = localStorage.getItem('darkMode') === 'true';
     document.body.classList.toggle('dark', this.darkMode);
     document.body.classList.toggle('light', !this.darkMode);
+    this.refreshDoneSub = this.uiActionService.refreshDone.subscribe(() => { this.isRefreshing = false; });
   }
+
+  ngOnDestroy(): void { this.refreshDoneSub?.unsubscribe(); }
 
   toggleDarkMode(): void {
     this.darkMode = !this.darkMode;
@@ -108,7 +114,8 @@ export class MainLayoutComponent implements OnInit {
   }
 
   refreshData(): void {
-    window.location.reload();
+    this.isRefreshing = true;
+    this.uiActionService.triggerRefresh();
   }
 
   isActive(page: Page): boolean {
@@ -120,6 +127,6 @@ export class MainLayoutComponent implements OnInit {
   }
 
   triggerAddEntry(): void {
-    this.uiActionService.triggerAddEntry();
+    this.uiActionService.triggerAddEntry(this.currentPage);
   }
 }

@@ -34,7 +34,8 @@ export class ForexComponent implements OnInit, OnDestroy {
   constructor(private investmentService: InvestmentService, private uiActionService: UiActionService) {}
 
   ngOnInit(): void {
-    this.addSub = this.uiActionService.addEntry.subscribe(() => this.openAddForm());
+    this.addSub = this.uiActionService.addEntry.subscribe(page => { if (page === 'forex') this.openAddForm(); });
+    this.addSub.add(this.uiActionService.refresh.subscribe(() => { this.uiActionService.beginRefresh(); this.loadEntries(() => this.uiActionService.endRefresh()); }));
     this.loadEntries();
     this.investmentService.getEquity().subscribe({
       next: (data) => this.equityData = data,
@@ -171,17 +172,19 @@ export class ForexComponent implements OnInit, OnDestroy {
     return this.totalDepositsINR - (this.totalDepositsUSD * leastRate);
   }
 
-  loadEntries(): void {
+  loadEntries(onComplete?: () => void): void {
     this.loading = true;
     this.investmentService.getForex().subscribe({
       next: (data) => {
         this.allEntries = data;
         this.applyFilter();
         this.loading = false;
+        onComplete?.();
       },
       error: () => {
         this.toast('Failed to load entries', 'error');
         this.loading = false;
+        onComplete?.();
       }
     });
   }

@@ -106,8 +106,8 @@
           </div>
           <div class="form-group">
             <label>Name *</label>
-            <input type="text" [(ngModel)]="form.name" name="name" placeholder="Commodity name" required list="nameSuggestions" autocomplete="off" (ngModelChange)="onNameChange()">
-            <datalist id="nameSuggestions">
+            <input type="text" [(ngModel)]="form.name" name="name" placeholder="Commodity name" required list="commodityNameSuggestions" autocomplete="off" (ngModelChange)="onNameChange()">
+            <datalist id="commodityNameSuggestions">
               <option *ngFor="let s of nameSuggestions" [value]="s"></option>
             </datalist>
           </div>
@@ -145,7 +145,7 @@
         </div>
         <div class="form-actions">
           <button type="button" class="btn btn-secondary" (click)="cancelForm()">Cancel</button>
-          <button type="submit" class="btn btn-primary" [disabled]="submitting">{{ editingId ? 'Update' : 'Add' }}</button>
+          <button type="submit" class="btn btn-primary" [disabled]="submitting">{{ submitting ? 'Saving...' : editingId ? 'Update' : 'Add' }}</button>
         </div>
       </form>
     </div>

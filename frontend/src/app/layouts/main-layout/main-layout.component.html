@@ -111,8 +111,8 @@
 
       <hr class="divider">
 
-      <button class="nav-btn refresh-btn" (click)="refreshData()">
-        🔄 Refresh
+      <button class="nav-btn refresh-btn" (click)="refreshData()" [disabled]="isRefreshing">
+        {{ isRefreshing ? '⏳ Refreshing...' : '🔄 Refresh' }}
       </button>
 
       <button 

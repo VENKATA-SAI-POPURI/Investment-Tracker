@@ -48,7 +48,8 @@ export class P2PComponent implements OnInit, OnDestroy {
   constructor(private investmentService: InvestmentService, private uiActionService: UiActionService) {}
 
   ngOnInit(): void {
-    this.addSub = this.uiActionService.addEntry.subscribe(() => this.openAddForm());
+    this.addSub = this.uiActionService.addEntry.subscribe(page => { if (page === 'p2p') this.openAddForm(); });
+    this.addSub.add(this.uiActionService.refresh.subscribe(() => { this.uiActionService.beginRefresh(); this.loadData(() => this.uiActionService.endRefresh()); }));
     this.loadData();
   }
 

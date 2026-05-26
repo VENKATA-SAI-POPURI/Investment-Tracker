@@ -164,7 +164,7 @@ def _auto_create_capital_flows(sheet_name, transaction_data):
                     "date": transaction_data.get("date", ""),
                     "amount": float(inr_amount),
                     "type": "Deposit",
-                    "category": "Equity/Commodity",
+                    "category": "Equity USA",
                     "remarks": f"Forex deposit: ${usd_amount} at ₹{rate}/USD"
                 }
                 db_service.add_row("Capital Flows", capital_flow)
@@ -175,7 +175,7 @@ def _auto_create_capital_flows(sheet_name, transaction_data):
                     "date": transaction_data.get("date", ""),
                     "amount": float(inr_amount),
                     "type": "Withdrawal",
-                    "category": "Equity/Commodity",
+                    "category": "Equity USA",
                     "remarks": f"Forex withdrawal: ${usd_amount} at ₹{rate}/USD"
                 }
                 db_service.add_row("Capital Flows", capital_flow)

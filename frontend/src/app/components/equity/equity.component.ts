@@ -146,28 +146,60 @@ export class EquityComponent implements OnInit, OnDestroy {
     const daysSince = (d: string) =>
       Math.floor((today.getTime() - new Date(d).getTime()) / 86400000);
 
-    // 1. FIFO holding-period buckets + FIFO net cost from ALL entries (unfiltered)
-    const buyLots = new Map<string, { date: string; qty: number; value: number; valueUsd: number }[]>();
-    const totalSells = new Map<string, number>();
+    // 1. Same-day netting + FIFO: sells on a given date first cancel out same-day
+    //    buys (intraday); any remaining sell qty is consumed oldest-first (FIFO).
+    const buysByNameDate = new Map<string, Map<string, { qty: number; value: number; valueUsd: number }>>();
+    const sellsByNameDate = new Map<string, Map<string, number>>();
     for (const e of this.allEntries) {
       if (e.buy_sell === 'Buy') {
-        if (!buyLots.has(e.name)) buyLots.set(e.name, []);
-        buyLots.get(e.name)!.push({ date: e.date, qty: e.quantity || 0, value: e.value || 0, valueUsd: e.value_usd || 0 });
+        if (!buysByNameDate.has(e.name)) buysByNameDate.set(e.name, new Map());
+        const dm = buysByNameDate.get(e.name)!;
+        const prev = dm.get(e.date) || { qty: 0, value: 0, valueUsd: 0 };
+        dm.set(e.date, { qty: prev.qty + (e.quantity || 0), value: prev.value + (e.value || 0), valueUsd: prev.valueUsd + (e.value_usd || 0) });
       } else {
-        totalSells.set(e.name, (totalSells.get(e.name) || 0) + (e.quantity || 0));
+        if (!sellsByNameDate.has(e.name)) sellsByNameDate.set(e.name, new Map());
+        const dm = sellsByNameDate.get(e.name)!;
+        dm.set(e.date, (dm.get(e.date) || 0) + (e.quantity || 0));
       }
     }
+
     const buckets = new Map<string, { lt6m: number; lt1y: number; lt2y: number; gt2y: number }>();
     const fifoNetValue = new Map<string, { inr: number; usd: number }>();
-    for (const [name, lots] of buyLots) {
-      const sorted = [...lots].sort((a, b) => a.date.localeCompare(b.date));
-      let sells = totalSells.get(name) || 0;
+    const allStockNames = new Set<string>([...buysByNameDate.keys(), ...sellsByNameDate.keys()]);
+
+    for (const name of allStockNames) {
+      // Mutable copies for same-day netting
+      const buyMap = new Map<string, { qty: number; value: number; valueUsd: number }>();
+      for (const [d, v] of (buysByNameDate.get(name) || new Map())) buyMap.set(d, { ...v });
+      const sellMap = new Map<string, number>();
+      for (const [d, q] of (sellsByNameDate.get(name) || new Map())) sellMap.set(d, q);
+
+      // Priority: net off sells against same-day buys first
+      for (const [date, sellQty] of sellMap) {
+        const bd = buyMap.get(date);
+        if (bd && bd.qty > 0 && sellQty > 0) {
+          const netted = Math.min(bd.qty, sellQty);
+          const ratio = (bd.qty - netted) / bd.qty;
+          buyMap.set(date, { qty: bd.qty - netted, value: bd.value * ratio, valueUsd: bd.valueUsd * ratio });
+          sellMap.set(date, sellQty - netted);
+        }
+      }
+
+      // Effective buy lots remaining after same-day netting, sorted oldest-first
+      const effectiveLots = [...buyMap.entries()]
+        .filter(([, bd]) => bd.qty > 0)
+        .map(([date, bd]) => ({ date, qty: bd.qty, value: bd.value, valueUsd: bd.valueUsd }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+
+      let remSells = 0;
+      for (const q of sellMap.values()) remSells += q;
+
       const b = { lt6m: 0, lt1y: 0, lt2y: 0, gt2y: 0 };
       let netInr = 0, netUsd = 0;
-      for (const lot of sorted) {
+      for (const lot of effectiveLots) {
         let rem = lot.qty;
-        if (sells >= rem) { sells -= rem; continue; }
-        rem -= sells; sells = 0;
+        if (remSells >= rem) { remSells -= rem; continue; }
+        rem -= remSells; remSells = 0;
         const cpuInr = lot.qty > 0 ? lot.value / lot.qty : 0;
         const cpuUsd = lot.qty > 0 ? lot.valueUsd / lot.qty : 0;
         netInr += rem * cpuInr;
@@ -224,7 +256,8 @@ export class EquityComponent implements OnInit, OnDestroy {
   constructor(private investmentService: InvestmentService, private uiActionService: UiActionService) {}
 
   ngOnInit(): void {
-    this.addSub = this.uiActionService.addEntry.subscribe(() => this.openAddForm());
+    this.addSub = this.uiActionService.addEntry.subscribe(page => { if (page === 'equity') this.openAddForm(); });
+    this.addSub.add(this.uiActionService.refresh.subscribe(() => { this.uiActionService.beginRefresh(); this.loadEntries(() => this.uiActionService.endRefresh()); }));
     this.loadForexData();
     this.loadEntries();
   }
@@ -263,17 +296,19 @@ export class EquityComponent implements OnInit, OnDestroy {
     };
   }
 
-  loadEntries(): void {
+  loadEntries(onComplete?: () => void): void {
     this.loading = true;
     this.investmentService.getEquity().subscribe({
       next: (data) => {
         this.allEntries = data;
         this.applyFilter();
         this.loading = false;
+        onComplete?.();
       },
       error: () => {
         this.toast('Failed to load entries', 'error');
         this.loading = false;
+        onComplete?.();
       }
     });
   }

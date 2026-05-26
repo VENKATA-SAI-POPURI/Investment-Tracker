@@ -115,7 +115,7 @@
         </div>
         <div class="form-actions">
           <button type="button" class="btn btn-secondary" (click)="cancelForm()">Cancel</button>
-          <button type="submit" class="btn btn-primary" [disabled]="submitting">{{ editingId ? 'Update' : 'Add' }}</button>
+          <button type="submit" class="btn btn-primary" [disabled]="submitting">{{ submitting ? 'Saving...' : editingId ? 'Update' : 'Add' }}</button>
         </div>
       </form>
     </div>
