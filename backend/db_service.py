@@ -136,7 +136,7 @@ TABLES = {
         "sell_col": None,
     },
     "p2p_repayments": {
-        "columns": ["lending_id", "date", "amount", "remarks"],
+        "columns": ["lending_id", "date", "principal", "interest", "platform_fee", "amount", "remarks"],
         "buy_col": None,
         "sell_col": "amount",
     },
@@ -192,6 +192,8 @@ NUMERIC_FIELDS = {
     "amount", "tenure", "fd_value",
     "interest", "return_value",
     "inr_amount", "usd_amount", "rate",
+    # P2P repayment breakdown fields
+    "principal", "platform_fee",
 }
 
 UPSERT_FIELDS = NUMERIC_FIELDS | {"date", "maturity_date", "buy_sell"}
@@ -219,6 +221,24 @@ class DbService:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
         return conn
+
+    def _migrate_p2p_repayments_v2(self, conn):
+        """Add principal, interest, platform_fee columns to p2p_repayments if missing."""
+        try:
+            conn.execute("SELECT principal FROM p2p_repayments LIMIT 0")
+            return  # Already migrated
+        except Exception as e:
+            if "no such table" in str(e).lower():
+                return  # Table not yet created; will be created with correct schema
+        try:
+            conn.execute("ALTER TABLE p2p_repayments ADD COLUMN principal REAL")
+            conn.execute("ALTER TABLE p2p_repayments ADD COLUMN interest REAL")
+            conn.execute("ALTER TABLE p2p_repayments ADD COLUMN platform_fee REAL")
+            conn.commit()
+            print("[db_service] p2p_repayments migrated: added principal, interest, platform_fee columns.")
+        except Exception:
+            import traceback
+            traceback.print_exc()
 
     def _migrate_equity_v2(self, conn):
         """Migrate equity table from master (buy/sell columns) to transaction-level schema."""
@@ -258,6 +278,7 @@ class DbService:
     def _init_db(self):
         with self._lock:
             conn = self._connect()
+            self._migrate_p2p_repayments_v2(conn)
             self._migrate_equity_v2(conn)
             for table, config in TABLES.items():
                 cols = ", ".join(

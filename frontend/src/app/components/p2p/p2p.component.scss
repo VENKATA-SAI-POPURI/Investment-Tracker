@@ -86,6 +86,15 @@
     white-space: nowrap;
     color: #1e293b;
   }
+
+  &.kpi-card-clickable {
+    cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    &:hover {
+      border-color: rgba(102, 126, 234, 0.5);
+      box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
+    }
+  }
 }
 
 :host-context(body.dark) .kpi-card-mini {
@@ -707,6 +716,45 @@ tr.overdue {
 
 // ── Mobile ──
 @media (max-width: 768px) {
+  // ── Critical layout fix ──
+  // :host and .page both have overflow:hidden (needed for desktop table scrolling).
+  // On mobile the KPI + monthly sections stack to ~850px, exceeding the viewport
+  // and getting clipped. Switch to scrollable height-auto layout so content-area
+  // (which has overflow-y:auto) can scroll through the full page.
+  :host {
+    height: auto;
+    min-height: 100%;
+    overflow: visible;
+  }
+  .page {
+    padding: 0.75rem;
+    overflow: visible;
+    flex: none;
+    min-height: 0;
+  }
+  // Table: flex:none so it renders at content height on mobile (horizontal scroll via overflow:auto)
+  .table-wrapper { flex: none; }
+
+  // KPI tier cards: 2-col grid so values (₹20,289.70) don't overflow 77px cells
+  .kpi-tier-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .kpi-card-mini {
+    .kpi-value { font-size: 0.85rem; white-space: normal; word-break: break-word; }
+    .kpi-label { font-size: 0.6rem; }
+  }
+
+  // Return trend bar chart: horizontal scroll so months don't overflow
+  .return-trend {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 0.25rem;
+  }
+  .trend-bar, .trend-bar.current-month, .trend-bar.future {
+    min-width: 32px;
+    flex-shrink: 0;
+  }
+
   .forex-summary {
     grid-template-columns: repeat(2, 1fr);
     gap: 0.5rem;

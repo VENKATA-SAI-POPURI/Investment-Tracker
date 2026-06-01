@@ -28,3 +28,13 @@
   overflow: auto;
   width: 100%;
 }
+
+.table-wrapper table {
+  min-width: 640px;
+}
+
+@media (max-width: 768px) {
+  :host { height: auto; min-height: 100%; overflow: visible; }
+  .page { padding: 0.75rem; overflow: visible; flex: none; }
+  .table-wrapper { flex: none; } // reset flex:1 so table renders at content height
+}

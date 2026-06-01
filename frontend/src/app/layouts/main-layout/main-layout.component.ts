@@ -35,6 +35,7 @@ const PAGES_WITH_ADD: Page[] = ['equity', 'mutual-funds', 'commodity', 'p2p', 'f
 export class MainLayoutComponent implements OnInit, OnDestroy {
   currentPage: Page = 'home';
   darkMode = false;
+  sidebarCollapsed = false;
   isRefreshing = false;
   readonly visitedPages = new Set<Page>(['home']);
   private refreshDoneSub?: Subscription;
@@ -47,6 +48,7 @@ export class MainLayoutComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.darkMode = localStorage.getItem('darkMode') === 'true';
+    this.sidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
     document.body.classList.toggle('dark', this.darkMode);
     document.body.classList.toggle('light', !this.darkMode);
     this.refreshDoneSub = this.uiActionService.refreshDone.subscribe(() => { this.isRefreshing = false; });
@@ -59,6 +61,11 @@ export class MainLayoutComponent implements OnInit, OnDestroy {
     localStorage.setItem('darkMode', String(this.darkMode));
     document.body.classList.toggle('dark', this.darkMode);
     document.body.classList.toggle('light', !this.darkMode);
+  }
+
+  toggleSidebar(): void {
+    this.sidebarCollapsed = !this.sidebarCollapsed;
+    localStorage.setItem('sidebarCollapsed', String(this.sidebarCollapsed));
   }
 
   logout(): void {

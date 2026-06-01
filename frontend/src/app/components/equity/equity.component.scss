@@ -331,3 +331,12 @@ tr.row-usa   { border-left: 3px solid #3b82f6; background-color: rgba(59, 130, 2
   color: var(--text-secondary, #94a3b8);
   font-weight: 400;
 }
+
+@media (max-width: 768px) {
+  :host { height: auto; min-height: 100%; overflow: visible; }
+  .page { padding: 0.75rem; overflow: visible; flex: none; }
+  .table-wrapper { flex: none; } // reset flex:1 so table renders at content height
+  .summary-strip { gap: 0.75rem; padding: 0.6rem 0.85rem; }
+  .summary-value { font-size: 0.9rem; }
+  .summary-label { font-size: 0.68rem; }
+}

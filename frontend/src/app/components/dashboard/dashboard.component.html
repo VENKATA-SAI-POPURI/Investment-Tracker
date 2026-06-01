@@ -381,28 +381,61 @@
       </div>
 
       <!-- Category KPIs -->
-      <div class="cat-kpis">
-        <div class="cat-kpi">
-          <span class="cat-kpi-label">Total Invested</span>
-          <span class="cat-kpi-value">₹{{ catTotalInvested | number:'1.2-2' }}</span>
+      <div class="kpi-grid cat-kpi-grid">
+        <div class="kpi-card holdings">
+          <div class="kpi-icon">💼</div>
+          <div class="kpi-content">
+            <div class="kpi-label">Total Investment</div>
+            <div class="kpi-value">₹{{ catTotalInvested | number:'1.2-2' }}</div>
+          </div>
         </div>
-        <div class="cat-kpi">
-          <span class="cat-kpi-label">Current Holdings</span>
-          <span class="cat-kpi-value">₹{{ catCurrentInvestment | number:'1.2-2' }}</span>
+        <div class="kpi-card invested">
+          <div class="kpi-icon">🎯</div>
+          <div class="kpi-content">
+            <div class="kpi-label">Current Holdings</div>
+            <div class="kpi-value">₹{{ catCurrentInvestment | number:'1.2-2' }}</div>
+          </div>
         </div>
-        <div class="cat-kpi">
-          <span class="cat-kpi-label">Total Sales</span>
-          <span class="cat-kpi-value">₹{{ catTotalSales | number:'1.2-2' }}</span>
-          <span class="cat-kpi-sub" *ngIf="catTotalSales > 0">
-            Cost ₹{{ catCostOfSold | number:'1.2-2' }}&nbsp;&middot;&nbsp;<span [style.color]="catNetPnL >= 0 ? '#10b981' : '#ef4444'">{{ catNetPnL >= 0 ? '+' : '-' }}₹{{ abs(catNetPnL) | number:'1.2-2' }}</span>
-          </span>
+        <div class="kpi-card returns">
+          <div class="kpi-icon">💸</div>
+          <div class="kpi-content">
+            <div class="kpi-label">Total Sale Value</div>
+            <div class="kpi-value">₹{{ catTotalSales | number:'1.2-2' }}</div>
+            <div class="kpi-sub" *ngIf="catTotalSales > 0">
+              Cost ₹{{ catCostOfSold | number:'1.2-2' }}&nbsp;&middot;&nbsp;
+              <span [style.color]="catNetPnL >= 0 ? '#10b981' : '#ef4444'">
+                {{ catNetPnL >= 0 ? '+' : '-' }}₹{{ abs(catNetPnL) | number:'1.2-2' }}
+              </span>
+            </div>
+          </div>
         </div>
-        <div class="cat-kpi">
-          <span class="cat-kpi-label">Net P&L</span>
-          <span class="cat-kpi-value" [class.positive]="catNetPnL >= 0" [class.negative]="catNetPnL < 0">
-            {{ catNetPnL >= 0 ? '' : '-' }}₹{{ abs(catNetPnL) | number:'1.2-2' }}
-            <span class="pnl-pct">({{ catNetPnLPct >= 0 ? '+' : '' }}{{ catNetPnLPct | number:'1.2-2' }}%)</span>
-          </span>
+        <div class="kpi-card" [class.profit]="catNetPnL >= 0" [class.loss]="catNetPnL < 0">
+          <div class="kpi-icon">{{ catNetPnL >= 0 ? '📈' : '📉' }}</div>
+          <div class="kpi-content">
+            <div class="kpi-label">Net P&amp;L</div>
+            <div class="kpi-value" [class.pnl-positive]="catNetPnL >= 0" [class.pnl-negative]="catNetPnL < 0">
+              {{ catNetPnL >= 0 ? '' : '-' }}₹{{ abs(catNetPnL) | number:'1.2-2' }}
+              <span class="pnl-pct">({{ catNetPnLPct >= 0 ? '+' : '' }}{{ catNetPnLPct | number:'1.2-2' }}%)</span>
+            </div>
+          </div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon">💳</div>
+          <div class="kpi-content">
+            <div class="kpi-label">Net Deployed</div>
+            <div class="kpi-value">₹{{ catNetDeployed | number:'1.2-2' }}</div>
+            <div class="kpi-sub">Invested − recovered</div>
+          </div>
+        </div>
+        <div class="kpi-card" [class.profit]="catXIRR !== null && catXIRR >= 0">
+          <div class="kpi-icon">📊</div>
+          <div class="kpi-content">
+            <div class="kpi-label">XIRR p.a.</div>
+            <div class="kpi-value" [class.pnl-positive]="catXIRR !== null && catXIRR >= 0" [class.pnl-negative]="catXIRR !== null && catXIRR < 0">
+              {{ catXIRR === null ? '—' : ((catXIRR >= 0 ? '+' : '') + (catXIRR | number:'1.2-2') + '%') }}
+            </div>
+            <div class="kpi-sub">Annualised return</div>
+          </div>
         </div>
       </div>
 

@@ -139,12 +139,19 @@ def _auto_create_capital_flows(sheet_name, transaction_data):
                 db_service.add_row("Capital Flows", capital_flow)
         
         elif sheet_name == "P2P Repayments":
-            # Create Withdrawal for P2P repayment
-            amount = transaction_data.get("amount")
-            if amount and float(amount) > 0:
+            # Create Withdrawal for P2P repayment using net credited (principal + interest - platform_fee)
+            principal = transaction_data.get("principal")
+            interest = transaction_data.get("interest")
+            platform_fee = transaction_data.get("platform_fee") or 0
+            if principal is not None and interest is not None:
+                net_credited = float(principal) + float(interest) - float(platform_fee)
+            else:
+                # Legacy fallback: use gross amount
+                net_credited = float(transaction_data.get("amount") or 0)
+            if net_credited > 0:
                 capital_flow = {
                     "date": transaction_data.get("date", ""),
-                    "amount": float(amount),
+                    "amount": net_credited,
                     "type": "Withdrawal",
                     "category": "P2P",
                     "remarks": f"P2P repayment"

@@ -924,6 +924,29 @@
   }
 }
 
+// Category-level KPI grid (styled cards, replaces old compact cat-kpis)
+.cat-kpi-grid {
+  grid-template-columns: repeat(3, 1fr);
+  margin-bottom: 0.75rem;
+
+  .kpi-card { padding: 0.85rem 1rem; }
+  .kpi-value { font-size: 1rem; }
+
+  @media (max-width: 900px) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  // Override base .kpi-grid rule that collapses to 1 column at 480px
+  @media (max-width: 480px) {
+    grid-template-columns: repeat(2, 1fr);
+    .kpi-card { padding: 0.6rem 0.65rem; }
+    .kpi-value { font-size: 0.85rem; }
+    .kpi-label { font-size: 0.62rem; }
+    .kpi-sub { font-size: 0.6rem; }
+    .kpi-icon { font-size: 1.1rem; }
+  }
+}
+
 // Category-level KPIs
 .cat-kpis {
   display: grid;
@@ -1055,9 +1078,9 @@
   gap: 1.25rem;
   align-items: flex-start;
 
-  @media (max-width: 500px) {
+  @media (max-width: 768px) {
     flex-direction: column;
-    align-items: center;
+    align-items: stretch; // legend gets full card width
   }
 }
 
@@ -1326,27 +1349,39 @@
   }
 
   // Top section: stack pie above KPIs, but keep KPIs in 2-col grid
-  .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 0.6rem; }
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
   .kpi-card {
-    padding: 0.75rem;
-    gap: 0.6rem;
-    .kpi-icon { font-size: 1.35rem; }
-    .kpi-label { font-size: 0.7rem; }
-    .kpi-value { font-size: 1rem; }
-    .kpi-sub { font-size: 0.65rem; }
+    padding: 0.6rem 0.7rem;
+    gap: 0.5rem;
+    .kpi-icon { font-size: 1.1rem; }
+    .kpi-label { font-size: 0.62rem; letter-spacing: 0; }
+    .kpi-value { font-size: 0.95rem; }
+    .kpi-sub { font-size: 0.6rem; }
   }
   .pnl-pct { font-size: 0.65em; }
+  // Hide "+1.14% / actual" secondary pct — too long on mobile
+  .pnl-pct + .pnl-pct { display: none; }
 
-  // Pie chart: smaller but keep legend intact
-  .pie-chart { width: 100px; height: 100px; }
+  // Shrink absolute action buttons so they don't crowd the label text
+  .kpi-add-btn { width: 28px; height: 28px; font-size: 1rem; top: 8px; right: 8px; }
+  .kpi-forex-btn { width: 26px; height: 26px; font-size: 0.9rem; top: 8px; right: 8px; }
+
+  // Pie chart: stacked (column) layout — center the chart above the legend
+  .pie-chart { width: 100px; height: 100px; align-self: center; margin: 0 auto 0.75rem; }
   .pie-card { padding: 0.75rem; }
   .pie-card h3 { font-size: 0.85rem; margin-bottom: 0.6rem; }
   .legend-item {
-    grid-template-columns: 10px 1fr 36px 30px 16px 70px;
+    display: flex;
+    align-items: center;
     gap: 0.25rem;
-    font-size: 0.7rem;
+    font-size: 0.68rem;
   }
-  .legend-value { font-size: 0.7rem; }
+  .legend-color { width: 10px; height: 10px; flex-shrink: 0; }
+  .legend-label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .legend-pct { width: 42px; flex-shrink: 0; text-align: right; }
+  .legend-target { display: none; }
+  .legend-flag { display: none; }
+  .legend-value { font-size: 0.68rem; width: 70px; flex-shrink: 0; text-align: right; }
 
   // Category buttons: horizontal wrap, 3 per row
   .category-buttons { gap: 0.5rem; }
@@ -1359,25 +1394,56 @@
     .cat-count { font-size: 0.65rem; }
   }
 
+  // Home view: reduce insights-card padding so table gets more room
+  .insights-card { padding: 0.75rem 0.75rem; }
+  // Force table wider than wrapper so overflow-x:auto on wrap creates a scrollbar
+  .cat-pnl-table { min-width: 560px; }
+
+  // KPI value: allow wrapping so pnl-pct doesn't overflow narrow cards
+  .kpi-value { white-space: normal; word-break: break-word; }
+  .kpi-sub { word-break: break-word; }
+
   // Analysis section: compact
-  .analysis-section { padding: 1rem 0.75rem; }
-  .analysis-header {
-    h2 { font-size: 1.05rem; }
-    .analysis-tabs {
-      overflow-x: auto;
-      flex-wrap: nowrap;
-      -webkit-overflow-scrolling: touch;
-      gap: 0.35rem;
-    }
-    .analysis-tab { white-space: nowrap; flex-shrink: 0; padding: 0.35rem 0.7rem; font-size: 0.78rem; }
+  .analysis-section { padding: 0.75rem 0.6rem; }
+
+  // Category ribbon: icon-only tabs on mobile
+  .category-ribbon { gap: 0; }
+  .ribbon-btn {
+    padding: 0.5rem 0.25rem;
+    gap: 0.1rem;
+    font-size: 0.7rem;
+    .ribbon-icon { font-size: 1.1rem; }
+    .ribbon-label { font-size: 0.62rem; }
+  }
+
+  // Analysis filters: stack on mobile
+  .analysis-filters {
+    gap: 0.5rem;
+    padding: 0.45rem 0.65rem;
+  }
+  .filter-dropdown-trigger {
+    padding: 0.3rem 0.5rem;
+    font-size: 0.75rem;
+    .trigger-text { max-width: 110px; }
+  }
+
+  // Category KPI cards
+  .cat-kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+    .kpi-card { padding: 0.65rem 0.75rem; gap: 0.4rem; }
+    .kpi-icon { font-size: 1.1rem; }
+    .kpi-label { font-size: 0.65rem; }
+    .kpi-value { font-size: 0.9rem; }
+    .kpi-sub { font-size: 0.6rem; }
   }
 
   // Year filter
   .year-filter { padding: 0.5rem 0.75rem; gap: 0.5rem; }
   .year-pill { padding: 0.3rem 0.75rem; font-size: 0.75rem; }
 
-  // Category KPIs: keep 4 columns, just smaller
-  .cat-kpis { grid-template-columns: repeat(4, 1fr); gap: 0.4rem; }
+  // Category KPIs (legacy compact, keep for fallback)
+  .cat-kpis { grid-template-columns: repeat(2, 1fr); gap: 0.4rem; }
   .cat-kpi {
     padding: 0.5rem;
     .cat-kpi-label { font-size: 0.6rem; letter-spacing: 0.2px; }
@@ -1395,12 +1461,24 @@
 
   // Pie & bar charts
   .pie-grid, .bar-grid { grid-template-columns: 1fr; gap: 0.75rem; }
-  .bar-row { grid-template-columns: 70px 1fr 90px; font-size: 0.75rem; }
+  // Home allocation bar-rows have 2 children (label + track-with-inside-label): no 3rd column
+  .bar-chart-container .bar-row { grid-template-columns: 80px 1fr; font-size: 0.75rem; }
+  // Clip bar-label-inside text so it never overflows the bar-track
+  .bar-track { overflow: hidden; }
+  // Analysis bar-rows have 3 children (label + track + value): keep 3-column grid
+  .bar-grid .bar-row { grid-template-columns: 60px 1fr 80px; font-size: 0.75rem; }
   .bar-totals { flex-direction: column; gap: 0.5rem; }
 
   // Skeleton & misc
   .skeleton-kpi-row { grid-template-columns: repeat(2, 1fr); }
   .forex-popup { max-width: 95vw; margin: 0 0.5rem; }
+}
+
+// Pie stacked in column (≤500px): restore bigger size so ring is wide enough to see,
+// and center the chart since pie-content uses align-items:stretch for full-width legend.
+// Must come AFTER the 768px block which sets width:100px.
+@media (max-width: 500px) {
+  .pie-chart { width: 130px; height: 130px; align-self: center; margin: 0 auto 0.75rem; }
 }
 
 // ── AI Section ──

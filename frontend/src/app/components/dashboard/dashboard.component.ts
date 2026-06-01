@@ -496,6 +496,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }
     // FD: only active (not yet matured) deposits
     total += this.fdData.filter(e => !e.return_value || e.return_value === 0).reduce((sum, e) => sum + (e.fd_value || 0), 0);
+    // USD broker wallet: uninvested cash, funded from bank deposits (part of total portfolio value)
+    total += this.forexWalletBalanceINR;
     return Math.round(total * 100) / 100;
   }
 
@@ -506,9 +508,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   get totalSaleValue(): number {
-    return Object.entries(this.summary)
-      .filter(([key]) => key !== 'Forex')
+    // Exclude P2P from backend summary (its total_sell is gross; we substitute net credited)
+    const nonP2PTotal = Object.entries(this.summary)
+      .filter(([key]) => key !== 'Forex' && key !== 'P2P')
       .reduce((sum, [, s]) => sum + s.total_sell, 0);
+    const p2pNetSales = this.p2pRepayments.reduce((s, rep) => s + this.p2pRepNetCredited(rep), 0);
+    return nonP2PTotal + p2pNetSales;
   }
 
   get netPnL(): number {
@@ -592,11 +597,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
     // P2P
     const p2pInv   = this.p2pData.reduce((s, e) => s + (e.amount || 0), 0);
     const p2pCurr  = (this.summary['P2P'] as any)?.current_invested || 0;
-    const p2pSales = this.p2pRepayments.reduce((s, rep) => s + (rep.amount || 0), 0);
+    const p2pSales = this.p2pRepayments.reduce((s, rep) => s + this.p2pRepNetCredited(rep), 0);
     const p2pCost  = p2pInv - p2pCurr;
     const p2pFlows = [
       ...this.p2pData.map(e => ({ date: new Date(e.date), amount: -(e.amount || 0) })),
-      ...this.p2pRepayments.map(rp => ({ date: new Date(rp.date), amount: +(rp.amount || 0) })),
+      ...this.p2pRepayments.map(rp => ({ date: new Date(rp.date), amount: +this.p2pRepNetCredited(rp) })),
       { date: today, amount: p2pCurr }
     ];
 
@@ -784,7 +789,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const eqOtherVal = eqHoldings.filter(h => h.market !== 'India' && h.market !== 'USA').reduce((s, h) => s + h.value, 0);
 
     if (eqIndiaVal > 0) catData.push({ label: 'Equity (India)', value: Math.round(eqIndiaVal * 100) / 100 });
-    if (eqUSAVal > 0) catData.push({ label: 'Equity (USA)', value: Math.round(eqUSAVal * 100) / 100 });
+    // Include USD broker wallet cash in Equity (USA) since it's uninvested USD in the same broker account
+    if (eqUSAVal > 0 || this.forexWalletBalanceINR > 0) catData.push({ label: 'Equity (USA)', value: Math.round((eqUSAVal + this.forexWalletBalanceINR) * 100) / 100 });
     if (eqOtherVal > 0) catData.push({ label: 'Equity (Other)', value: Math.round(eqOtherVal * 100) / 100 });
 
     const otherCats = [
@@ -1398,6 +1404,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
     } catch { return 'Unknown'; }
   }
 
+  /** Net credited per repayment = principal + interest - platform_fee; falls back to amount for legacy records */
+  private p2pRepNetCredited(rep: P2PRepayment): number {
+    return rep.principal != null
+      ? (rep.principal || 0) + (rep.interest || 0) - (rep.platform_fee || 0)
+      : (rep.amount || 0);
+  }
+
   private get p2pRepaidMap(): Map<string, number> {
     const map = new Map<string, number>();
     this.p2pRepayments.forEach(r => { map.set(r.lending_id, (map.get(r.lending_id) || 0) + (r.amount || 0)); });
@@ -1531,7 +1544,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   get catTotalSales(): number {
     if (this.selectedCategory === 'P2P') {
-      return this.p2pRepayments.reduce((sum, r) => sum + (r.amount || 0), 0);
+      return this.p2pRepayments.reduce((sum, r) => sum + this.p2pRepNetCredited(r), 0);
     }
     return this.catEntries.reduce((sum, e) => sum + (e.sellVal || 0), 0);
   }
@@ -1547,6 +1560,57 @@ export class DashboardComponent implements OnInit, OnDestroy {
   get catNetPnLPct(): number {
     const exitedValue = this.catTotalInvested - this.catCurrentInvestment;
     return exitedValue > 0 ? Math.round((this.catNetPnL / exitedValue) * 10000) / 100 : 0;
+  }
+
+  get catNetDeployed(): number {
+    return Math.round((this.catTotalInvested - this.catTotalSales) * 100) / 100;
+  }
+
+  get catXIRR(): number | null {
+    const today = new Date();
+    if (this.selectedCategory === 'Equity') {
+      const eqCurr = this.equityFifoHoldings.reduce((s, h) => s + h.value, 0);
+      const flows = [
+        ...this.equityData.map(e => ({ date: new Date(e.date), amount: e.buy_sell === 'Buy' ? -(e.value || 0) : +(e.value || 0) })),
+        { date: today, amount: eqCurr }
+      ];
+      return this.xirrSafe(flows);
+    }
+    if (this.selectedCategory === 'Mutual Funds') {
+      const mfCurr = this.mfData.reduce((s, e) => s + this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value), 0);
+      const flows = [
+        ...this.mfData.map(e => ({ date: new Date(e.date), amount: e.buy_sell === 'Buy' ? -(e.buy_value || 0) : +(e.sell_value || 0) })),
+        { date: today, amount: mfCurr }
+      ];
+      return this.xirrSafe(flows);
+    }
+    if (this.selectedCategory === 'Commodity') {
+      const cmdCurr = this.commodityData.reduce((s, e) => s + this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value), 0);
+      const flows = [
+        ...this.commodityData.map(e => ({ date: new Date(e.date), amount: e.buy_sell === 'Buy' ? -(e.buy_value || 0) : +(e.sell_value || 0) })),
+        { date: today, amount: cmdCurr }
+      ];
+      return this.xirrSafe(flows);
+    }
+    if (this.selectedCategory === 'P2P') {
+      const p2pCurr = (this.summary['P2P'] as any)?.current_invested || 0;
+      const flows = [
+        ...this.p2pData.map(e => ({ date: new Date(e.date), amount: -(e.amount || 0) })),
+        ...this.p2pRepayments.map(r => ({ date: new Date(r.date), amount: +this.p2pRepNetCredited(r) })),
+        { date: today, amount: p2pCurr }
+      ];
+      return this.xirrSafe(flows);
+    }
+    if (this.selectedCategory === 'Fixed Deposits') {
+      const fdCurr = this.fdData.filter(e => !e.return_value || e.return_value === 0).reduce((s, e) => s + (e.fd_value || 0), 0);
+      const flows = [
+        ...this.fdData.map(e => ({ date: new Date(e.date), amount: -(e.fd_value || 0) })),
+        ...this.fdData.filter(e => (e.return_value || 0) > 0).map(e => ({ date: new Date(e.maturity_date || e.date), amount: +(e.return_value || 0) })),
+        { date: today, amount: fdCurr }
+      ];
+      return this.xirrSafe(flows);
+    }
+    return null;
   }
 
   // Normalize all category entries to a common shape for calculations
@@ -1567,7 +1631,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
         return this.commodityData.filter(yearFilter).map(e => ({ group: { Year: e.year || 'N/A', Commodity: e.commodity }, buyQty: e.buy_quantity, sellQty: e.sell_quantity, buyVal: e.buy_value, sellVal: e.sell_value }));
       case 'P2P':
         return this.p2pData.map(e => {
-          const repaid = this.p2pRepayments.filter(r => r.lending_id === e.lending_id).reduce((s, r) => s + (r.amount || 0), 0);
+          const repaid = this.p2pRepayments.filter(r => r.lending_id === e.lending_id).reduce((s, r) => s + this.p2pRepNetCredited(r), 0);
           const pending = Math.max(0, (e.amount || 0) - repaid);
           // Use pending as "current" via buyQty/sellQty trick: buyVal=amount, calcInvestment returns pending
           const buyQty = e.amount || 0;
@@ -1803,11 +1867,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   get forexTotalInvestedUSD(): number {
     const usaEquity = this.equityData.filter(e => e.market === 'USA');
-    const totalBuyINR = usaEquity.filter(e => e.buy_sell === 'Buy').reduce((s, e) => s + (e.value || 0), 0);
-    const totalSellINR = usaEquity.filter(e => e.buy_sell === 'Sell').reduce((s, e) => s + (e.value || 0), 0);
-    const avgRate = this.forexWeightedAvgDepositRate || this.forexAvgDepositRate;
-    if (!avgRate || avgRate <= 0) return 0;
-    return Math.round(((totalBuyINR - totalSellINR) / avgRate) * 100) / 100;
+    const totalBuyUSD  = usaEquity.filter(e => e.buy_sell === 'Buy').reduce((s, e) => s + (e.value_usd || 0), 0);
+    const totalSellUSD = usaEquity.filter(e => e.buy_sell === 'Sell').reduce((s, e) => s + (e.value_usd || 0), 0);
+    return Math.round((totalBuyUSD - totalSellUSD) * 100) / 100;
   }
 
   private get forexAvgDepositRate(): number {

@@ -4,13 +4,13 @@
     <div class="kpi-tier">
       <h4 class="kpi-tier-title">Portfolio</h4>
       <div class="kpi-tier-cards">
-        <div class="kpi-card-mini"><span class="kpi-label">Escrow</span><span class="kpi-value" [style.color]="escrowBalance >= 0 ? '#4caf50' : '#ef4444'">₹{{ escrowBalance | number:'1.2-2' }}</span></div>
+        <div class="kpi-card-mini kpi-card-clickable" (click)="showEscrowPanel = true" title="View Escrow Transactions"><span class="kpi-label">Escrow 🔗</span><span class="kpi-value" [style.color]="escrowBalance >= 0 ? '#4caf50' : '#ef4444'">₹{{ escrowBalance | number:'1.2-2' }}</span></div>
         <div class="kpi-card-mini"><span class="kpi-label">Total Lent</span><span class="kpi-value">₹{{ totalLent | number:'1.2-2' }}</span></div>
-        <div class="kpi-card-mini"><span class="kpi-label">Active Lent</span><span class="kpi-value" [style.color]="isEscrowUnderFunded ? '#ef4444' : '#667eea'">₹{{ activeLentAmount | number:'1.2-2' }}</span></div>
-        <div class="kpi-card-mini"><span class="kpi-label">Pending</span><span class="kpi-value" [style.color]="totalPending > 0 ? '#f59e0b' : '#4caf50'">₹{{ totalPending | number:'1.2-2' }}</span></div>
+        <div class="kpi-card-mini"><span class="kpi-label">Active Lent</span><span class="kpi-value" style="color: #667eea">₹{{ activeLentAmount | number:'1.2-2' }}</span></div>
+        <div class="kpi-card-mini"><span class="kpi-label">Pending</span><span class="kpi-value" [style.color]="isEscrowUnderFunded ? '#ef4444' : totalPending > 0 ? '#f59e0b' : '#4caf50'">₹{{ totalPending | number:'1.2-2' }}</span></div>
       </div>
       <div class="escrow-underfunded-flag" *ngIf="isEscrowUnderFunded">
-        ⚠️ Active Lent exceeds Escrow Balance by more than 5% — please top up Escrow.
+        ⚠️ Pending principal exceeds Escrow Balance by more than 5% — please top up Escrow.
       </div>
     </div>
     <div class="kpi-tier">
@@ -132,6 +132,7 @@
       <button class="filter-btn" [class.active]="statusFilter === 'Closed'" (click)="setStatusFilter('Closed')">Closed</button>
     </div>
     <input type="text" class="search-input" placeholder="Search by name, platform, status..." [(ngModel)]="searchQuery" (input)="onSearch()">
+    <button class="btn btn-secondary btn-sm" (click)="showEscrowPanel = true" title="Escrow Account">💰 Escrow</button>
     <span class="entry-count">Showing {{ entries.length }} of {{ allEntries.length }} entries</span>
   </div>
 
@@ -227,7 +228,7 @@
     <div class="form-modal" (click)="$event.stopPropagation()">
       <h2>{{ editingRepaymentId ? 'Edit' : 'Add' }} Repayment — {{ repaymentForm.lending_id }}</h2>
       <div class="pending-info" *ngIf="!editingRepaymentId">
-        Pending Amount: <strong>₹{{ getRepaymentPendingAmount() | number:'1.2-2' }}</strong>
+        Pending Principal: <strong>₹{{ getRepaymentPendingAmount() | number:'1.2-2' }}</strong>
       </div>
       <form (ngSubmit)="saveRepayment()">
         <div class="form-grid">
@@ -236,8 +237,24 @@
             <input type="date" [(ngModel)]="repaymentForm.date" name="rep_date" required>
           </div>
           <div class="form-group">
-            <label>Amount (₹) *</label>
-            <input type="number" [(ngModel)]="repaymentForm.amount" name="rep_amount" step="0.01" min="0" placeholder="Repayment amount" required (ngModelChange)="onRepaymentAmountChange()">
+            <label>Principal (₹) *</label>
+            <input type="number" [(ngModel)]="repaymentForm.principal" name="rep_principal" step="0.01" min="0" placeholder="Principal component" required (ngModelChange)="onRepaymentComponentChange()">
+          </div>
+          <div class="form-group">
+            <label>Interest (₹) *</label>
+            <input type="number" [(ngModel)]="repaymentForm.interest" name="rep_interest" step="0.01" min="0" placeholder="Interest component" required (ngModelChange)="onRepaymentComponentChange()">
+          </div>
+          <div class="form-group">
+            <label>Platform Fee (₹)</label>
+            <input type="number" [(ngModel)]="repaymentForm.platform_fee" name="rep_platform_fee" step="0.01" min="0" placeholder="Fee deducted by platform">
+          </div>
+          <div class="form-group">
+            <label>Repayment Amount</label>
+            <input type="text" [value]="'₹' + (repaymentGrossAmount | number:'1.2-2')" disabled class="computed-field">
+          </div>
+          <div class="form-group">
+            <label>Net Credited</label>
+            <input type="text" [value]="'₹' + (repaymentNetCreditedPreview | number:'1.2-2')" disabled class="computed-field" [style.color]="repaymentNetCreditedPreview >= 0 ? '#4caf50' : '#ef4444'">
           </div>
           <div class="form-group full-width">
             <label>Remarks</label>
@@ -292,8 +309,8 @@
             <td class="number">{{ entry.tenure }} mo</td>
             <td class="number">₹{{ getTotalRepaid(entry.lending_id) | number:'1.2-2' }}</td>
             <td class="number" [style.color]="getPendingAmount(entry) > 0 ? '#f59e0b' : '#4caf50'">₹{{ getPendingAmount(entry) | number:'1.2-2' }}</td>
-            <td class="number" style="color: #4caf50">₹{{ getTotalInterest(entry.lending_id) | number:'1.2-2' }}</td>
-            <td class="number">{{ getTotalRepaid(entry.lending_id) > 0 ? ((getTotalInterest(entry.lending_id) / getTotalRepaid(entry.lending_id)) * 100 | number:'1.2-2') + '%' : '-' }}</td>
+            <td class="number" style="color: #4caf50">₹{{ getTotalNetInterest(entry.lending_id) | number:'1.2-2' }}</td>
+            <td class="number">{{ getTotalRepaid(entry.lending_id) > 0 ? ((getTotalNetInterest(entry.lending_id) / getTotalRepaid(entry.lending_id)) * 100 | number:'1.2-2') + '%' : '-' }}</td>
             <td class="number">{{ getIRR(entry) != null ? (getIRR(entry) | number:'1.2-2') + '%' : '-' }}</td>
             <td>{{ entry.maturity_date }}</td>
             <td>{{ getNextInstallmentDate(entry) }}</td>
@@ -321,9 +338,10 @@
                   <thead>
                     <tr>
                       <th>Date</th>
-                      <th>Amount</th>
                       <th>Principal</th>
                       <th>Interest</th>
+                      <th>Plat. Fee</th>
+                      <th>Net Credited</th>
                       <th>Annualized %</th>
                       <th>Remarks</th>
                       <th>Actions</th>
@@ -332,9 +350,10 @@
                   <tbody>
                     <tr *ngFor="let rep of getRepayments(entry.lending_id); let i = index">
                       <td>{{ rep.date }}</td>
-                      <td class="number">₹{{ rep.amount | number:'1.2-2' }}</td>
-                      <td class="number">₹{{ getRepaymentPrincipal(rep.amount || 0, entry, i) | number:'1.2-2' }}</td>
-                      <td class="number" style="color: #4caf50">₹{{ getRepaymentInterest(rep.amount || 0, entry, i) | number:'1.2-2' }}</td>
+                      <td class="number">₹{{ getRepaymentPrincipal(rep, entry, i) | number:'1.2-2' }}</td>
+                      <td class="number" style="color: #4caf50">₹{{ getRepaymentInterest(rep, entry, i) | number:'1.2-2' }}</td>
+                      <td class="number" style="color: #f59e0b">{{ (rep.platform_fee || 0) > 0 ? ('₹' + ((rep.platform_fee || 0) | number:'1.2-2')) : '-' }}</td>
+                      <td class="number" style="color: #667eea">₹{{ getRepaymentNetCredited(rep) | number:'1.2-2' }}</td>
                       <td class="number">{{ getRepaymentAnnualizedRate(entry, i) != null ? (getRepaymentAnnualizedRate(entry, i)! | number:'1.2-2') + '%' : '-' }}</td>
                       <td class="remarks">{{ rep.remarks }}</td>
                       <td class="actions">
@@ -368,8 +387,8 @@
           <div class="card-row"><span>Tenure:</span><span>{{ entry.tenure }} months</span></div>
           <div class="card-row"><span>Received:</span><span>₹{{ getTotalRepaid(entry.lending_id) | number:'1.2-2' }}</span></div>
           <div class="card-row"><span>Pending:</span><span [style.color]="getPendingAmount(entry) > 0 ? '#f59e0b' : '#4caf50'">₹{{ getPendingAmount(entry) | number:'1.2-2' }}</span></div>
-          <div class="card-row"><span>Return Amt:</span><span style="color: #4caf50">₹{{ getTotalInterest(entry.lending_id) | number:'1.2-2' }}</span></div>
-          <div class="card-row" *ngIf="getTotalRepaid(entry.lending_id) > 0"><span>Return %:</span><span>{{ (getTotalInterest(entry.lending_id) / getTotalRepaid(entry.lending_id)) * 100 | number:'1.2-2' }}%</span></div>
+          <div class="card-row"><span>Return Amt:</span><span style="color: #4caf50">₹{{ getTotalNetInterest(entry.lending_id) | number:'1.2-2' }}</span></div>
+          <div class="card-row" *ngIf="getTotalRepaid(entry.lending_id) > 0"><span>Return %:</span><span>{{ (getTotalNetInterest(entry.lending_id) / getTotalRepaid(entry.lending_id)) * 100 | number:'1.2-2' }}%</span></div>
           <div class="card-row"><span>IRR:</span><span style="color: #4caf50">{{ getIRR(entry) != null ? (getIRR(entry) | number:'1.2-2') + '%' : '-' }}</span></div>
           <div class="card-row"><span>Maturity:</span><span>{{ entry.maturity_date }}</span></div>
           <div class="card-row"><span>Next Installment:</span><span>{{ getNextInstallmentDate(entry) }}</span></div>
@@ -387,7 +406,7 @@
           <div *ngIf="expandedLendingId === entry.lending_id" class="repayment-list">
             <div class="repayment-item" *ngFor="let rep of getRepayments(entry.lending_id)">
               <span>{{ rep.date }}</span>
-              <span>₹{{ rep.amount | number:'1.2-2' }}</span>
+              <span style="color: #667eea">₹{{ getRepaymentNetCredited(rep) | number:'1.2-2' }}</span>
               <span class="remarks">{{ rep.remarks }}</span>
             </div>
           </div>

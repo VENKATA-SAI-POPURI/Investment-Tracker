@@ -1,22 +1,4 @@
 <div class="page">
-  <!-- India vs USA Allocation -->
-  <div class="allocation-section" *ngIf="totalPortfolioINR > 0">
-    <div class="allocation-header">
-      <span class="allocation-title">Equity Allocation — India vs USA</span>
-      <span class="allocation-total">Total: ₹{{ totalPortfolioINR | number:'1.0-0' }}</span>
-    </div>
-    <div class="allocation-bar">
-      <div class="alloc-segment alloc-india" [style.width]="indiaPct + '%'" *ngIf="indiaPct > 0"
-           [attr.data-tooltip]="'🇮🇳 India  ₹' + (indiaInvestedINR | number:'1.0-0') + '  (' + indiaPct + '%)'">
-        <span *ngIf="indiaPct > 8">🇮🇳 India - {{ indiaPct }}%</span>
-      </div>
-      <div class="alloc-segment alloc-usa" [style.width]="usaPct + '%'" *ngIf="usaPct > 0"
-           [attr.data-tooltip]="'🇺🇸 USA  $' + (totalInvestedUSD | number:'1.2-2') + '  ·  ₹' + (usaInvestedINR | number:'1.0-0') + '  (' + usaPct + '%)'">
-        <span *ngIf="usaPct > 8">🇺🇸 USA - {{ usaPct }}%</span>
-      </div>
-    </div>
-  </div>
-
   <!-- Summary Cards -->
   <div class="forex-summary">
     <div class="forex-stat">

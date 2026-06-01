@@ -58,7 +58,10 @@ export interface P2PRepayment {
   id?: number;
   lending_id: string;
   date: string;
-  amount: number | null;
+  principal: number | null;
+  interest: number | null;
+  platform_fee: number | null;
+  amount: number | null;  // = principal + interest (auto-computed on save)
   remarks: string;
 }
 

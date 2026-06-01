@@ -211,3 +211,9 @@ tr.row-other       { border-left: 3px solid #8b5cf6; background-color: rgba(139,
   font-weight: 600;
 }
 
+@media (max-width: 768px) {
+  :host { height: auto; min-height: 100%; overflow: visible; }
+  .page { padding: 0.75rem; overflow: visible; flex: none; }
+  .table-wrapper { flex: none; } // reset flex:1 so table renders at content height
+}
+
