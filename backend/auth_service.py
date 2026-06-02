@@ -47,7 +47,8 @@ def verify_google_token(token):
         idinfo = id_token.verify_oauth2_token(
             token,
             request_obj,
-            GOOGLE_CLIENT_ID
+            GOOGLE_CLIENT_ID,
+            clock_skew_in_seconds=10
         )
 
         email = idinfo.get("email")
@@ -84,7 +85,8 @@ def check_allowlist(email):
         result = cursor.fetchone() is not None
         conn.close()
         return result
-    except Exception:
+    except Exception as e:
+        print(f"[auth_service] check_allowlist error: {e}")
         return False
 
 

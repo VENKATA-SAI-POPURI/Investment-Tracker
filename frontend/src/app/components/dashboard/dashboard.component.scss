@@ -525,6 +525,34 @@
   }
 }
 
+.kpi-sub-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin-top: 4px;
+}
+
+.kpi-sub-label {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+  min-width: 60px;
+}
+
+.kpi-sub-value {
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.pnl-positive { color: #10b981; }
+.pnl-negative { color: #f87171; }
+
+.cat-sub-val {
+  display: block;
+  font-size: 0.68rem;
+  opacity: 0.75;
+}
+
 .pnl-pct {
   font-size: 0.75em;
   font-weight: 600;

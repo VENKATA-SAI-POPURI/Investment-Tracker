@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { InvestmentService } from '../../services/investment.service';
 import { UiActionService } from '../../services/ui-action.service';
+import { CsvExportService } from '../../services/csv-export.service';
 import { MutualFundEntry } from '../../models/investment.model';
 
 function getCurrentFY(): string {
@@ -22,7 +23,7 @@ interface HoldingRow {
   name: string; category: string; fund_type: string;
   totalBuyQty: number; totalSellQty: number;
   totalBuyValue: number; totalSellValue: number;
-  netQty: number; netValue: number; effectiveNav: number;
+  netQty: number; netValue: number; effectiveNav: number; realizedPnL: number; realizedPnLPct: number;
   lt6m: number; lt1y: number; lt2y: number; lt3y: number; gt3y: number;
 }
 
@@ -52,6 +53,11 @@ export class MutualFundsComponent implements OnInit, OnDestroy {
   fyDropdownOpen = false;
 
   form: MutualFundEntry = this.emptyForm();
+  formTicker = '';
+  tickerMap: Record<string, string> = {};
+  livePrices: Record<string, number | null> = {};
+  pricesFetching = false;
+  pricesLastFetched: Date | null = null;
 
   get nameSuggestions(): string[] {
     return [...new Set(this.allEntries.map(e => e.name).filter(Boolean))];
@@ -116,26 +122,33 @@ export class MutualFundsComponent implements OnInit, OnDestroy {
       Math.floor((today.getTime() - new Date(d).getTime()) / 86400000);
 
     // FIFO holding-period buckets
-    const buyLots = new Map<string, { date: string; qty: number }[]>();
+    const buyLots = new Map<string, { date: string; qty: number; value: number }[]>();
     const totalSells = new Map<string, number>();
+    const totalSellValues = new Map<string, number>();
     for (const e of this.allEntries) {
       const bq = e.buy_quantity || 0;
       const sq = e.sell_quantity || 0;
       if (bq > 0) {
         if (!buyLots.has(e.name)) buyLots.set(e.name, []);
-        buyLots.get(e.name)!.push({ date: e.date || '', qty: bq });
+        buyLots.get(e.name)!.push({ date: e.date || '', qty: bq, value: e.buy_value || 0 });
       }
-      if (sq > 0) totalSells.set(e.name, (totalSells.get(e.name) || 0) + sq);
+      if (sq > 0) {
+        totalSells.set(e.name, (totalSells.get(e.name) || 0) + sq);
+        totalSellValues.set(e.name, (totalSellValues.get(e.name) || 0) + (e.sell_value || 0));
+      }
     }
     const buckets = new Map<string, { lt6m: number; lt1y: number; lt2y: number; lt3y: number; gt3y: number }>();
+    const fifoRealizedCost = new Map<string, number>();
     for (const [name, lots] of buyLots) {
       const sorted = [...lots].sort((a, b) => a.date.localeCompare(b.date));
       let sells = totalSells.get(name) || 0;
       const b = { lt6m: 0, lt1y: 0, lt2y: 0, lt3y: 0, gt3y: 0 };
+      let realizedCost = 0;
       for (const lot of sorted) {
         let rem = lot.qty;
-        if (sells >= rem) { sells -= rem; continue; }
-        rem -= sells; sells = 0;
+        const cpv = lot.qty > 0 ? lot.value / lot.qty : 0;
+        if (sells >= rem) { sells -= rem; realizedCost += lot.value; continue; }
+        if (sells > 0) { realizedCost += sells * cpv; rem -= sells; sells = 0; }
         const days = daysSince(lot.date);
         if      (days < 183)  b.lt6m += rem;
         else if (days < 365)  b.lt1y += rem;
@@ -144,6 +157,7 @@ export class MutualFundsComponent implements OnInit, OnDestroy {
         else                  b.gt3y += rem;
       }
       buckets.set(name, b);
+      fifoRealizedCost.set(name, Math.round(realizedCost * 100) / 100);
     }
 
     const map = new Map<string, HoldingRow>();
@@ -153,7 +167,7 @@ export class MutualFundsComponent implements OnInit, OnDestroy {
         map.set(e.name, {
           name: e.name, category: e.category, fund_type: e.fund_type,
           totalBuyQty: 0, totalSellQty: 0, totalBuyValue: 0, totalSellValue: 0,
-          netQty: 0, netValue: 0, effectiveNav: 0,
+          netQty: 0, netValue: 0, effectiveNav: 0, realizedPnL: 0, realizedPnLPct: 0,
           lt6m: bkt.lt6m, lt1y: bkt.lt1y, lt2y: bkt.lt2y, lt3y: bkt.lt3y, gt3y: bkt.gt3y,
         });
       }
@@ -168,7 +182,9 @@ export class MutualFundsComponent implements OnInit, OnDestroy {
         ...h,
         netQty: Math.round((h.totalBuyQty - h.totalSellQty) * 1000) / 1000,
         netValue: Math.round((h.totalBuyValue - h.totalSellValue) * 100) / 100,
-        effectiveNav: h.totalBuyQty > 0 ? Math.round((h.totalBuyValue / h.totalBuyQty) * 100) / 100 : 0
+        effectiveNav: h.totalBuyQty > 0 ? Math.round((h.totalBuyValue / h.totalBuyQty) * 100) / 100 : 0,
+        realizedPnL: (() => { const rc = fifoRealizedCost.get(h.name) || 0; const sv = totalSellValues.get(h.name) || 0; return rc > 0 || sv > 0 ? Math.round((sv - rc) * 100) / 100 : 0; })(),
+        realizedPnLPct: (() => { const rc = fifoRealizedCost.get(h.name) || 0; const sv = totalSellValues.get(h.name) || 0; return rc > 0 ? Math.round(((sv - rc) / rc) * 10000) / 100 : 0; })()
       }))
       .filter(h => h.netQty > 0)
       .sort((a, b) => b.netValue - a.netValue);
@@ -195,12 +211,13 @@ export class MutualFundsComponent implements OnInit, OnDestroy {
 
   private addSub?: Subscription;
 
-  constructor(private investmentService: InvestmentService, private uiActionService: UiActionService) {}
+  constructor(private investmentService: InvestmentService, private uiActionService: UiActionService, private csvExport: CsvExportService) {}
 
   ngOnInit(): void {
     this.addSub = this.uiActionService.addEntry.subscribe(page => { if (page === 'mutual-funds') this.openAddForm(); });
     this.addSub.add(this.uiActionService.refresh.subscribe(() => { this.uiActionService.beginRefresh(); this.loadEntries(() => this.uiActionService.endRefresh()); }));
     this.loadEntries();
+    this.loadTickerMap();
   }
 
   ngOnDestroy(): void { this.addSub?.unsubscribe(); }
@@ -285,9 +302,9 @@ export class MutualFundsComponent implements OnInit, OnDestroy {
     return this.sortDirection === 'asc' ? '↑' : '↓';
   }
 
-  openAddForm(): void { this.form = this.emptyForm(); this.editingId = null; this.showForm = true; }
-  openEditForm(entry: MutualFundEntry): void { this.form = { ...entry }; this.editingId = entry.id!; this.showForm = true; }
-  cancelForm(): void { this.showForm = false; this.editingId = null; }
+  openAddForm(): void { this.form = this.emptyForm(); this.formTicker = ''; this.editingId = null; this.showForm = true; }
+  openEditForm(entry: MutualFundEntry): void { this.form = { ...entry }; this.formTicker = this.tickerMap[entry.name] ?? ''; this.editingId = entry.id!; this.showForm = true; }
+  cancelForm(): void { this.showForm = false; this.editingId = null; this.formTicker = ''; }
 
   onNameChange(): void {
     if (this.editingId) return;
@@ -296,6 +313,7 @@ export class MutualFundsComponent implements OnInit, OnDestroy {
       this.form.category = match.category;
       this.form.fund_type = match.fund_type;
     }
+    this.formTicker = this.tickerMap[this.form.name?.trim() ?? ''] ?? '';
   }
 
   onBuySellChange(): void {
@@ -307,6 +325,7 @@ export class MutualFundsComponent implements OnInit, OnDestroy {
     if (!this.form.name?.trim()) { this.toast('Name is required', 'error'); return; }
     if (this.form.buy_sell === 'Buy' && (!this.form.buy_quantity || this.form.buy_quantity <= 0)) { this.toast('Buy quantity must be > 0', 'error'); return; }
     if (this.form.buy_sell === 'Sell' && (!this.form.sell_quantity || this.form.sell_quantity <= 0)) { this.toast('Sell quantity must be > 0', 'error'); return; }
+    const tickerToSave = this.formTicker.trim();
     this.submitting = true;
     if (this.editingId) {
       this.investmentService.updateMutualFund(this.editingId, this.form).subscribe({
@@ -315,6 +334,8 @@ export class MutualFundsComponent implements OnInit, OnDestroy {
           if (idx >= 0) this.allEntries[idx] = { ...this.form, id: this.editingId! };
           this.applyFilter();
           this.submitting = false; this.toast('Entry updated successfully', 'success'); this.showForm = false; this.editingId = null;
+          if (tickerToSave) { this.tickerMap[this.form.name] = tickerToSave; this.investmentService.saveMFTicker(this.form.name, tickerToSave).subscribe({ error: () => {} }); }
+          this.formTicker = '';
         },
         error: () => { this.submitting = false; this.toast('Failed to update entry', 'error'); }
       });
@@ -334,6 +355,8 @@ export class MutualFundsComponent implements OnInit, OnDestroy {
           }
           this.applyFilter();
           this.submitting = false; this.toast(res.upserted ? 'Existing entry updated (values added)' : 'Entry added successfully', 'success'); this.showForm = false;
+          if (tickerToSave) { this.tickerMap[this.form.name] = tickerToSave; this.investmentService.saveMFTicker(this.form.name, tickerToSave).subscribe({ error: () => {} }); }
+          this.formTicker = '';
         },
         error: () => { this.submitting = false; this.toast('Failed to add entry', 'error'); }
       });
@@ -358,5 +381,68 @@ export class MutualFundsComponent implements OnInit, OnDestroy {
     const t = { msg, type };
     this.toasts.push(t);
     setTimeout(() => { this.toasts = this.toasts.filter(x => x !== t); }, 3500);
+  }
+
+  exportCsv(): void {
+    if (this.viewMode === 'holdings') {
+      this.csvExport.download('mutual_funds_holdings.csv',
+        ['Name', 'Category', 'Fund Type', 'Net Qty', 'Net Value (INR)', 'Effective NAV', 'Realized P&L', 'Realized P&L %'],
+        this.holdings.map(h => [h.name, h.category, h.fund_type, h.netQty, h.netValue, h.effectiveNav, h.realizedPnL, h.realizedPnLPct])
+      );
+    } else {
+      this.csvExport.download('mutual_funds_transactions.csv',
+        ['Year', 'Date', 'Name', 'Category', 'Fund Type', 'Buy/Sell', 'Buy Qty', 'Buy Value', 'Sell Qty', 'Sell Value', 'Remarks'],
+        this.entries.map(e => [e.year, e.date, e.name, e.category, e.fund_type, e.buy_sell, e.buy_quantity, e.buy_value, e.sell_quantity, e.sell_value, e.remarks])
+      );
+    }
+  }
+
+  loadTickerMap(): void {
+    this.investmentService.getMFTickers().subscribe({
+      next: (data) => {
+        this.tickerMap = {};
+        for (const [name, val] of Object.entries(data)) {
+          this.tickerMap[name] = val.ticker;
+          if (val.price != null) {
+            this.livePrices[val.ticker] = val.price;
+          }
+        }
+      },
+      error: () => {}
+    });
+  }
+
+  fetchLivePrices(): void {
+    const symbols = [...new Set(
+      this.holdings.map(h => this.tickerMap[h.name]).filter((t): t is string => !!t)
+    )];
+    if (symbols.length === 0) {
+      this.toast('No ticker symbols configured for current holdings', 'error');
+      return;
+    }
+    this.pricesFetching = true;
+    this.investmentService.fetchMFPrices(symbols).subscribe({
+      next: (prices) => {
+        this.livePrices = prices;
+        this.pricesLastFetched = new Date();
+        this.pricesFetching = false;
+        this.toast('Prices updated', 'success');
+      },
+      error: () => {
+        this.pricesFetching = false;
+        this.toast('Failed to fetch live prices', 'error');
+      }
+    });
+  }
+
+  getUnrealizedPnL(h: HoldingRow): { pnl: number; pct: number } | null {
+    const ticker = this.tickerMap[h.name];
+    if (!ticker) return null;
+    const price = this.livePrices[ticker] ?? null;
+    if (price == null || h.netQty <= 0 || h.netValue <= 0) return null;
+    const mv = Math.round(price * h.netQty * 100) / 100;
+    const pnl = Math.round((mv - h.netValue) * 100) / 100;
+    const pct = Math.round((pnl / h.netValue) * 10000) / 100;
+    return { pnl, pct };
   }
 }

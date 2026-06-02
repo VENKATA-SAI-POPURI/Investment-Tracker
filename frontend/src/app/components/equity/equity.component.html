@@ -72,7 +72,12 @@
     </button>
     <input type="text" class="search-input" placeholder="Search by name, sector, market..." [(ngModel)]="searchQuery" (input)="onSearch()">
     <span class="entry-count">{{ viewMode === 'holdings' ? (holdings.length + ' stocks') : (entries.length + ' entries') }}</span>
-    <div class="view-toggle" style="margin-left:auto">
+    <button class="btn btn-secondary" style="margin-left:auto" (click)="exportCsv()" title="Export to CSV">⬇ Export CSV</button>
+    <button class="btn btn-secondary" [disabled]="pricesFetching" (click)="fetchLivePrices()" title="Fetch live prices from Yahoo Finance">
+      {{ pricesFetching ? '⧐ Fetching…' : '📈 Live Prices' }}
+    </button>
+    <span *ngIf="pricesLastFetched" style="font-size:0.75rem;color:var(--text-muted)">{{ pricesLastFetched | date:'h:mm a' }}</span>
+    <div class="view-toggle">
       <button [class.active]="viewMode === 'holdings'" (click)="viewMode = 'holdings'">Holdings</button>
       <button [class.active]="viewMode === 'transactions'" (click)="viewMode = 'transactions'">Transactions</button>
     </div>
@@ -124,6 +129,10 @@
             <datalist id="equityNameSuggestions">
               <option *ngFor="let s of nameSuggestions" [value]="s"></option>
             </datalist>
+          </div>
+          <div class="form-group">
+            <label>Ticker Symbol</label>
+            <input type="text" [(ngModel)]="formTicker" name="formTicker" placeholder="e.g. RELIANCE.NS or AAPL" autocomplete="off">
           </div>
           <div class="form-group">
             <label>Buy / Sell *</label>
@@ -193,6 +202,8 @@
           <th class="bucket-col gt2y-col" title="Held more than 2 years">&gt; 2Y</th>
           <th>Net Invested</th>
           <th>Cost / Unit</th>
+          <th>Realized P&amp;L</th>
+          <th>Unrealized P&amp;L</th>
         </tr>
       </thead>
       <tbody>
@@ -218,11 +229,21 @@
               <span *ngIf="h.market === 'USA'">${{ h.costPerUnitUsd | number:'1.2-2' }}</span>
               <span *ngIf="h.market !== 'USA'">&#8377;{{ h.costPerUnit | number:'1.2-2' }}</span>
             </td>
+            <td class="number" [class.pnl-pos]="h.realizedPnL > 0" [class.pnl-neg]="h.realizedPnL < 0">
+              {{ h.realizedPnL === 0 ? '—' : ((h.realizedPnLPct >= 0 ? '+' : '') + (h.realizedPnLPct | number:'1.2-2') + '%') }}
+            </td>
+            <td class="number" [class.pnl-pos]="(getUnrealizedPnL(h)?.pnl ?? 0) > 0" [class.pnl-neg]="(getUnrealizedPnL(h)?.pnl ?? 0) < 0">
+              <ng-container *ngIf="getUnrealizedPnL(h) as upnl">
+                {{ upnl.pnl >= 0 ? '+' : '' }}{{ upnl.pct | number:'1.2-2' }}%
+                <span class="sub-text">₹{{ upnl.pnl | number:'1.0-0' }}</span>
+              </ng-container>
+              <span *ngIf="getUnrealizedPnL(h) == null">—</span>
+            </td>
           </tr>
           <!-- Expanded transaction rows -->
           <tr class="txn-expand-header" *ngIf="expandedName === h.name">
             <td></td>
-            <td colspan="11">
+            <td colspan="13">
               <div class="txn-section">
                 <div class="txn-section-title">Transactions for {{ h.name }} ({{ getTransactionsForStock(h.name).length }})</div>
                 <table class="txn-table">

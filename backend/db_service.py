@@ -275,6 +275,22 @@ class DbService:
             import traceback
             traceback.print_exc()
 
+    def _migrate_equity_tickers_price(self, conn):
+        """Add price column to equity_tickers if missing."""
+        try:
+            conn.execute("SELECT price FROM equity_tickers LIMIT 0")
+            return  # Already has price column
+        except Exception as e:
+            if "no such table" in str(e).lower():
+                return  # Table not yet created; will be created with correct schema
+        try:
+            conn.execute("ALTER TABLE equity_tickers ADD COLUMN price REAL")
+            conn.commit()
+            print("[db_service] equity_tickers migrated: added price column.")
+        except Exception:
+            import traceback
+            traceback.print_exc()
+
     def _init_db(self):
         with self._lock:
             conn = self._connect()
@@ -290,6 +306,17 @@ class DbService:
             # Settings table: generic key-value store
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+            )
+            # Ticker symbols: one row per stock name → ticker mapping
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS equity_tickers (name TEXT PRIMARY KEY, ticker TEXT NOT NULL, price REAL)"
+            )
+            self._migrate_equity_tickers_price(conn)
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS mf_tickers (name TEXT PRIMARY KEY, ticker TEXT NOT NULL, price REAL)"
+            )
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS commodity_tickers (name TEXT PRIMARY KEY, ticker TEXT NOT NULL, price REAL)"
             )
             conn.commit()
             conn.close()
@@ -454,6 +481,114 @@ class DbService:
             )
             conn.commit()
             conn.close()
+
+    def get_all_tickers(self):
+        with self._lock:
+            conn = self._connect()
+            cursor = conn.execute("SELECT name, ticker, price FROM equity_tickers")
+            result = {row["name"]: {"ticker": row["ticker"], "price": row["price"]} for row in cursor.fetchall()}
+            conn.close()
+        return result
+
+    def upsert_ticker(self, name: str, ticker: str):
+        with self._lock:
+            conn = self._connect()
+            conn.execute(
+                "INSERT INTO equity_tickers (name, ticker) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET ticker = excluded.ticker",
+                (name.strip(), ticker.strip())
+            )
+            conn.commit()
+            conn.close()
+
+    def update_ticker_prices(self, prices: dict):
+        """Persist latest prices keyed by ticker symbol. prices = {ticker: price}"""
+        if not prices:
+            print("[equity_tickers] No prices to persist.")
+            return
+        updated = 0
+        with self._lock:
+            conn = self._connect()
+            for ticker, price in prices.items():
+                if price is not None:
+                    cursor = conn.execute(
+                        "UPDATE equity_tickers SET price = ? WHERE ticker = ?",
+                        (float(price), ticker)
+                    )
+                    if hasattr(cursor, 'rowcount'):
+                        updated += cursor.rowcount
+            conn.commit()
+            conn.close()
+        print(f"[equity_tickers] Persisted {len(prices)} prices ({updated} rows updated).")
+
+    # ── MF Tickers ──
+
+    def get_all_mf_tickers(self):
+        with self._lock:
+            conn = self._connect()
+            cursor = conn.execute("SELECT name, ticker, price FROM mf_tickers")
+            result = {row["name"]: {"ticker": row["ticker"], "price": row["price"]} for row in cursor.fetchall()}
+            conn.close()
+        return result
+
+    def upsert_mf_ticker(self, name: str, ticker: str):
+        with self._lock:
+            conn = self._connect()
+            conn.execute(
+                "INSERT INTO mf_tickers (name, ticker) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET ticker = excluded.ticker",
+                (name.strip(), ticker.strip())
+            )
+            conn.commit()
+            conn.close()
+
+    def update_mf_ticker_prices(self, prices: dict):
+        if not prices:
+            return
+        with self._lock:
+            conn = self._connect()
+            for ticker, price in prices.items():
+                if price is not None:
+                    conn.execute(
+                        "UPDATE mf_tickers SET price = ? WHERE ticker = ?",
+                        (float(price), ticker)
+                    )
+            conn.commit()
+            conn.close()
+        print(f"[mf_tickers] Persisted {len(prices)} prices.")
+
+    # ── Commodity Tickers ──
+
+    def get_all_commodity_tickers(self):
+        with self._lock:
+            conn = self._connect()
+            cursor = conn.execute("SELECT name, ticker, price FROM commodity_tickers")
+            result = {row["name"]: {"ticker": row["ticker"], "price": row["price"]} for row in cursor.fetchall()}
+            conn.close()
+        return result
+
+    def upsert_commodity_ticker(self, name: str, ticker: str):
+        with self._lock:
+            conn = self._connect()
+            conn.execute(
+                "INSERT INTO commodity_tickers (name, ticker) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET ticker = excluded.ticker",
+                (name.strip(), ticker.strip())
+            )
+            conn.commit()
+            conn.close()
+
+    def update_commodity_ticker_prices(self, prices: dict):
+        if not prices:
+            return
+        with self._lock:
+            conn = self._connect()
+            for ticker, price in prices.items():
+                if price is not None:
+                    conn.execute(
+                        "UPDATE commodity_tickers SET price = ? WHERE ticker = ?",
+                        (float(price), ticker)
+                    )
+            conn.commit()
+            conn.close()
+        print(f"[commodity_tickers] Persisted {len(prices)} prices.")
 
     def get_summary(self):
         summary = {}

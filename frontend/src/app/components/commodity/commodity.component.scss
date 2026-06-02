@@ -211,6 +211,15 @@ tr.row-other       { border-left: 3px solid #8b5cf6; background-color: rgba(139,
   font-weight: 600;
 }
 
+.sub-text {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--text-secondary, #94a3b8);
+}
+
+.pnl-pos { color: #10b981; }
+.pnl-neg { color: #f87171; }
+
 @media (max-width: 768px) {
   :host { height: auto; min-height: 100%; overflow: visible; }
   .page { padding: 0.75rem; overflow: visible; flex: none; }

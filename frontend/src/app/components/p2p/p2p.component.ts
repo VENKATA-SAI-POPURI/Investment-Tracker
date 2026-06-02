@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { InvestmentService } from '../../services/investment.service';
 import { UiActionService } from '../../services/ui-action.service';
+import { CsvExportService } from '../../services/csv-export.service';
 import { P2PEntry, P2PRepayment, P2PEscrow } from '../../models/investment.model';
 
 @Component({
@@ -31,6 +32,8 @@ export class P2PComponent implements OnInit, OnDestroy {
   showEscrowPanel = false;
   editingId: number | null = null;
   editingRepaymentId: number | null = null;
+  editingRepaymentOriginalAmount: number = 0;
+  editingRepaymentOriginalDate: string = '';
   editingEscrowId: number | null = null;
   expandedLendingId: string | null = null;
   searchQuery = '';
@@ -45,7 +48,7 @@ export class P2PComponent implements OnInit, OnDestroy {
 
   private addSub?: Subscription;
 
-  constructor(private investmentService: InvestmentService, private uiActionService: UiActionService) {}
+  constructor(private investmentService: InvestmentService, private uiActionService: UiActionService, private csvExport: CsvExportService) {}
 
   ngOnInit(): void {
     this.addSub = this.uiActionService.addEntry.subscribe(page => { if (page === 'p2p') this.openAddForm(); });
@@ -151,12 +154,11 @@ export class P2PComponent implements OnInit, OnDestroy {
     return (rep.amount || 0) - this.getRepaymentPrincipal(rep, entry, repIndex);
   }
 
-  // Net amount credited to account after platform fee deduction
+  // Amount credited to account (platform fee is informational only, does not reduce received amount)
   getRepaymentNetCredited(rep: P2PRepayment): number {
-    const gross = rep.principal != null
+    return rep.principal != null
       ? (rep.principal || 0) + (rep.interest || 0)
       : (rep.amount || 0);
-    return gross - (rep.platform_fee || 0);
   }
 
   // Received = sum of principal portions only
@@ -235,10 +237,10 @@ export class P2PComponent implements OnInit, OnDestroy {
     if (!entry.amount || !entry.date) return null;
     const reps = this.getRepayments(entry.lending_id);
     if (repIndex >= reps.length) return null;
-    // Cumulative net interest (gross interest - platform fees) up to this repayment
+    // Cumulative interest up to this repayment
     let cumulativeNetInterest = 0;
     for (let i = 0; i <= repIndex; i++) {
-      cumulativeNetInterest += this.getRepaymentInterest(reps[i], entry, i) - (reps[i].platform_fee || 0);
+      cumulativeNetInterest += this.getRepaymentInterest(reps[i], entry, i);
     }
     if (cumulativeNetInterest <= 0) return null;
     const start = new Date(entry.date);
@@ -284,9 +286,9 @@ export class P2PComponent implements OnInit, OnDestroy {
     return this.allEntries.reduce((s, e) => s + this.getTotalRepaid(e.lending_id), 0);
   }
 
-  // Net interest after deducting platform fees for a lending
+  // Total interest earned for a lending (platform fee is informational only)
   getTotalNetInterest(lendingId: string): number {
-    return this.getTotalInterest(lendingId) - this.getTotalPlatformFees(lendingId);
+    return this.getTotalInterest(lendingId);
   }
 
   get totalReturns(): number {
@@ -336,6 +338,12 @@ export class P2PComponent implements OnInit, OnDestroy {
 
   get activeLentAmount(): number {
     return this.allEntries.filter(e => e.status === 'Active').reduce((s, e) => s + (e.amount || 0), 0);
+  }
+
+  get pendingActiveLentAmount(): number {
+    return this.allEntries
+      .filter(e => e.status === 'Active')
+      .reduce((s, e) => s + this.getPendingAmount(e), 0);
   }
 
   get defaultedCount(): number {
@@ -863,7 +871,7 @@ export class P2PComponent implements OnInit, OnDestroy {
   }
 
   get repaymentNetCreditedPreview(): number {
-    return this.repaymentGrossAmount - (this.repaymentForm.platform_fee || 0);
+    return this.repaymentGrossAmount;
   }
 
   openEditRepaymentForm(rep: P2PRepayment): void {
@@ -881,6 +889,8 @@ export class P2PComponent implements OnInit, OnDestroy {
       }
     }
     this.editingRepaymentId = rep.id!;
+    this.editingRepaymentOriginalAmount = rep.amount || 0;
+    this.editingRepaymentOriginalDate = rep.date;
     this.showRepaymentForm = true;
   }
 
@@ -904,18 +914,55 @@ export class P2PComponent implements OnInit, OnDestroy {
       this.repaymentForm.remarks = `Final Settlement (P: ₹${pending.toFixed(2)}, I: ₹${(this.repaymentForm.interest || 0).toFixed(2)}${feeStr})`;
     }
 
+    const editingId = this.editingRepaymentId; // capture before any async nullification
+    const origAmount = this.editingRepaymentOriginalAmount;
+    const origDate = this.editingRepaymentOriginalDate;
+
     const afterSave = (savedRepaymentId?: number) => {
       // Update local repayments array
-      if (this.editingRepaymentId) {
-        const idx = this.repayments.findIndex(r => r.id === this.editingRepaymentId!);
-        if (idx >= 0) this.repayments[idx] = { ...this.repaymentForm, id: this.editingRepaymentId! };
+      if (editingId) {
+        const idx = this.repayments.findIndex(r => r.id === editingId);
+        if (idx >= 0) this.repayments[idx] = { ...this.repaymentForm, id: editingId };
+
+        // Sync auto-created escrow entry
+        const escrowMatch = this.escrowTransactions.find(e =>
+          e.date === origDate &&
+          e.type === 'Repayment' &&
+          (e.remarks || '').includes(this.repaymentForm.lending_id) &&
+          e.amount === origAmount
+        );
+        if (escrowMatch?.id) {
+          const updated = { ...escrowMatch, amount: this.repaymentForm.amount || 0, date: this.repaymentForm.date };
+          this.investmentService.updateP2PEscrow(escrowMatch.id, updated).subscribe({
+            next: () => {
+              const i = this.escrowTransactions.findIndex(e => e.id === escrowMatch.id);
+              if (i >= 0) this.escrowTransactions[i] = updated;
+            }
+          });
+        }
+
+        // Sync auto-created capital flow entry
+        this.investmentService.getCapitalFlows().subscribe({
+          next: (flows) => {
+            const flowMatch = flows.find((f: any) =>
+              f.date === origDate &&
+              f.type === 'Withdrawal' &&
+              f.category === 'P2P' &&
+              f.amount === origAmount
+            );
+            if (flowMatch?.id) {
+              this.investmentService.updateCapitalFlow(flowMatch.id, { ...flowMatch, amount: this.repaymentForm.amount || 0, date: this.repaymentForm.date }).subscribe();
+            }
+          }
+        });
+
       } else if (savedRepaymentId !== undefined) {
         this.repayments.push({ ...this.repaymentForm, id: savedRepaymentId });
       }
 
-      // Auto-post net credited (principal + interest - platform_fee) as escrow entry
-      if (!this.editingRepaymentId && entry) {
-        const netCredited = (this.repaymentForm.amount || 0) - platformFee;
+      // Auto-post amount received (principal + interest) as escrow entry — only for new repayments
+      if (!editingId && entry) {
+        const netCredited = this.repaymentForm.amount || 0;
         if (netCredited > 0) {
           const escrowEntry: P2PEscrow = {
             date: this.repaymentForm.date,
@@ -930,7 +977,7 @@ export class P2PComponent implements OnInit, OnDestroy {
         }
       }
 
-      if (isFinalSettlement && entry && !this.editingRepaymentId) {
+      if (isFinalSettlement && entry && !editingId) {
         // Auto-close the lending, update maturity_date to repayment date
         const updated = { ...entry, status: 'Closed', maturity_date: this.repaymentForm.date };
         this.investmentService.updateP2P(entry.id!, updated).subscribe({
@@ -949,8 +996,8 @@ export class P2PComponent implements OnInit, OnDestroy {
     };
 
     this.submittingRepayment = true;
-    if (this.editingRepaymentId) {
-      this.investmentService.updateP2PRepayment(this.editingRepaymentId, this.repaymentForm).subscribe({
+    if (editingId) {
+      this.investmentService.updateP2PRepayment(editingId, this.repaymentForm).subscribe({
         next: () => { this.submittingRepayment = false; this.toast('Repayment updated', 'success'); this.showRepaymentForm = false; this.editingRepaymentId = null; afterSave(); },
         error: () => { this.submittingRepayment = false; this.toast('Failed to update repayment', 'error'); }
       });
@@ -1056,9 +1103,13 @@ export class P2PComponent implements OnInit, OnDestroy {
 
   get escrowImpactPreview(): { newTotalActive: number; deficiency: number; needsDeposit: boolean } {
     const amount = this.form.status === 'Active' ? (this.form.amount || 0) : 0;
-    const newTotalActive = this.activeLentAmount + amount;
+    const newTotalActive = this.pendingActiveLentAmount + amount;
     const deficiency = newTotalActive - this.escrowBalance;
     return { newTotalActive, deficiency, needsDeposit: deficiency > 0 };
+  }
+
+  get escrowTransactionsSorted(): P2PEscrow[] {
+    return [...this.escrowTransactions].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   }
 
   get escrowTotalDeposits(): number {
@@ -1116,5 +1167,25 @@ export class P2PComponent implements OnInit, OnDestroy {
       },
       error: () => { this.deletingEscrow = false; this.toast('Failed to delete', 'error'); }
     });
+  }
+
+  exportLendingsCsv(): void {
+    this.csvExport.download('p2p_lendings.csv',
+      ['Lending ID', 'Platform', 'Name', 'Date', 'Amount', 'Tenure (months)', 'Maturity Date', 'Status', 'Repaid', 'Pending', 'Interest Earned', 'Remarks'],
+      this.entries.map(e => [
+        e.lending_id, e.platform, e.name, e.date, e.amount, e.tenure, e.maturity_date, e.status,
+        this.getTotalRepaid(e.lending_id),
+        this.getPendingAmount(e),
+        this.getTotalNetInterest(e.lending_id),
+        e.remarks
+      ])
+    );
+  }
+
+  exportEscrowCsv(): void {
+    this.csvExport.download('p2p_escrow.csv',
+      ['Date', 'Type', 'Amount', 'Platform', 'Remarks'],
+      this.escrowTransactionsSorted.map(t => [t.date, t.type, t.amount, t.platform, t.remarks])
+    );
   }
 }

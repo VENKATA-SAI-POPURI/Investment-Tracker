@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { InvestmentService } from '../../services/investment.service';
 import { UiActionService } from '../../services/ui-action.service';
+import { CsvExportService } from '../../services/csv-export.service';
 import { FixedDepositEntry } from '../../models/investment.model';
 
 function getCurrentFY(): string {
@@ -47,7 +48,7 @@ export class FixedDepositsComponent implements OnInit, OnDestroy {
 
   private addSub?: Subscription;
 
-  constructor(private investmentService: InvestmentService, private uiActionService: UiActionService) {}
+  constructor(private investmentService: InvestmentService, private uiActionService: UiActionService, private csvExport: CsvExportService) {}
 
   ngOnInit(): void {
     this.addSub = this.uiActionService.addEntry.subscribe(page => { if (page === 'fixed-deposits') this.openAddForm(); });
@@ -172,5 +173,12 @@ export class FixedDepositsComponent implements OnInit, OnDestroy {
     const t = { msg, type };
     this.toasts.push(t);
     setTimeout(() => { this.toasts = this.toasts.filter(x => x !== t); }, 3500);
+  }
+
+  exportCsv(): void {
+    this.csvExport.download('fixed_deposits.csv',
+      ['Year', 'Platform', 'Bank', 'Date', 'FD Value', 'Interest Rate (%)', 'Maturity Date', 'Return Value', 'Remarks'],
+      this.entries.map(e => [e.year, e.platform, e.bank_name, e.date, e.fd_value, e.interest, e.maturity_date, e.return_value, e.remarks])
+    );
   }
 }

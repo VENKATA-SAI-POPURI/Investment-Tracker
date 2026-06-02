@@ -133,6 +133,7 @@
     </div>
     <input type="text" class="search-input" placeholder="Search by name, platform, status..." [(ngModel)]="searchQuery" (input)="onSearch()">
     <button class="btn btn-secondary btn-sm" (click)="showEscrowPanel = true" title="Escrow Account">💰 Escrow</button>
+    <button class="btn btn-secondary btn-sm" (click)="exportLendingsCsv()" title="Export lendings to CSV">⬇ Export CSV</button>
     <span class="entry-count">Showing {{ entries.length }} of {{ allEntries.length }} entries</span>
   </div>
 
@@ -192,8 +193,8 @@
             <span>₹{{ escrowBalance | number:'1.2-2' }}</span>
           </div>
           <div class="escrow-preview-row">
-            <span>Active Lent</span>
-            <span>₹{{ activeLentAmount | number:'1.2-2' }}</span>
+            <span>Pending Lent</span>
+            <span>₹{{ pendingActiveLentAmount | number:'1.2-2' }}</span>
           </div>
           <div class="escrow-preview-row">
             <span>New Entry</span>
@@ -212,7 +213,7 @@
             Please deposit ₹{{ escrowImpactPreview.deficiency | number:'1.2-2' }} into Escrow to cover this lending.
           </div>
           <div class="escrow-preview-note ok" *ngIf="!escrowImpactPreview.needsDeposit">
-            ✓ Escrow fully covers active lent after this entry.
+            ✓ Escrow fully covers pending lent after this entry.
           </div>
         </div>
         <div class="form-actions">
@@ -423,6 +424,7 @@
         <h3>Escrow Account</h3>
         <div class="header-actions">
           <button class="btn btn-primary btn-sm" (click)="openEscrowForm()">+ Add Transaction</button>
+          <button class="btn btn-secondary btn-sm" (click)="exportEscrowCsv()" title="Export escrow to CSV">⬇ Export CSV</button>
           <button class="btn-icon" (click)="showEscrowPanel = false" title="Close">✕</button>
         </div>
       </div>
@@ -452,7 +454,7 @@
         </tr>
       </thead>
       <tbody>
-        <tr *ngFor="let txn of escrowTransactions">
+        <tr *ngFor="let txn of escrowTransactionsSorted">
           <td>{{ txn.date }}</td>
           <td><span class="badge" [class.buy]="txn.type === 'Deposit'" [class.sell]="txn.type === 'Withdrawal'" [class.completed]="txn.type === 'Repayment'">{{ txn.type }}</span></td>
           <td class="number">₹{{ txn.amount | number:'1.2-2' }}</td>

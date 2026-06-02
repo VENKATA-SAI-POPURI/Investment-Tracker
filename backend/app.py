@@ -3,6 +3,7 @@ import signal
 import subprocess
 import requests
 import urllib3
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Load .env BEFORE any other imports so env vars are available at module init time
@@ -139,12 +140,11 @@ def _auto_create_capital_flows(sheet_name, transaction_data):
                 db_service.add_row("Capital Flows", capital_flow)
         
         elif sheet_name == "P2P Repayments":
-            # Create Withdrawal for P2P repayment using net credited (principal + interest - platform_fee)
+            # Create Withdrawal for P2P repayment (platform fee is informational only)
             principal = transaction_data.get("principal")
             interest = transaction_data.get("interest")
-            platform_fee = transaction_data.get("platform_fee") or 0
             if principal is not None and interest is not None:
-                net_credited = float(principal) + float(interest) - float(platform_fee)
+                net_credited = float(principal) + float(interest)
             else:
                 # Legacy fallback: use gross amount
                 net_credited = float(transaction_data.get("amount") or 0)
@@ -221,7 +221,147 @@ def delete_equity(row_id):
     return jsonify({"error": "Row not found"}), 404
 
 
-# â”€â”€ Mutual Funds Endpoints â”€â”€
+@app.route("/api/equity/tickers", methods=["GET"])
+def get_equity_tickers():
+    tickers = db_service.get_all_tickers()
+    return jsonify(tickers)
+
+
+@app.route("/api/equity/tickers/<string:name>", methods=["PUT"])
+def save_equity_ticker(name):
+    data = request.get_json()
+    if not data or not data.get("ticker", "").strip():
+        return jsonify({"error": "ticker is required"}), 400
+    db_service.upsert_ticker(name, data["ticker"].strip())
+    return jsonify({"message": "Ticker saved"})
+
+
+@app.route("/api/equity/prices", methods=["GET"])
+def get_equity_prices():
+    symbols_param = request.args.get("symbols", "").strip()
+    if not symbols_param:
+        return jsonify({"error": "symbols parameter required"}), 400
+    symbols = [s.strip() for s in symbols_param.split(",") if s.strip()]
+    if not symbols:
+        return jsonify({}), 200
+
+    session = requests.Session()
+    adapter = requests.adapters.HTTPAdapter(pool_connections=30, pool_maxsize=30)
+    session.mount("https://", adapter)
+    session.verify = False
+    session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+
+    def fetch_price(symbol):
+        try:
+            url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range=1d"
+            resp = session.get(url, timeout=5)
+            if resp.status_code == 200:
+                resp_data = resp.json()
+                results = resp_data.get("chart", {}).get("result") or []
+                if results:
+                    meta = results[0].get("meta", {})
+                    price = meta.get("regularMarketPrice") or meta.get("previousClose")
+                    return symbol, round(price, 4) if price is not None else None
+            return symbol, None
+        except Exception as e:
+            print(f"[equity/prices] Failed for {symbol}: {e}")
+            return symbol, None
+
+    prices = {}
+    executor = ThreadPoolExecutor(max_workers=min(len(symbols), 30))
+    try:
+        futures = {executor.submit(fetch_price, s): s for s in symbols}
+        try:
+            for future in as_completed(futures, timeout=12):
+                try:
+                    sym, price = future.result()
+                    prices[sym] = price
+                except Exception:
+                    prices[futures[future]] = None
+        except FuturesTimeoutError:
+            print(f"[equity/prices] Timed out; partial results for {len(prices)}/{len(symbols)} symbols")
+            for future, sym in futures.items():
+                if sym not in prices:
+                    prices[sym] = None
+    finally:
+        executor.shutdown(wait=False)
+
+    # Persist latest prices to equity_tickers for use in other computations
+    try:
+        db_service.update_ticker_prices({sym: p for sym, p in prices.items() if p is not None})
+    except Exception as e:
+        print(f"[equity/prices] Failed to persist prices: {e}")
+
+    return jsonify(prices)
+
+
+@app.route("/api/mutual-funds/tickers", methods=["GET"])
+def get_mf_tickers():
+    return jsonify(db_service.get_all_mf_tickers())
+
+
+@app.route("/api/mutual-funds/tickers/<string:name>", methods=["PUT"])
+def save_mf_ticker(name):
+    data = request.get_json()
+    if not data or not data.get("ticker", "").strip():
+        return jsonify({"error": "ticker is required"}), 400
+    db_service.upsert_mf_ticker(name, data["ticker"].strip())
+    return jsonify({"message": "Ticker saved"})
+
+
+@app.route("/api/mutual-funds/prices", methods=["GET"])
+def get_mf_prices():
+    symbols_param = request.args.get("symbols", "").strip()
+    if not symbols_param:
+        return jsonify({"error": "symbols parameter required"}), 400
+    symbols = [s.strip() for s in symbols_param.split(",") if s.strip()]
+    if not symbols:
+        return jsonify({}), 200
+    session = requests.Session()
+    adapter = requests.adapters.HTTPAdapter(pool_connections=30, pool_maxsize=30)
+    session.mount("https://", adapter)
+    session.verify = False
+    session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+    def fetch_price_mf(symbol):
+        try:
+            url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range=1d"
+            resp = session.get(url, timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                results = data.get("chart", {}).get("result") or []
+                if results:
+                    meta = results[0].get("meta", {})
+                    price = meta.get("regularMarketPrice") or meta.get("previousClose")
+                    return symbol, round(price, 4) if price is not None else None
+            return symbol, None
+        except Exception as e:
+            print(f"[mutual-funds/prices] Failed for {symbol}: {e}")
+            return symbol, None
+    prices = {}
+    executor = ThreadPoolExecutor(max_workers=min(len(symbols), 30))
+    try:
+        futures = {executor.submit(fetch_price_mf, s): s for s in symbols}
+        try:
+            for future in as_completed(futures, timeout=12):
+                try:
+                    sym, price = future.result()
+                    prices[sym] = price
+                except Exception:
+                    prices[futures[future]] = None
+        except FuturesTimeoutError:
+            for future, sym in futures.items():
+                if sym not in prices:
+                    prices[sym] = None
+    finally:
+        executor.shutdown(wait=False)
+    try:
+        db_service.update_mf_ticker_prices({sym: p for sym, p in prices.items() if p is not None})
+    except Exception as e:
+        print(f"[mutual-funds/prices] Failed to persist prices: {e}")
+    return jsonify(prices)
+
+
+# ── Mutual Funds Endpoints ──
 
 @app.route("/api/mutual-funds", methods=["GET"])
 def get_mutual_funds():
@@ -264,7 +404,71 @@ def delete_mutual_fund(row_id):
     return jsonify({"error": "Row not found"}), 404
 
 
-# â”€â”€ Commodity Endpoints â”€â”€
+@app.route("/api/commodity/tickers", methods=["GET"])
+def get_commodity_tickers():
+    return jsonify(db_service.get_all_commodity_tickers())
+
+
+@app.route("/api/commodity/tickers/<string:name>", methods=["PUT"])
+def save_commodity_ticker(name):
+    data = request.get_json()
+    if not data or not data.get("ticker", "").strip():
+        return jsonify({"error": "ticker is required"}), 400
+    db_service.upsert_commodity_ticker(name, data["ticker"].strip())
+    return jsonify({"message": "Ticker saved"})
+
+
+@app.route("/api/commodity/prices", methods=["GET"])
+def get_commodity_prices():
+    symbols_param = request.args.get("symbols", "").strip()
+    if not symbols_param:
+        return jsonify({"error": "symbols parameter required"}), 400
+    symbols = [s.strip() for s in symbols_param.split(",") if s.strip()]
+    if not symbols:
+        return jsonify({}), 200
+    session = requests.Session()
+    adapter = requests.adapters.HTTPAdapter(pool_connections=30, pool_maxsize=30)
+    session.mount("https://", adapter)
+    session.verify = False
+    session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+    def fetch_price_commodity(symbol):
+        try:
+            url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range=1d"
+            resp = session.get(url, timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                results = data.get("chart", {}).get("result") or []
+                if results:
+                    meta = results[0].get("meta", {})
+                    price = meta.get("regularMarketPrice") or meta.get("previousClose")
+                    return symbol, round(price, 4) if price is not None else None
+            return symbol, None
+        except Exception as e:
+            print(f"[commodity/prices] Failed for {symbol}: {e}")
+            return symbol, None
+    prices = {}
+    executor = ThreadPoolExecutor(max_workers=min(len(symbols), 30))
+    try:
+        futures = {executor.submit(fetch_price_commodity, s): s for s in symbols}
+        try:
+            for future in as_completed(futures, timeout=12):
+                try:
+                    sym, price = future.result()
+                    prices[sym] = price
+                except Exception:
+                    prices[futures[future]] = None
+        except FuturesTimeoutError:
+            for future, sym in futures.items():
+                if sym not in prices:
+                    prices[sym] = None
+    finally:
+        executor.shutdown(wait=False)
+    try:
+        db_service.update_commodity_ticker_prices({sym: p for sym, p in prices.items() if p is not None})
+    except Exception as e:
+        print(f"[commodity/prices] Failed to persist prices: {e}")
+    return jsonify(prices)
+
 
 @app.route("/api/commodity", methods=["GET"])
 def get_commodity():
@@ -468,6 +672,156 @@ def delete_fixed_deposit(row_id):
 def get_summary():
     summary = db_service.get_summary()
     return jsonify(summary)
+
+
+
+@app.route("/api/unrealized-pnl", methods=["GET"])
+def get_unrealized_pnl():
+    """Compute unrealized P&L per category from stored ticker prices."""
+    def cat(): return {"unrealized": 0.0, "total_cost": 0.0, "has_prices": False}
+    cats = {"equity_india": cat(), "equity_usa": cat(), "mutual_funds": cat(), "commodity": cat()}
+    try:
+        eq_tickers = db_service.get_all_tickers()
+        eq_rows = db_service.get_all("Equity")
+
+        fx_rows = db_service.get_all("Forex")
+        usd_inr_rate = 0.0
+        for fx in fx_rows:
+            rate = float(fx.get("rate") or 0)
+            if rate > 0:
+                usd_inr_rate = rate
+
+        eq_holdings = {}
+        eq_market = {}
+        for r in eq_rows:
+            name = r.get("name", "")
+            qty = float(r.get("quantity") or 0)
+            val = float(r.get("value") or 0)
+            val_usd = float(r.get("value_usd") or 0)
+            bs = r.get("buy_sell", "Buy")
+            market = r.get("market", "India")
+            if name not in eq_holdings:
+                eq_holdings[name] = {"buy_qty": 0.0, "buy_val_inr": 0.0, "buy_val_usd": 0.0, "sell_qty": 0.0}
+                eq_market[name] = market
+            if bs == "Buy":
+                eq_holdings[name]["buy_qty"] += qty
+                eq_holdings[name]["buy_val_inr"] += val
+                eq_holdings[name]["buy_val_usd"] += val_usd
+            else:
+                eq_holdings[name]["sell_qty"] += qty
+        for name, h in eq_holdings.items():
+            net_qty = h["buy_qty"] - h["sell_qty"]
+            if net_qty <= 0:
+                continue
+            t = eq_tickers.get(name, {})
+            price = t.get("price") if isinstance(t, dict) else None
+            if not price or price <= 0:
+                continue
+            market = eq_market.get(name, "India")
+            if market == "USA":
+                if usd_inr_rate <= 0:
+                    continue
+                avg_cost_usd = h["buy_val_usd"] / h["buy_qty"] if h["buy_qty"] > 0 and h["buy_val_usd"] > 0 else (
+                    (h["buy_val_inr"] / h["buy_qty"] / usd_inr_rate) if h["buy_qty"] > 0 else 0
+                )
+                net_cost_usd = avg_cost_usd * net_qty
+                pnl_inr = (price * net_qty - net_cost_usd) * usd_inr_rate
+                cost_inr = net_cost_usd * usd_inr_rate
+                cats["equity_usa"]["unrealized"] += pnl_inr
+                cats["equity_usa"]["total_cost"] += cost_inr
+                cats["equity_usa"]["has_prices"] = True
+            else:
+                avg_cost = h["buy_val_inr"] / h["buy_qty"] if h["buy_qty"] > 0 else 0
+                net_cost = avg_cost * net_qty
+                cats["equity_india"]["unrealized"] += price * net_qty - net_cost
+                cats["equity_india"]["total_cost"] += net_cost
+                cats["equity_india"]["has_prices"] = True
+
+        mf_tickers = db_service.get_all_mf_tickers()
+        mf_rows = db_service.get_all("Mutual Funds")
+        mf_holdings = {}
+        for r in mf_rows:
+            name = r.get("name", "")
+            bq = float(r.get("buy_quantity") or 0)
+            bv = float(r.get("buy_value") or 0)
+            sq = float(r.get("sell_quantity") or 0)
+            if name not in mf_holdings:
+                mf_holdings[name] = {"buy_qty": 0.0, "buy_val": 0.0, "sell_qty": 0.0}
+            mf_holdings[name]["buy_qty"] += bq
+            mf_holdings[name]["buy_val"] += bv
+            mf_holdings[name]["sell_qty"] += sq
+        for name, h in mf_holdings.items():
+            net_qty = h["buy_qty"] - h["sell_qty"]
+            if net_qty <= 0:
+                continue
+            avg_cost = h["buy_val"] / h["buy_qty"] if h["buy_qty"] > 0 else 0
+            net_cost = avg_cost * net_qty
+            t = mf_tickers.get(name, {})
+            price = t.get("price") if isinstance(t, dict) else None
+            if price and price > 0:
+                cats["mutual_funds"]["unrealized"] += price * net_qty - net_cost
+                cats["mutual_funds"]["total_cost"] += net_cost
+                cats["mutual_funds"]["has_prices"] = True
+
+        cmd_tickers = db_service.get_all_commodity_tickers()
+        cmd_rows = db_service.get_all("Commodity")
+        cmd_holdings = {}
+        for r in cmd_rows:
+            name = r.get("name", "")
+            bq = float(r.get("buy_quantity") or 0)
+            bv = float(r.get("buy_value") or 0)
+            sq = float(r.get("sell_quantity") or 0)
+            if name not in cmd_holdings:
+                cmd_holdings[name] = {"buy_qty": 0.0, "buy_val": 0.0, "sell_qty": 0.0}
+            cmd_holdings[name]["buy_qty"] += bq
+            cmd_holdings[name]["buy_val"] += bv
+            cmd_holdings[name]["sell_qty"] += sq
+        for name, h in cmd_holdings.items():
+            net_qty = h["buy_qty"] - h["sell_qty"]
+            if net_qty <= 0:
+                continue
+            avg_cost = h["buy_val"] / h["buy_qty"] if h["buy_qty"] > 0 else 0
+            net_cost = avg_cost * net_qty
+            t = cmd_tickers.get(name, {})
+            price = t.get("price") if isinstance(t, dict) else None
+            if price and price > 0:
+                cats["commodity"]["unrealized"] += price * net_qty - net_cost
+                cats["commodity"]["total_cost"] += net_cost
+                cats["commodity"]["has_prices"] = True
+
+        by_category = {}
+        total_unrealized = 0.0
+        total_cost = 0.0
+        has_prices = False
+        for key, c in cats.items():
+            u = round(c["unrealized"], 2)
+            tc = round(c["total_cost"], 2)
+            pct = round(u / tc * 100, 2) if tc > 0 else 0.0
+            by_category[key] = {"unrealized": u, "total_cost": tc, "unrealized_pct": pct, "has_prices": c["has_prices"]}
+            total_unrealized += u
+            total_cost += tc
+            if c["has_prices"]:
+                has_prices = True
+
+        total_unrealized = round(total_unrealized, 2)
+        total_cost = round(total_cost, 2)
+        overall_pct = round(total_unrealized / total_cost * 100, 2) if total_cost > 0 else 0.0
+
+    except Exception as e:
+        print(f"[unrealized-pnl] Error: {e}")
+        by_category = {k: {"unrealized": 0.0, "total_cost": 0.0, "unrealized_pct": 0.0, "has_prices": False} for k in cats}
+        total_unrealized = 0.0
+        total_cost = 0.0
+        overall_pct = 0.0
+        has_prices = False
+
+    return jsonify({
+        "unrealized": total_unrealized,
+        "unrealized_pct": overall_pct,
+        "total_cost": total_cost,
+        "has_prices": has_prices,
+        "by_category": by_category
+    })
 
 
 # â”€â”€ Forex Endpoints â”€â”€

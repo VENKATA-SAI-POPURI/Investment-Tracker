@@ -325,6 +325,23 @@ tr.row-usa   { border-left: 3px solid #3b82f6; background-color: rgba(59, 130, 2
   color: var(--text-secondary, #94a3b8);
 }
 
+/* ── P&L coloring ── */
+.pnl-pos { color: #10b981; }
+.pnl-neg { color: #f87171; }
+
+/* ── Ticker input in live-price column ── */
+.ticker-input {
+  width: 9rem;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.75rem;
+  background: var(--input-bg, #1e293b);
+  border: 1px solid var(--border, #334155);
+  border-radius: 4px;
+  color: var(--text-primary, #e2e8f0);
+  outline: none;
+  &:focus { border-color: #6366f1; }
+}
+
 .legend-usa   { color: #3b82f6; }
 
 .legend-pct {

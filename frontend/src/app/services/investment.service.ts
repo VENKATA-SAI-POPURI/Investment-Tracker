@@ -45,6 +45,20 @@ export class InvestmentService {
     return this.http.delete(`${this.baseUrl}/equity/${id}`).pipe(tap(() => this.invalidate('equity')));
   }
 
+  getEquityTickers(): Observable<Record<string, {ticker: string, price: number | null}>> {
+    return this.http.get<Record<string, {ticker: string, price: number | null}>>(`${this.baseUrl}/equity/tickers`);
+  }
+
+  saveEquityTicker(name: string, ticker: string): Observable<any> {
+    return this.http.put(`${this.baseUrl}/equity/tickers/${encodeURIComponent(name)}`, { ticker });
+  }
+
+  fetchEquityPrices(symbols: string[]): Observable<Record<string, number | null>> {
+    return this.http.get<Record<string, number | null>>(
+      `${this.baseUrl}/equity/prices?symbols=${encodeURIComponent(symbols.join(','))}`
+    );
+  }
+
   // ── Commodity ──
   getCommodity(): Observable<CommodityEntry[]> {
     return this.cached<CommodityEntry[]>('commodity', `${this.baseUrl}/commodity`);
@@ -62,6 +76,20 @@ export class InvestmentService {
     return this.http.delete(`${this.baseUrl}/commodity/${id}`).pipe(tap(() => this.invalidate('commodity')));
   }
 
+  getCommodityTickers(): Observable<Record<string, {ticker: string, price: number | null}>> {
+    return this.http.get<Record<string, {ticker: string, price: number | null}>>(`${this.baseUrl}/commodity/tickers`);
+  }
+
+  saveCommodityTicker(name: string, ticker: string): Observable<any> {
+    return this.http.put(`${this.baseUrl}/commodity/tickers/${encodeURIComponent(name)}`, { ticker });
+  }
+
+  fetchCommodityPrices(symbols: string[]): Observable<Record<string, number | null>> {
+    return this.http.get<Record<string, number | null>>(
+      `${this.baseUrl}/commodity/prices?symbols=${encodeURIComponent(symbols.join(','))}`
+    );
+  }
+
   // ── Mutual Funds ──
   getMutualFunds(): Observable<MutualFundEntry[]> {
     return this.cached<MutualFundEntry[]>('mutual-funds', `${this.baseUrl}/mutual-funds`);
@@ -77,6 +105,20 @@ export class InvestmentService {
 
   deleteMutualFund(id: number): Observable<any> {
     return this.http.delete(`${this.baseUrl}/mutual-funds/${id}`).pipe(tap(() => this.invalidate('mutual-funds')));
+  }
+
+  getMFTickers(): Observable<Record<string, {ticker: string, price: number | null}>> {
+    return this.http.get<Record<string, {ticker: string, price: number | null}>>(`${this.baseUrl}/mutual-funds/tickers`);
+  }
+
+  saveMFTicker(name: string, ticker: string): Observable<any> {
+    return this.http.put(`${this.baseUrl}/mutual-funds/tickers/${encodeURIComponent(name)}`, { ticker });
+  }
+
+  fetchMFPrices(symbols: string[]): Observable<Record<string, number | null>> {
+    return this.http.get<Record<string, number | null>>(
+      `${this.baseUrl}/mutual-funds/prices?symbols=${encodeURIComponent(symbols.join(','))}`
+    );
   }
 
   // ── P2P ──
@@ -150,6 +192,11 @@ export class InvestmentService {
   // ── Summary ──
   getSummary(): Observable<Summary> {
     return this.cached<Summary>('summary', `${this.baseUrl}/summary`);
+  }
+
+  // ── Unrealized P&L ──
+  getUnrealizedPnL(): Observable<{ unrealized: number; unrealized_pct: number; total_cost: number; has_prices: boolean; by_category: Record<string, { unrealized: number; unrealized_pct: number; total_cost: number; has_prices: boolean }> }> {
+    return this.http.get<{ unrealized: number; unrealized_pct: number; total_cost: number; has_prices: boolean; by_category: Record<string, { unrealized: number; unrealized_pct: number; total_cost: number; has_prices: boolean }> }>(`${this.baseUrl}/unrealized-pnl`);
   }
 
   // ── Settings ──

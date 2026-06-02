@@ -70,7 +70,11 @@
     <button class="btn btn-secondary" (click)="toggleShowAll()">{{ showAll ? 'Show All' : 'Current Only' }}</button>
     <input type="text" class="search-input" placeholder="Search name, commodity..." [(ngModel)]="searchQuery" (input)="onSearch()">
     <span class="entry-count">{{ viewMode === 'holdings' ? (holdings.length + ' holdings') : (entries.length + ' entries') }}</span>
-    <div class="view-toggle" style="margin-left:auto">
+    <button class="btn btn-secondary" style="margin-left:auto" (click)="exportCsv()" title="Export to CSV">⬇ Export CSV</button>
+    <button class="btn btn-primary" (click)="fetchLivePrices()" [disabled]="pricesFetching" title="Fetch live commodity prices">
+      {{ pricesFetching ? '⏳ Fetching...' : '📈 Live Prices' }}
+    </button>
+    <div class="view-toggle">
       <button [class.active]="viewMode === 'holdings'" (click)="viewMode = 'holdings'">Holdings</button>
       <button [class.active]="viewMode === 'transactions'" (click)="viewMode = 'transactions'">Transactions</button>
     </div>
@@ -142,6 +146,10 @@
             <label>Remarks</label>
             <input type="text" [(ngModel)]="form.remarks" name="remarks" placeholder="Optional notes">
           </div>
+          <div class="form-group">
+            <label>Ticker Symbol</label>
+            <input type="text" [(ngModel)]="formTicker" name="formTicker" placeholder="e.g. GC=F or GOLDBEES.NS" autocomplete="off">
+          </div>
         </div>
         <div class="form-actions">
           <button type="button" class="btn btn-secondary" (click)="cancelForm()">Cancel</button>
@@ -170,6 +178,8 @@
           <th class="bucket-col gt2y-col" title="Held more than 2 years">&gt; 2Y</th>
           <th>Net Invested</th>
           <th>Avg Cost / Unit</th>
+          <th>Realized P&amp;L</th>
+          <th>Unrealized P&amp;L</th>
         </tr>
       </thead>
       <tbody>
@@ -194,11 +204,20 @@
             <td class="number bucket-cell gt2y-cell">{{ h.gt2y > 0 ? (h.gt2y | number:'1.0-5') : '-' }}</td>
             <td class="number">&#8377;{{ h.netValue | number:'1.2-2' }}</td>
             <td class="number">&#8377;{{ h.costPerUnit | number:'1.2-2' }}</td>
+            <td class="number" [class.pnl-pos]="h.realizedPnL > 0" [class.pnl-neg]="h.realizedPnL < 0">
+              {{ h.realizedPnL === 0 ? '—' : ((h.realizedPnLPct >= 0 ? '+' : '') + (h.realizedPnLPct | number:'1.2-2') + '%') }}
+            </td>
+            <td class="number" [class.pnl-pos]="(getUnrealizedPnL(h)?.pnl ?? 0) > 0" [class.pnl-neg]="(getUnrealizedPnL(h)?.pnl ?? 0) < 0">
+              <ng-container *ngIf="getUnrealizedPnL(h) as upnl">
+                {{ upnl.pnl >= 0 ? '+' : '' }}{{ upnl.pct | number:'1.2-2' }}%
+                <span class="sub-text">₹{{ upnl.pnl | number:'1.0-0' }}</span>
+              </ng-container>
+              <span *ngIf="getUnrealizedPnL(h) == null">—</span>
+            </td>
           </tr>
-          <!-- Expanded transaction rows -->
           <tr class="txn-expand-header" *ngIf="expandedCommodityName === h.name">
             <td></td>
-            <td colspan="9">
+            <td colspan="11">
               <div class="txn-section">
                 <div class="txn-section-title">Transactions for {{ h.name }} ({{ getCommodityTransactionsByName(h.name).length }})</div>
                 <table class="txn-table">

@@ -90,6 +90,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   fdData: FixedDepositEntry[] = [];
   forexData: ForexEntry[] = [];
   capitalFlowsSummary: { total_deposits: number; total_withdrawals: number; actual_investment: number } | null = null;
+  unrealizedPnLData: { unrealized: number; unrealized_pct: number; total_cost: number; has_prices: boolean; by_category: Record<string, { unrealized: number; unrealized_pct: number; total_cost: number; has_prices: boolean }> } | null = null;
   capitalFlows: any[] = [];
   showForexPopup = false;
   showCapitalFlowsForm = false;
@@ -227,7 +228,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
       fd: this.investmentService.getFixedDeposits(),
       forex: this.investmentService.getForex(),
       capitalFlows: this.investmentService.getCapitalFlowsSummary(),
-      capitalFlowsList: this.investmentService.getCapitalFlows()
+      capitalFlowsList: this.investmentService.getCapitalFlows(),
+      unrealizedPnL: this.investmentService.getUnrealizedPnL()
     }).subscribe({
       next: (data) => {
         this.summary = data.summary;
@@ -240,6 +242,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
         this.forexData = data.forex;
         this.capitalFlowsSummary = data.capitalFlows;
         this.capitalFlows = (data.capitalFlowsList || []).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        this.unrealizedPnLData = data.unrealizedPnL;
         this.refreshing = false;
       },
       error: () => this.refreshing = false
@@ -258,7 +261,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
       fd: this.investmentService.getFixedDeposits(),
       forex: this.investmentService.getForex(),
       capitalFlows: this.investmentService.getCapitalFlowsSummary(),
-      capitalFlowsList: this.investmentService.getCapitalFlows()
+      capitalFlowsList: this.investmentService.getCapitalFlows(),
+      unrealizedPnL: this.investmentService.getUnrealizedPnL()
     }).subscribe({
       next: (data) => {
         this.summary = data.summary;
@@ -271,6 +275,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
         this.forexData = data.forex;
         this.capitalFlowsSummary = data.capitalFlows;
         this.capitalFlows = (data.capitalFlowsList || []).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        this.unrealizedPnLData = data.unrealizedPnL;
         this.loading = false;
         onComplete?.();
       },
@@ -489,11 +494,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
     total += this.mfData.reduce((sum, e) => sum + this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value), 0);
     total += this.commodityData.reduce((sum, e) => sum + this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value), 0);
-    // P2P: use backend-computed pending (amount - repaid)
-    const p2pSummary = this.summary['P2P'];
-    if (p2pSummary) {
-      total += (p2pSummary as any).current_invested || 0;
-    }
+    // P2P: outstanding principal (interest does not reduce the invested amount)
+    total += this.p2pOutstandingPrincipal;
     // FD: only active (not yet matured) deposits
     total += this.fdData.filter(e => !e.return_value || e.return_value === 0).reduce((sum, e) => sum + (e.fd_value || 0), 0);
     // USD broker wallet: uninvested cash, funded from bank deposits (part of total portfolio value)
@@ -517,7 +519,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   get netPnL(): number {
-    return this.totalSaleValue - (this.totalInvestment - this.currentInvestment);
+    return this.totalSaleValue - (this.totalInvestment - this.currentInvestment) + this.forexImpact;
   }
 
   get costOfSold(): number {
@@ -531,6 +533,18 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   get netPnLVsActualPct(): number {
     return this.actualInvestment > 0 ? Math.round((this.netPnL / this.actualInvestment) * 10000) / 100 : 0;
+  }
+
+  get totalUnrealizedPnL(): number {
+    return this.unrealizedPnLData?.unrealized ?? 0;
+  }
+
+  get totalUnrealizedPnLPct(): number {
+    return this.unrealizedPnLData?.unrealized_pct ?? 0;
+  }
+
+  get hasUnrealizedPrices(): boolean {
+    return this.unrealizedPnLData?.has_prices ?? false;
   }
 
   get actualInvestment(): number {
@@ -549,7 +563,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   // ── Category P&L Summary ──
 
-  get categorySummaryRows(): { category: string; icon: string; totalInvested: number; currentHoldings: number; totalSales: number; netPnL: number; returnPct: number; xirr: number | null }[] {
+  get categorySummaryRows(): { category: string; icon: string; totalInvested: number; currentHoldings: number; totalSales: number; netPnL: number; returnPct: number; xirr: number | null; unrealizedPnL: number; unrealizedPct: number; hasUnrealizedPrice: boolean }[] {
     const r = <T>(v: T) => Math.round((v as any) * 100) / 100;
     const pct = (pnl: number, cost: number) => cost > 0 ? Math.round((pnl / cost) * 10000) / 100 : 0;
     const today = new Date();
@@ -594,10 +608,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
       { date: today, amount: cmdCurr }   // terminal = remaining cost basis only
     ];
 
-    // P2P
+    // P2P — compute principal repaid correctly (same FIFO logic as P2P module)
     const p2pInv   = this.p2pData.reduce((s, e) => s + (e.amount || 0), 0);
-    const p2pCurr  = (this.summary['P2P'] as any)?.current_invested || 0;
     const p2pSales = this.p2pRepayments.reduce((s, rep) => s + this.p2pRepNetCredited(rep), 0);
+    const p2pCurr  = this.p2pOutstandingPrincipal;
     const p2pCost  = p2pInv - p2pCurr;
     const p2pFlows = [
       ...this.p2pData.map(e => ({ date: new Date(e.date), amount: -(e.amount || 0) })),
@@ -616,13 +630,24 @@ export class DashboardComponent implements OnInit, OnDestroy {
       { date: today, amount: fdCurr }
     ];
 
+    // Forex
+    const fxDepINR  = this.forexData.filter(e => e.type === 'Deposit').reduce((s, e) => s + (e.inr_amount || 0), 0);
+    const fxDepUSD  = this.forexData.filter(e => e.type === 'Deposit').reduce((s, e) => s + (e.usd_amount || 0), 0);
+    const fxWdlINR  = this.forexData.filter(e => e.type === 'Withdrawal').reduce((s, e) => s + (e.inr_amount || 0), 0);
+    const fxWdlUSD  = this.forexData.filter(e => e.type === 'Withdrawal').reduce((s, e) => s + (e.usd_amount || 0), 0);
+    const fxAvgRate = fxDepUSD > 0 ? fxDepINR / fxDepUSD : 0;
+    const fxCostOfWdl = fxWdlUSD * fxAvgRate;
+    const fxNetPnL  = fxAvgRate > 0 ? r(fxWdlINR - fxCostOfWdl) : 0;
+
+    const bycat = this.unrealizedPnLData?.by_category ?? {};
+    const ucat = (key: string) => bycat[key] ?? { unrealized: 0, unrealized_pct: 0, has_prices: false };
     return [
-      { category: 'Equity India',   icon: '📈', totalInvested: r(eqIndInv), currentHoldings: r(eqIndFifo), totalSales: r(eqIndSales), netPnL: r(eqIndSales - eqIndCost), returnPct: pct(eqIndSales - eqIndCost, eqIndCost), xirr: this.xirrSafe(eqIndFlows) },
-      { category: 'Equity USA',     icon: '🌐', totalInvested: r(eqUsaInv), currentHoldings: r(eqUsaFifo), totalSales: r(eqUsaSales), netPnL: r(eqUsaSales - eqUsaCost), returnPct: pct(eqUsaSales - eqUsaCost, eqUsaCost), xirr: this.xirrSafe(eqUsaFlows) },
-      { category: 'Mutual Funds',   icon: '📊', totalInvested: r(mfInv),  currentHoldings: r(mfCurr),  totalSales: r(mfSales),  netPnL: r(mfSales  - mfCost),  returnPct: pct(mfSales  - mfCost,  mfCost),  xirr: this.xirrSafe(mfFlows)  },
-      { category: 'Commodity',      icon: '🥇', totalInvested: r(cmdInv), currentHoldings: r(cmdCurr), totalSales: r(cmdSales), netPnL: r(cmdSales - cmdCost), returnPct: pct(cmdSales - cmdCost, cmdCost), xirr: this.xirrSafe(cmdFlows) },
-      { category: 'P2P',            icon: '🤝', totalInvested: r(p2pInv), currentHoldings: r(p2pCurr), totalSales: r(p2pSales), netPnL: r(p2pSales - p2pCost), returnPct: pct(p2pSales - p2pCost, p2pCost), xirr: this.xirrSafe(p2pFlows) },
-      { category: 'Fixed Deposits', icon: '🏦', totalInvested: r(fdInv),  currentHoldings: r(fdCurr),  totalSales: r(fdSales),  netPnL: r(fdSales  - fdCost),  returnPct: pct(fdSales  - fdCost,  fdCost),  xirr: this.xirrSafe(fdFlows)  },
+      { category: 'Equity India',   icon: '📈', totalInvested: r(eqIndInv), currentHoldings: r(eqIndFifo), totalSales: r(eqIndSales), netPnL: r(eqIndSales - eqIndCost), returnPct: pct(eqIndSales - eqIndCost, eqIndCost), xirr: this.xirrSafe(eqIndFlows), unrealizedPnL: ucat('equity_india').unrealized, unrealizedPct: ucat('equity_india').unrealized_pct, hasUnrealizedPrice: ucat('equity_india').has_prices },
+      { category: 'Equity USA',     icon: '🌐', totalInvested: r(eqUsaInv), currentHoldings: r(eqUsaFifo), totalSales: r(eqUsaSales), netPnL: r(eqUsaSales - eqUsaCost + fxNetPnL), returnPct: pct(eqUsaSales - eqUsaCost + fxNetPnL, eqUsaCost), xirr: this.xirrSafe(eqUsaFlows), unrealizedPnL: ucat('equity_usa').unrealized, unrealizedPct: ucat('equity_usa').unrealized_pct, hasUnrealizedPrice: ucat('equity_usa').has_prices },
+      { category: 'Mutual Funds',   icon: '📊', totalInvested: r(mfInv),  currentHoldings: r(mfCurr),  totalSales: r(mfSales),  netPnL: r(mfSales  - mfCost),  returnPct: pct(mfSales  - mfCost,  mfCost),  xirr: this.xirrSafe(mfFlows),  unrealizedPnL: ucat('mutual_funds').unrealized, unrealizedPct: ucat('mutual_funds').unrealized_pct, hasUnrealizedPrice: ucat('mutual_funds').has_prices },
+      { category: 'Commodity',      icon: '🥇', totalInvested: r(cmdInv), currentHoldings: r(cmdCurr), totalSales: r(cmdSales), netPnL: r(cmdSales - cmdCost), returnPct: pct(cmdSales - cmdCost, cmdCost), xirr: this.xirrSafe(cmdFlows), unrealizedPnL: ucat('commodity').unrealized, unrealizedPct: ucat('commodity').unrealized_pct, hasUnrealizedPrice: ucat('commodity').has_prices },
+      { category: 'P2P',            icon: '🤝', totalInvested: r(p2pInv), currentHoldings: r(p2pCurr), totalSales: r(p2pSales), netPnL: r(p2pSales - p2pCost), returnPct: pct(p2pSales - p2pCost, p2pCost), xirr: this.xirrSafe(p2pFlows), unrealizedPnL: 0, unrealizedPct: 0, hasUnrealizedPrice: false },
+      { category: 'Fixed Deposits', icon: '🏦', totalInvested: r(fdInv),  currentHoldings: r(fdCurr),  totalSales: r(fdSales),  netPnL: r(fdSales  - fdCost),  returnPct: pct(fdSales  - fdCost,  fdCost),  xirr: this.xirrSafe(fdFlows),  unrealizedPnL: 0, unrealizedPct: 0, hasUnrealizedPrice: false },
     ].filter(row => row.currentHoldings > 0);
   }
 
@@ -1404,11 +1429,32 @@ export class DashboardComponent implements OnInit, OnDestroy {
     } catch { return 'Unknown'; }
   }
 
-  /** Net credited per repayment = principal + interest - platform_fee; falls back to amount for legacy records */
+  /** Amount received per repayment (platform fee is informational only, does not reduce received amount) */
   private p2pRepNetCredited(rep: P2PRepayment): number {
     return rep.principal != null
-      ? (rep.principal || 0) + (rep.interest || 0) - (rep.platform_fee || 0)
+      ? (rep.principal || 0) + (rep.interest || 0)
       : (rep.amount || 0);
+  }
+
+  /** Outstanding principal = total lent minus principal already repaid (same FIFO logic as P2P module) */
+  private get p2pOutstandingPrincipal(): number {
+    let principalRepaid = 0;
+    for (const e of this.p2pData) {
+      const reps = this.p2pRepayments.filter(r => r.lending_id === e.lending_id);
+      const pp = (e.amount && e.tenure) ? e.amount / e.tenure : 0;
+      let cum = 0;
+      for (const rep of reps) {
+        if (rep.principal != null) {
+          cum += rep.principal;
+        } else {
+          const repAmount = rep.amount || 0;
+          const remaining = (e.amount || 0) - cum;
+          cum += repAmount >= remaining ? remaining : Math.min(repAmount, pp);
+        }
+      }
+      principalRepaid += Math.min(cum, e.amount || 0);
+    }
+    return this.p2pData.reduce((s, e) => s + (e.amount || 0), 0) - principalRepaid;
   }
 
   private get p2pRepaidMap(): Map<string, number> {
@@ -1593,7 +1639,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       return this.xirrSafe(flows);
     }
     if (this.selectedCategory === 'P2P') {
-      const p2pCurr = (this.summary['P2P'] as any)?.current_invested || 0;
+      const p2pCurr = this.p2pOutstandingPrincipal;
       const flows = [
         ...this.p2pData.map(e => ({ date: new Date(e.date), amount: -(e.amount || 0) })),
         ...this.p2pRepayments.map(r => ({ date: new Date(r.date), amount: +this.p2pRepNetCredited(r) })),

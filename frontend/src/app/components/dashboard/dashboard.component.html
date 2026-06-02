@@ -106,14 +106,26 @@
           </div>
         </div>
       </div>
-      <div class="kpi-card" [class.profit]="netPnL >= 0" [class.loss]="netPnL < 0">
-        <div class="kpi-icon">{{ netPnL >= 0 ? '📈' : '📉' }}</div>
+      <div class="kpi-card" [class.profit]="netPnL >= 0 || totalUnrealizedPnL >= 0" [class.loss]="netPnL < 0 && totalUnrealizedPnL < 0">
+        <div class="kpi-icon">{{ (netPnL + totalUnrealizedPnL) >= 0 ? '📈' : '📉' }}</div>
         <div class="kpi-content">
-          <div class="kpi-label">Net P&L</div>
-          <div class="kpi-value" [class.pnl-positive]="netPnL >= 0" [class.pnl-negative]="netPnL < 0">
-            {{ netPnL >= 0 ? '' : '-' }}₹{{ (netPnL >= 0 ? netPnL : -netPnL) | number:'1.2-2' }}
-            <span class="pnl-pct">({{ netPnLPct >= 0 ? '+' : '' }}{{ netPnLPct | number:'1.2-2' }}%)</span>
-            <span class="pnl-pct" style="color: #3b82f6">({{ netPnLVsActualPct >= 0 ? '+' : '' }}{{ netPnLVsActualPct | number:'1.2-2' }}% / actual)</span>
+          <div class="kpi-label">Net P&amp;L</div>
+          <div class="kpi-sub-row">
+            <span class="kpi-sub-label">Realized</span>
+            <span class="kpi-sub-value" [class.pnl-positive]="netPnL >= 0" [class.pnl-negative]="netPnL < 0">
+              {{ netPnL >= 0 ? '+' : '-' }}₹{{ (netPnL >= 0 ? netPnL : -netPnL) | number:'1.0-0' }}
+              <span class="pnl-pct">({{ netPnLPct >= 0 ? '+' : '' }}{{ netPnLPct | number:'1.2-2' }}%)</span>
+            </span>
+          </div>
+          <div class="kpi-sub-row" *ngIf="hasUnrealizedPrices">
+            <span class="kpi-sub-label">Unrealized</span>
+            <span class="kpi-sub-value" [class.pnl-positive]="totalUnrealizedPnL >= 0" [class.pnl-negative]="totalUnrealizedPnL < 0">
+              {{ totalUnrealizedPnL >= 0 ? '+' : '-' }}₹{{ (totalUnrealizedPnL >= 0 ? totalUnrealizedPnL : -totalUnrealizedPnL) | number:'1.0-0' }}
+              <span class="pnl-pct">({{ totalUnrealizedPnLPct >= 0 ? '+' : '' }}{{ totalUnrealizedPnLPct | number:'1.2-2' }}%)</span>
+            </span>
+          </div>
+          <div class="kpi-sub" style="color: #3b82f6; font-size: 0.7rem; margin-top: 2px;">
+            {{ netPnLVsActualPct >= 0 ? '+' : '' }}{{ netPnLVsActualPct | number:'1.2-2' }}% vs actual investment
           </div>
         </div>
       </div>
@@ -203,7 +215,8 @@
                 <th class="num-col">Current</th>
                 <th class="num-col">Sales</th>
                 <th class="num-col">Net P&amp;L</th>
-                <th class="num-col">Return</th>
+                <th class="num-col">Realized%</th>
+                <th class="num-col">Unrealized%</th>
                 <th class="num-col">XIRR p.a.</th>
               </tr>
             </thead>
@@ -215,10 +228,19 @@
                 <td class="num-col">{{ row.totalSales > 0 ? ('₹' + (row.totalSales | number:'1.0-0')) : '—' }}</td>
                 <td class="num-col" [class.pnl-pos]="row.netPnL > 0" [class.pnl-neg]="row.netPnL < 0">
                   {{ row.netPnL === 0 ? '—' : ((row.netPnL > 0 ? '+' : '') + '₹' + (row.netPnL | number:'1.0-0')) }}
-                </td>                  <td class="num-col" [class.pnl-pos]="row.returnPct > 0" [class.pnl-neg]="row.returnPct < 0">
-                    {{ row.totalSales === 0 ? '—' : ((row.returnPct >= 0 ? '+' : '') + (row.returnPct | number:'1.1-1') + '%') }}
-                  </td>                  <td class="num-col" [class.pnl-pos]="row.xirr !== null && row.xirr > 0" [class.pnl-neg]="row.xirr !== null && row.xirr < 0">
-                    {{ row.xirr === null ? '—' : ((row.xirr >= 0 ? '+' : '') + (row.xirr | number:'1.1-1') + '%') }}
+                </td>
+                <td class="num-col" [class.pnl-pos]="row.returnPct > 0" [class.pnl-neg]="row.returnPct < 0">
+                  {{ row.totalSales === 0 ? '—' : ((row.returnPct >= 0 ? '+' : '') + (row.returnPct | number:'1.1-1') + '%') }}
+                </td>
+                <td class="num-col" [class.pnl-pos]="row.unrealizedPct > 0" [class.pnl-neg]="row.unrealizedPct < 0">
+                  <ng-container *ngIf="row.hasUnrealizedPrice; else noUnrealized">
+                    {{ row.unrealizedPct >= 0 ? '+' : '' }}{{ row.unrealizedPct | number:'1.1-1' }}%
+                    <span class="cat-sub-val">₹{{ row.unrealizedPnL | number:'1.0-0' }}</span>
+                  </ng-container>
+                  <ng-template #noUnrealized>—</ng-template>
+                </td>
+                <td class="num-col" [class.pnl-pos]="row.xirr !== null && row.xirr > 0" [class.pnl-neg]="row.xirr !== null && row.xirr < 0">
+                  {{ row.xirr === null ? '—' : ((row.xirr >= 0 ? '+' : '') + (row.xirr | number:'1.1-1') + '%') }}
                 </td>
               </tr>
             </tbody>

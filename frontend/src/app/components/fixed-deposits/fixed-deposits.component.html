@@ -2,6 +2,7 @@
   <div class="filter-bar">
     <input type="text" class="search-input" placeholder="Search by bank, platform, year..." [(ngModel)]="searchQuery" (input)="onSearch()">
     <span class="entry-count">{{ entries.length }} entries</span>
+    <button class="btn btn-secondary" style="margin-left:auto" (click)="exportCsv()" title="Export to CSV">⬇ Export CSV</button>
   </div>
 
   <div class="toast-container">

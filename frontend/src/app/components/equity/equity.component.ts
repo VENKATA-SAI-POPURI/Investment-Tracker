@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { firstValueFrom, Subscription } from 'rxjs';
 import { InvestmentService } from '../../services/investment.service';
 import { UiActionService } from '../../services/ui-action.service';
+import { CsvExportService } from '../../services/csv-export.service';
 import { EquityEntry, ForexEntry } from '../../models/investment.model';
 
 
@@ -23,6 +24,8 @@ interface HoldingRow {
   netValueUsd: number;
   costPerUnit: number;
   costPerUnitUsd: number;
+  realizedPnL: number;
+  realizedPnLPct: number;
   // FIFO holding-period buckets (quantity)
   lt6m: number;   // < 6 months
   lt1y: number;   // 6 months – 1 year
@@ -58,6 +61,13 @@ export class EquityComponent implements OnInit, OnDestroy {
   selectedFYs: string[] = [];
   fyDropdownOpen = false;
   toasts: { msg: string; type: string }[] = [];
+  formTicker = '';
+  tickerMap: Record<string, string> = {};
+  livePrices: Record<string, number | null> = {};
+  pricesFetching = false;
+  pricesLastFetched: Date | null = null;
+  livePricesVisible = false;
+
   sectors = [
     'Communication Services',
     'Consumer Discretionary',
@@ -150,6 +160,7 @@ export class EquityComponent implements OnInit, OnDestroy {
     //    buys (intraday); any remaining sell qty is consumed oldest-first (FIFO).
     const buysByNameDate = new Map<string, Map<string, { qty: number; value: number; valueUsd: number }>>();
     const sellsByNameDate = new Map<string, Map<string, number>>();
+    const sellValueByName = new Map<string, number>();
     for (const e of this.allEntries) {
       if (e.buy_sell === 'Buy') {
         if (!buysByNameDate.has(e.name)) buysByNameDate.set(e.name, new Map());
@@ -160,11 +171,13 @@ export class EquityComponent implements OnInit, OnDestroy {
         if (!sellsByNameDate.has(e.name)) sellsByNameDate.set(e.name, new Map());
         const dm = sellsByNameDate.get(e.name)!;
         dm.set(e.date, (dm.get(e.date) || 0) + (e.quantity || 0));
+        sellValueByName.set(e.name, (sellValueByName.get(e.name) || 0) + (e.value || 0));
       }
     }
 
     const buckets = new Map<string, { lt6m: number; lt1y: number; lt2y: number; gt2y: number }>();
     const fifoNetValue = new Map<string, { inr: number; usd: number }>();
+    const fifoRealizedCost = new Map<string, number>();
     const allStockNames = new Set<string>([...buysByNameDate.keys(), ...sellsByNameDate.keys()]);
 
     for (const name of allStockNames) {
@@ -174,12 +187,14 @@ export class EquityComponent implements OnInit, OnDestroy {
       const sellMap = new Map<string, number>();
       for (const [d, q] of (sellsByNameDate.get(name) || new Map())) sellMap.set(d, q);
 
-      // Priority: net off sells against same-day buys first
+      // Priority: net off sells against same-day buys first; track realized cost from netting
+      let realizedCostInr = 0;
       for (const [date, sellQty] of sellMap) {
         const bd = buyMap.get(date);
         if (bd && bd.qty > 0 && sellQty > 0) {
           const netted = Math.min(bd.qty, sellQty);
           const ratio = (bd.qty - netted) / bd.qty;
+          realizedCostInr += bd.value * (1 - ratio); // cost of netted (same-day) portion
           buyMap.set(date, { qty: bd.qty - netted, value: bd.value * ratio, valueUsd: bd.valueUsd * ratio });
           sellMap.set(date, sellQty - netted);
         }
@@ -198,10 +213,10 @@ export class EquityComponent implements OnInit, OnDestroy {
       let netInr = 0, netUsd = 0;
       for (const lot of effectiveLots) {
         let rem = lot.qty;
-        if (remSells >= rem) { remSells -= rem; continue; }
-        rem -= remSells; remSells = 0;
         const cpuInr = lot.qty > 0 ? lot.value / lot.qty : 0;
         const cpuUsd = lot.qty > 0 ? lot.valueUsd / lot.qty : 0;
+        if (remSells >= rem) { remSells -= rem; realizedCostInr += lot.value; continue; }
+        if (remSells > 0) { realizedCostInr += remSells * cpuInr; rem -= remSells; remSells = 0; }
         netInr += rem * cpuInr;
         netUsd += rem * cpuUsd;
         const days = daysSince(lot.date);
@@ -212,6 +227,7 @@ export class EquityComponent implements OnInit, OnDestroy {
       }
       buckets.set(name, b);
       fifoNetValue.set(name, { inr: Math.round(netInr * 100) / 100, usd: Math.round(netUsd * 100) / 100 });
+      fifoRealizedCost.set(name, Math.round(realizedCostInr * 100) / 100);
     }
 
     // 2. Aggregate value/qty from filtered entries
@@ -224,6 +240,7 @@ export class EquityComponent implements OnInit, OnDestroy {
           totalBuyQty: 0, totalSellQty: 0, totalBuyValue: 0, totalSellValue: 0,
           totalBuyValueUsd: 0, totalSellValueUsd: 0,
           netQty: 0, netValue: 0, netValueUsd: 0, costPerUnit: 0, costPerUnitUsd: 0,
+          realizedPnL: 0, realizedPnLPct: 0,
           lt6m: bkt.lt6m, lt1y: bkt.lt1y, lt2y: bkt.lt2y, gt2y: bkt.gt2y,
         });
       }
@@ -240,6 +257,8 @@ export class EquityComponent implements OnInit, OnDestroy {
     }
     return Array.from(map.values()).map(h => {
       const fifo = fifoNetValue.get(h.name) || { inr: 0, usd: 0 };
+      const rc = fifoRealizedCost.get(h.name) || 0;
+      const sv = sellValueByName.get(h.name) || 0;
       return {
         ...h,
         netQty: h.totalBuyQty - h.totalSellQty,
@@ -247,19 +266,22 @@ export class EquityComponent implements OnInit, OnDestroy {
         netValueUsd: fifo.usd,
         costPerUnit: h.totalBuyQty > 0 ? Math.round((h.totalBuyValue / h.totalBuyQty) * 100) / 100 : 0,
         costPerUnitUsd: h.totalBuyQty > 0 ? Math.round((h.totalBuyValueUsd / h.totalBuyQty) * 100) / 100 : 0,
+        realizedPnL: rc > 0 || sv > 0 ? Math.round((sv - rc) * 100) / 100 : 0,
+        realizedPnLPct: rc > 0 ? Math.round(((sv - rc) / rc) * 10000) / 100 : 0,
       };
     }).sort((a, b) => b.netValue - a.netValue);
   }
 
   private addSub?: Subscription;
 
-  constructor(private investmentService: InvestmentService, private uiActionService: UiActionService) {}
+  constructor(private investmentService: InvestmentService, private uiActionService: UiActionService, private csvExport: CsvExportService) {}
 
   ngOnInit(): void {
     this.addSub = this.uiActionService.addEntry.subscribe(page => { if (page === 'equity') this.openAddForm(); });
     this.addSub.add(this.uiActionService.refresh.subscribe(() => { this.uiActionService.beginRefresh(); this.loadEntries(() => this.uiActionService.endRefresh()); }));
     this.loadForexData();
     this.loadEntries();
+    this.loadTickerMap();
   }
 
   ngOnDestroy(): void { this.addSub?.unsubscribe(); }
@@ -398,12 +420,14 @@ export class EquityComponent implements OnInit, OnDestroy {
 
   openAddForm(): void {
     this.form = this.emptyForm();
+    this.formTicker = '';
     this.editingId = null;
     this.showForm = true;
   }
 
   openEditForm(entry: EquityEntry): void {
     this.form = { ...entry };
+    this.formTicker = this.tickerMap[entry.name] ?? '';
     this.editingId = entry.id!;
     this.showForm = true;
   }
@@ -411,6 +435,7 @@ export class EquityComponent implements OnInit, OnDestroy {
   cancelForm(): void {
     this.showForm = false;
     this.editingId = null;
+    this.formTicker = '';
   }
 
   toggleExpand(name: string): void {
@@ -429,6 +454,7 @@ export class EquityComponent implements OnInit, OnDestroy {
       this.form.market_cap = match.market_cap;
       this.form.sector = match.sector;
     }
+    this.formTicker = this.tickerMap[this.form.name?.trim() ?? ''] ?? '';
   }
 
   get formHolding(): { netQty: number; netValue: number; costPerUnit: number; currency: string } | null {
@@ -492,6 +518,7 @@ export class EquityComponent implements OnInit, OnDestroy {
       formToSave.value = Math.round(formToSave.value! * rate * 100) / 100; // convert to INR
     }
 
+    const tickerToSave = this.formTicker.trim();
     this.submitting = true;
     if (this.editingId) {
       this.investmentService.updateEquity(this.editingId, formToSave).subscribe({
@@ -503,6 +530,11 @@ export class EquityComponent implements OnInit, OnDestroy {
           this.toast('Entry updated successfully', 'success');
           this.showForm = false;
           this.editingId = null;
+          if (tickerToSave) {
+            this.tickerMap[formToSave.name] = tickerToSave;
+            this.investmentService.saveEquityTicker(formToSave.name, tickerToSave).subscribe({ error: () => {} });
+          }
+          this.formTicker = '';
         },
         error: () => { this.submitting = false; this.toast('Failed to update entry', 'error'); }
       });
@@ -514,6 +546,11 @@ export class EquityComponent implements OnInit, OnDestroy {
           this.submitting = false;
           this.toast('Entry added successfully', 'success');
           this.showForm = false;
+          if (tickerToSave) {
+            this.tickerMap[formToSave.name] = tickerToSave;
+            this.investmentService.saveEquityTicker(formToSave.name, tickerToSave).subscribe({ error: () => {} });
+          }
+          this.formTicker = '';
         },
         error: () => { this.submitting = false; this.toast('Failed to add entry', 'error'); }
       });
@@ -548,4 +585,87 @@ export class EquityComponent implements OnInit, OnDestroy {
     this.messageType = type;
     setTimeout(() => this.message = '', 3000);
   }
+
+  exportCsv(): void {
+    if (this.viewMode === 'holdings') {
+      this.csvExport.download('equity_holdings.csv',
+        ['Name', 'Market', 'Sector', 'Market Cap', 'Net Qty', 'Net Value (INR)', 'Net Value (USD)', 'Cost/Unit (INR)', 'Realized P&L', 'Realized P&L %'],
+        this.holdings.map(h => [h.name, h.market, h.sector, h.market_cap, h.netQty, h.netValue, h.netValueUsd, h.costPerUnit, h.realizedPnL, h.realizedPnLPct])
+      );
+    } else {
+      this.csvExport.download('equity_transactions.csv',
+        ['Date', 'Name', 'Market', 'Sector', 'Market Cap', 'Buy/Sell', 'Quantity', 'Value (INR)', 'Value (USD)', 'Remarks'],
+        this.entries.map(e => [e.date, e.name, e.market, e.sector, e.market_cap, e.buy_sell, e.quantity, e.value, e.value_usd, e.remarks])
+      );
+    }
+  }
+
+  loadTickerMap(): void {
+    this.investmentService.getEquityTickers().subscribe({
+      next: (data) => {
+        this.tickerMap = {};
+        for (const [name, val] of Object.entries(data)) {
+          this.tickerMap[name] = val.ticker;
+          if (val.price != null) {
+            this.livePrices[val.ticker] = val.price;
+          }
+        }
+      },
+      error: () => {}
+    });
+  }
+
+  fetchLivePrices(): void {
+    const symbols = [...new Set(
+      this.holdings.map(h => this.tickerMap[h.name]).filter((t): t is string => !!t)
+    )];
+    if (symbols.length === 0) {
+      this.toast('No ticker symbols configured for current holdings', 'error');
+      return;
+    }
+    this.pricesFetching = true;
+    this.investmentService.fetchEquityPrices(symbols).subscribe({
+      next: (prices) => {
+        this.livePrices = prices;
+        this.pricesLastFetched = new Date();
+        this.livePricesVisible = true;
+        this.pricesFetching = false;
+        this.toast('Prices updated', 'success');
+      },
+      error: () => {
+        this.pricesFetching = false;
+        this.toast('Failed to fetch live prices', 'error');
+      }
+    });
+  }
+
+  getCurrentPrice(h: HoldingRow): number | null {
+    const ticker = this.tickerMap[h.name];
+    if (!ticker) return null;
+    return this.livePrices[ticker] ?? null;
+  }
+
+  getMarketValueINR(h: HoldingRow): number | null {
+    const price = this.getCurrentPrice(h);
+    if (price == null || h.netQty <= 0) return null;
+    if (h.market === 'USA') {
+      const rate = this.latestForexRate;
+      if (rate <= 0) return null;
+      return Math.round(price * h.netQty * rate * 100) / 100;
+    }
+    return Math.round(price * h.netQty * 100) / 100;
+  }
+
+  getUnrealizedPnL(h: HoldingRow): { pnl: number; pct: number } | null {
+    const mv = this.getMarketValueINR(h);
+    if (mv == null || h.netValue <= 0) return null;
+    const pnl = Math.round((mv - h.netValue) * 100) / 100;
+    const pct = Math.round((pnl / h.netValue) * 10000) / 100;
+    return { pnl, pct };
+  }
+
+  get totalUnrealizedPnLINR(): number {
+    return Math.round(this.holdings.reduce((sum, h) => sum + (this.getUnrealizedPnL(h)?.pnl ?? 0), 0) * 100) / 100;
+  }
 }
+

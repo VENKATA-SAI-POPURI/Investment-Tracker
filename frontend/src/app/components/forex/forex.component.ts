@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { InvestmentService } from '../../services/investment.service';
 import { UiActionService } from '../../services/ui-action.service';
+import { CsvExportService } from '../../services/csv-export.service';
 import { ForexEntry, EquityEntry } from '../../models/investment.model';
 
 @Component({
@@ -31,7 +32,7 @@ export class ForexComponent implements OnInit, OnDestroy {
 
   private addSub?: Subscription;
 
-  constructor(private investmentService: InvestmentService, private uiActionService: UiActionService) {}
+  constructor(private investmentService: InvestmentService, private uiActionService: UiActionService, private csvExport: CsvExportService) {}
 
   ngOnInit(): void {
     this.addSub = this.uiActionService.addEntry.subscribe(page => { if (page === 'forex') this.openAddForm(); });
@@ -303,5 +304,12 @@ export class ForexComponent implements OnInit, OnDestroy {
   toast(msg: string, type: string): void {
     this.toasts.push({ msg, type });
     setTimeout(() => this.toasts.shift(), 3000);
+  }
+
+  exportCsv(): void {
+    this.csvExport.download('forex.csv',
+      ['Date', 'Type', 'INR Amount', 'USD Amount', 'Rate', 'Remarks'],
+      this.entries.map(e => [e.date, e.type, e.inr_amount, e.usd_amount, e.rate, e.remarks])
+    );
   }
 }
