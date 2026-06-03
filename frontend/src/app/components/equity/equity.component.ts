@@ -279,6 +279,13 @@ export class EquityComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.addSub = this.uiActionService.addEntry.subscribe(page => { if (page === 'equity') this.openAddForm(); });
     this.addSub.add(this.uiActionService.refresh.subscribe(() => { this.uiActionService.beginRefresh(); this.loadEntries(() => this.uiActionService.endRefresh()); }));
+    this.addSub.add(this.uiActionService.equityPrices$.subscribe(prices => {
+      if (Object.keys(prices).length > 0) {
+        this.livePrices = { ...this.livePrices, ...prices };
+        this.pricesLastFetched = new Date();
+        this.livePricesVisible = true;
+      }
+    }));
     this.loadForexData();
     this.loadEntries();
     this.loadTickerMap();
@@ -319,7 +326,7 @@ export class EquityComponent implements OnInit, OnDestroy {
   }
 
   loadEntries(onComplete?: () => void): void {
-    this.loading = true;
+    if (this.allEntries.length === 0) this.loading = true;
     this.investmentService.getEquity().subscribe({
       next: (data) => {
         this.allEntries = data;
@@ -535,6 +542,7 @@ export class EquityComponent implements OnInit, OnDestroy {
             this.investmentService.saveEquityTicker(formToSave.name, tickerToSave).subscribe({ error: () => {} });
           }
           this.formTicker = '';
+          this.uiActionService.triggerSilentRefresh();
         },
         error: () => { this.submitting = false; this.toast('Failed to update entry', 'error'); }
       });
@@ -551,6 +559,7 @@ export class EquityComponent implements OnInit, OnDestroy {
             this.investmentService.saveEquityTicker(formToSave.name, tickerToSave).subscribe({ error: () => {} });
           }
           this.formTicker = '';
+          this.uiActionService.triggerSilentRefresh();
         },
         error: () => { this.submitting = false; this.toast('Failed to add entry', 'error'); }
       });
@@ -566,6 +575,7 @@ export class EquityComponent implements OnInit, OnDestroy {
           this.applyFilter();
           this.deleting = false;
           this.toast('Entry deleted successfully', 'success');
+          this.uiActionService.triggerSilentRefresh();
         },
         error: () => { this.deleting = false; this.toast('Failed to delete entry', 'error'); }
       });
@@ -627,6 +637,7 @@ export class EquityComponent implements OnInit, OnDestroy {
     this.investmentService.fetchEquityPrices(symbols).subscribe({
       next: (prices) => {
         this.livePrices = prices;
+        this.uiActionService.equityPrices$.next(prices);
         this.pricesLastFetched = new Date();
         this.livePricesVisible = true;
         this.pricesFetching = false;

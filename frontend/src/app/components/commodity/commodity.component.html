@@ -205,12 +205,16 @@
             <td class="number">&#8377;{{ h.netValue | number:'1.2-2' }}</td>
             <td class="number">&#8377;{{ h.costPerUnit | number:'1.2-2' }}</td>
             <td class="number" [class.pnl-pos]="h.realizedPnL > 0" [class.pnl-neg]="h.realizedPnL < 0">
-              {{ h.realizedPnL === 0 ? '—' : ((h.realizedPnLPct >= 0 ? '+' : '') + (h.realizedPnLPct | number:'1.2-2') + '%') }}
+              <span [class.pill-pos]="h.realizedPnL > 0" [class.pill-neg]="h.realizedPnL < 0">
+                {{ h.realizedPnL === 0 ? '—' : ((h.realizedPnLPct >= 0 ? '+' : '') + (h.realizedPnLPct | number:'1.2-2') + '%') }}
+              </span>
             </td>
             <td class="number" [class.pnl-pos]="(getUnrealizedPnL(h)?.pnl ?? 0) > 0" [class.pnl-neg]="(getUnrealizedPnL(h)?.pnl ?? 0) < 0">
               <ng-container *ngIf="getUnrealizedPnL(h) as upnl">
-                {{ upnl.pnl >= 0 ? '+' : '' }}{{ upnl.pct | number:'1.2-2' }}%
-                <span class="sub-text">₹{{ upnl.pnl | number:'1.0-0' }}</span>
+                <span [class.pill-pos]="upnl.pnl > 0" [class.pill-neg]="upnl.pnl < 0">
+                  {{ upnl.pnl >= 0 ? '+' : '' }}{{ upnl.pct | number:'1.2-2' }}%
+                  <span class="sub-text">₹{{ upnl.pnl | number:'1.0-0' }}</span>
+                </span>
               </ng-container>
               <span *ngIf="getUnrealizedPnL(h) == null">—</span>
             </td>

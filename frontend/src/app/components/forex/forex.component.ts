@@ -174,7 +174,7 @@ export class ForexComponent implements OnInit, OnDestroy {
   }
 
   loadEntries(onComplete?: () => void): void {
-    this.loading = true;
+    if (this.allEntries.length === 0) this.loading = true;
     this.investmentService.getForex().subscribe({
       next: (data) => {
         this.allEntries = data;
@@ -270,6 +270,7 @@ export class ForexComponent implements OnInit, OnDestroy {
           this.toast('Entry updated', 'success');
           this.showForm = false;
           this.editingId = null;
+          this.uiActionService.triggerSilentRefresh();
         },
         error: () => { this.submitting = false; this.toast('Failed to update', 'error'); }
       });
@@ -281,6 +282,7 @@ export class ForexComponent implements OnInit, OnDestroy {
           this.submitting = false;
           this.toast('Entry added', 'success');
           this.showForm = false;
+          this.uiActionService.triggerSilentRefresh();
         },
         error: () => { this.submitting = false; this.toast('Failed to add', 'error'); }
       });
@@ -296,6 +298,7 @@ export class ForexComponent implements OnInit, OnDestroy {
         this.applyFilter();
         this.deleting = false;
         this.toast('Entry deleted', 'success');
+        this.uiActionService.triggerSilentRefresh();
       },
       error: () => { this.deleting = false; this.toast('Failed to delete', 'error'); }
     });

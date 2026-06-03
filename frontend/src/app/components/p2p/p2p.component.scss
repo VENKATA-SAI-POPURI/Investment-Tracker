@@ -320,14 +320,21 @@ tr.overdue {
   gap: 1rem;
   margin-bottom: 1.5rem;
   align-items: stretch;
+  padding-top: 0.75rem;
+  overflow: visible;
 }
 
 .kpi-card {
   background: var(--bg-card, #1e293b);
   border: 1px solid var(--border-color, #334155);
   border-radius: 12px;
-  padding: 1rem 1.25rem;
+  padding: 1.5rem 1.25rem 1rem;
   transition: transform 0.2s;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 
   &.kpi-current {
     border-color: #667eea;
@@ -385,13 +392,15 @@ tr.overdue {
 .kpi-row {
   display: flex;
   gap: 1.5rem;
+  justify-content: center;
 }
 
 .kpi-item {
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
-  flex: 1;
+  align-items: center;
+  text-align: center;
 }
 
 .kpi-label {
@@ -744,7 +753,11 @@ tr.overdue {
     .kpi-label { font-size: 0.6rem; }
   }
 
-  // Return trend bar chart: horizontal scroll so months don't overflow
+  // Return trend: constrain container so inner scroll works
+  .return-trend-container {
+    min-width: 0;       // allow grid item to shrink to column width
+    overflow: hidden;   // clip overflow so child scroll is effective
+  }
   .return-trend {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;

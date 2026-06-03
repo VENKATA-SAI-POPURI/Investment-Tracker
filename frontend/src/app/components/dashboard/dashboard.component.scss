@@ -1,3 +1,23 @@
+// Disable entrance animations after first play (prevents replay when [hidden] is toggled)
+app-dashboard.animations-done {
+  .kpi-card,
+  .pie-card,
+  .insights-card {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .pie-chart {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: scale(1) !important;
+  }
+  .bar-fill {
+    animation: none !important;
+    clip-path: none !important;
+  }
+}
+
 .dashboard {
   max-width: 100%;
   margin: 0 auto;
@@ -101,6 +121,11 @@
 @keyframes spin {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
+}
+
+@keyframes cardShimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
 }
 
 .forex-btn {
@@ -318,12 +343,21 @@
 }
 
 .insights-card {
-  background: var(--bg-card);
-  border-radius: 12px;
+  background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-card-alt) 100%);
+  border-radius: 14px;
   padding: 1.25rem 1.5rem;
-  border: 1px solid var(--border-color);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
   display: flex;
   flex-direction: column;
+  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
+  animation: fadeSlideUp 0.5s ease 0.1s both;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 28px rgba(99, 102, 241, 0.15), 0 4px 12px rgba(0, 0, 0, 0.18);
+    border-color: rgba(99, 102, 241, 0.25);
+  }
 }
 
 .insights-header {
@@ -390,6 +424,53 @@
   .cat-name-cell { font-weight: 600; }
   .pnl-pos { color: #10b981; }
   .pnl-neg { color: #ef4444; }
+}
+
+// Global pill badge styles for P&L table cells (applied to inner <span>)
+.pill-pos {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.14);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 20px;
+  padding: 0.18rem 0.65rem;
+  font-weight: 700;
+  display: inline-block;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+.pill-neg {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.14);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 20px;
+  padding: 0.18rem 0.65rem;
+  font-weight: 700;
+  display: inline-block;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+// Global kpi-card-mini shimmer hover
+.kpi-card-mini {
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.08) 50%, transparent 60%);
+    background-size: 200% 100%;
+    background-position: -200% center;
+    transition: background-position 0.5s ease;
+    pointer-events: none;
+    border-radius: inherit;
+  }
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+    &::after { background-position: 200% center; }
+  }
 }
 
 // Monthly Deployment Chart
@@ -462,7 +543,119 @@
   &.pnl-neg { color: #ef4444; }
 }
 
+.cumulative-section {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(100, 116, 139, 0.25);
+}
 
+.cumulative-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.4rem;
+}
+
+.cumulative-label {
+  font-size: 0.7rem;
+  color: var(--text-muted, #94a3b8);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.cumulative-total {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #10b981;
+  font-variant-numeric: tabular-nums;
+}
+
+.cumulative-svg {
+  width: 100%;
+  height: 48px;
+  display: block;
+  overflow: visible;
+}
+
+.legend-line-mark {
+  display: inline-block;
+  width: 16px;
+  height: 2px;
+  background: #10b981;
+  border-radius: 2px;
+  vertical-align: middle;
+  margin-right: 3px;
+  margin-left: 6px;
+}
+
+// ── Best / Worst Performer Strip ──
+
+.performer-strip {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  background: var(--card-bg, #1e293b);
+  border: 1px solid rgba(100, 116, 139, 0.35);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-top: 1.25rem;
+}
+
+.performer-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  gap: 0.15rem;
+  text-align: center;
+
+  &.best  { border-left: 3px solid #10b981; }
+  &.worst { border-left: 3px solid #ef4444; }
+}
+
+.performer-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted, #94a3b8);
+  margin-bottom: 0.25rem;
+}
+
+.performer-name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary, #f1f5f9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.performer-cat {
+  font-size: 0.7rem;
+  color: var(--text-muted, #94a3b8);
+  margin-bottom: 0.3rem;
+}
+
+.performer-pct {
+  font-size: 1.4rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.performer-pnl {
+  font-size: 0.8rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.performer-divider {
+  width: 1px;
+  background: rgba(100, 116, 139, 0.35);
+  align-self: stretch;
+}
 
 .kpi-grid {
   display: grid;
@@ -481,24 +674,73 @@
 
 
 .kpi-card {
-  background: var(--bg-card);
-  border-radius: 12px;
+  background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-card-alt) 100%);
+  border-radius: 14px;
   padding: 1.25rem;
   display: flex;
   align-items: center;
   gap: 1rem;
-  box-shadow: var(--shadow-card);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-left: 4px solid var(--border-color);
   position: relative;
+  overflow: hidden;
+  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1),
+              box-shadow 0.22s ease;
+  /* Staggered entrance animation */
+  animation: fadeSlideUp 0.45s ease both;
 
-  &.invested { border-left-color: #f59e0b; }
-  &.holdings { border-left-color: #6366f1; }
-  &.returns { border-left-color: #3b82f6; }
-  &.profit { border-left-color: #10b981; }
-  &.loss { border-left-color: #ef4444; }
+  // Shimmer sweep on hover
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.07) 50%, transparent 60%);
+    background-size: 200% 100%;
+    background-position: -200% center;
+    transition: background-position 0.5s ease;
+    pointer-events: none;
+    border-radius: inherit;
+  }
+
+  &:hover {
+    transform: translateY(-4px) scale(1.01);
+    box-shadow: 0 10px 36px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    &::after { background-position: 200% center; }
+  }
+
+  &.invested {
+    border-left-color: #f59e0b;
+    &:hover { box-shadow: 0 10px 32px rgba(245, 158, 11, 0.22), 0 2px 8px rgba(0,0,0,0.2); }
+  }
+  &.holdings {
+    border-left-color: #6366f1;
+    &:hover { box-shadow: 0 10px 32px rgba(99, 102, 241, 0.22), 0 2px 8px rgba(0,0,0,0.2); }
+  }
+  &.returns {
+    border-left-color: #3b82f6;
+    &:hover { box-shadow: 0 10px 32px rgba(59, 130, 246, 0.22), 0 2px 8px rgba(0,0,0,0.2); }
+  }
+  &.profit {
+    border-left-color: #10b981;
+    &:hover { box-shadow: 0 10px 32px rgba(16, 185, 129, 0.22), 0 2px 8px rgba(0,0,0,0.2); }
+  }
+  &.loss {
+    border-left-color: #ef4444;
+    &:hover { box-shadow: 0 10px 32px rgba(239, 68, 68, 0.22), 0 2px 8px rgba(0,0,0,0.2); }
+  }
+
+  /* Stagger delay for each card in the grid */
+  &:nth-child(1) { animation-delay: 0.05s; }
+  &:nth-child(2) { animation-delay: 0.10s; }
+  &:nth-child(3) { animation-delay: 0.15s; }
+  &:nth-child(4) { animation-delay: 0.20s; }
+  &:nth-child(5) { animation-delay: 0.25s; }
+  &:nth-child(6) { animation-delay: 0.30s; }
 
   .kpi-icon {
     font-size: 1.75rem;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
   }
 
   .kpi-label {
@@ -514,7 +756,12 @@
     font-weight: 700;
     color: var(--text-primary);
 
-    &.pnl-positive { color: #10b981; }
+    &.pnl-positive {
+      background: linear-gradient(135deg, #10b981, #34d399);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
     &.pnl-negative { color: #ef4444; }
   }
 
@@ -546,6 +793,45 @@
 
 .pnl-positive { color: #10b981; }
 .pnl-negative { color: #f87171; }
+
+// Gradient text helper for positive P&L everywhere
+.pnl-positive.kpi-sub-value,
+.pnl-positive.performer-pct,
+.pnl-positive.kpi-value,
+.pnl-positive.stat-value,
+.pnl-positive.stat-sub {
+  background: linear-gradient(135deg, #10b981, #34d399);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+// Gradient text for negative P&L
+.pnl-negative.kpi-sub-value,
+.pnl-negative.kpi-value,
+.pnl-negative.stat-value,
+.pnl-negative.stat-sub {
+  background: linear-gradient(135deg, #ef4444, #f87171);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+// Gradient text for P&L spans inside kpi-sub
+.kpi-sub .pnl-positive {
+  background: linear-gradient(135deg, #10b981, #34d399);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-weight: 600;
+}
+.kpi-sub .pnl-negative {
+  background: linear-gradient(135deg, #ef4444, #f87171);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-weight: 600;
+}
 
 .cat-sub-val {
   display: block;
@@ -1063,10 +1349,19 @@
 }
 
 .pie-card {
-  background: var(--bg-card-alt);
-  border-radius: 10px;
+  background: linear-gradient(135deg, var(--bg-card-alt) 0%, var(--bg-card) 100%);
+  border-radius: 14px;
   padding: 1.25rem;
-  border: 1px solid var(--border-color);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.22s ease, border-color 0.22s ease;
+  animation: fadeSlideUp 0.5s ease both;
+
+  &:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 32px rgba(99, 102, 241, 0.18), 0 4px 12px rgba(0, 0, 0, 0.18);
+    border-color: rgba(99, 102, 241, 0.3);
+  }
 
   .pie-card-header {
     display: flex;
@@ -1117,7 +1412,19 @@
   height: 140px;
   border-radius: 50%;
   flex-shrink: 0;
-  box-shadow: inset 0 0 0 30px var(--bg-card);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  position: relative;
+  animation: scaleIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.1s both;
+
+  /* Donut hole — matches card background */
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 28%;
+    border-radius: 50%;
+    background: var(--bg-card-alt);
+    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.2);
+  }
 }
 
 .pie-legend {
@@ -1248,9 +1555,15 @@
 .bar-fill {
   height: 100%;
   border-radius: 4px;
-  transition: width 0.3s ease;
   position: relative;
   z-index: 1;
+  /* Animate width from 0 to actual value on load */
+  animation: barFillIn 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+
+  @keyframes barFillIn {
+    from { clip-path: inset(0 100% 0 0); }
+    to   { clip-path: inset(0 0% 0 0); }
+  }
 
   &.bar-profit {
     background: linear-gradient(90deg, #10b981, #34d399);
@@ -1390,6 +1703,11 @@
   // Hide "+1.14% / actual" secondary pct — too long on mobile
   .pnl-pct + .pnl-pct { display: none; }
 
+  // Stack kpi-sub-row vertically so "Unrealized +₹3,555" doesn't split at "+"
+  .kpi-sub-row { flex-direction: column; gap: 0.05rem; margin-top: 2px; }
+  .kpi-sub-label { min-width: unset; font-size: 0.58rem; }
+  .kpi-sub-value { white-space: nowrap; font-size: 0.82rem; }
+
   // Shrink absolute action buttons so they don't crowd the label text
   .kpi-add-btn { width: 28px; height: 28px; font-size: 1rem; top: 8px; right: 8px; }
   .kpi-forex-btn { width: 26px; height: 26px; font-size: 0.9rem; top: 8px; right: 8px; }
@@ -1408,7 +1726,6 @@
   .legend-label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .legend-pct { width: 42px; flex-shrink: 0; text-align: right; }
   .legend-target { display: none; }
-  .legend-flag { display: none; }
   .legend-value { font-size: 0.68rem; width: 70px; flex-shrink: 0; text-align: right; }
 
   // Category buttons: horizontal wrap, 3 per row
@@ -1422,8 +1739,14 @@
     .cat-count { font-size: 0.65rem; }
   }
 
+  // Allow home-main-grid items to shrink to the 1-column grid width (prevent 617px overflow)
+  .pie-card, .insights-card { min-width: 0; }
+
   // Home view: reduce insights-card padding so table gets more room
   .insights-card { padding: 0.75rem 0.75rem; }
+  // Compact header so heading + XIRR badge fit on one line
+  .insights-header h3 { font-size: 0.82rem; }
+  .xirr-badge { font-size: 0.72rem; padding: 0.2rem 0.45rem; white-space: nowrap; }
   // Force table wider than wrapper so overflow-x:auto on wrap creates a scrollbar
   .cat-pnl-table { min-width: 560px; }
 
@@ -2539,5 +2862,129 @@
     &:hover {
       transform: scale(1.2);
     }
+  }
+}
+
+// ── Mobile / Dashboard ──
+@media (max-width: 768px) {
+  .dashboard {
+    padding: 0.5rem;
+  }
+
+  // Dashboard header: switch from centred+absolute to stacked flex column
+  .dashboard-header {
+    padding: 0.85rem 0.75rem;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .header-left {
+    position: static;
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .header-actions {
+    position: static;
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .dashboard-header h1 {
+    font-size: 1.25rem;
+    margin: 0;
+    text-align: center;
+    width: 100%;
+  }
+
+  // KPI card values: tighter on 2-col grid
+  .kpi-value {
+    font-size: 1.05rem;
+  }
+
+  .kpi-icon {
+    font-size: 1.35rem;
+  }
+
+  .kpi-card {
+    padding: 0.85rem;
+    gap: 0.6rem;
+  }
+
+  // Performer strip → vertical stack so names don't clip
+  .performer-strip {
+    flex-direction: column;
+  }
+
+  .performer-card {
+    padding: 0.85rem 1rem;
+    &.worst { border-left: 3px solid #ef4444; border-top: none; }
+  }
+
+  .performer-divider {
+    width: 100%;
+    height: 1px;
+  }
+
+  .performer-name {
+    max-width: none;
+    white-space: normal;
+    text-align: center;
+    font-size: 0.9rem;
+  }
+
+  // Category P&L table: tighter padding
+  .cat-pnl-table th,
+  .cat-pnl-table td {
+    padding: 0.35rem 0.4rem;
+    font-size: 0.72rem;
+  }
+
+  // Pie & bar analysis grids → single column
+  .pie-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .bar-grid {
+    grid-template-columns: 1fr;
+  }
+
+  // Bar row labels: reduce from 120px so bars have more room
+  .bar-row {
+    grid-template-columns: 80px 1fr;
+  }
+
+  // Allocation pie legend: fewer fixed columns
+  .legend-item {
+    grid-template-columns: 10px 1fr 44px 36px 18px 70px;
+    font-size: 0.75rem;
+  }
+
+  // Analysis section padding
+  .analysis-section {
+    padding: 0.75rem;
+  }
+
+  .insights-card {
+    padding: 0.85rem;
+  }
+
+  // Capital-flows modal: full-width on mobile
+  .capital-flows-modal {
+    max-width: 95vw;
+    max-height: 88vh;
+  }
+
+  .modal-header,
+  .modal-body,
+  .modal-list {
+    padding: 1rem;
   }
 }

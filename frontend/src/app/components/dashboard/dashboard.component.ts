@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, ChangeDetectorRef, ViewEncapsulation, Input, HostListener } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef, ViewEncapsulation, Input, HostListener, HostBinding } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink, Router } from '@angular/router';
@@ -7,6 +7,7 @@ import { InvestmentService } from '../../services/investment.service';
 import { AuthService, AuthUser } from '../../services/auth.service';
 import { UiActionService } from '../../services/ui-action.service';
 import { Summary, EquityEntry, CommodityEntry, MutualFundEntry, P2PEntry, P2PRepayment, FixedDepositEntry, ForexEntry } from '../../models/investment.model';
+import { CountUpDirective } from '../../directives/count-up.directive';
 
 interface PieSlice {
   label: string;
@@ -59,13 +60,14 @@ const DEFAULT_TARGET_ALLOCATION: Record<string, number> = {
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, RouterLink, FormsModule],
+  imports: [CommonModule, RouterLink, FormsModule, CountUpDirective],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',
   encapsulation: ViewEncapsulation.None
 })
 export class DashboardComponent implements OnInit, OnDestroy {
   @Input() view: 'home' | 'analysis' | 'chatbot' = 'home';
+  @HostBinding('class.animations-done') hasAnimated = false;
 
   summary: Summary = {};
   loading = true;
@@ -92,6 +94,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
   capitalFlowsSummary: { total_deposits: number; total_withdrawals: number; actual_investment: number } | null = null;
   unrealizedPnLData: { unrealized: number; unrealized_pct: number; total_cost: number; has_prices: boolean; by_category: Record<string, { unrealized: number; unrealized_pct: number; total_cost: number; has_prices: boolean }> } | null = null;
   capitalFlows: any[] = [];
+  equityTickerMap: Record<string, { ticker: string; price: number | null }> = {};
+  mfTickerMap: Record<string, { ticker: string; price: number | null }> = {};
+  commodityTickerMap: Record<string, { ticker: string; price: number | null }> = {};
+  livePricesEquity: Record<string, number | null> = {};
+  livePricesMF: Record<string, number | null> = {};
+  livePricesCommodity: Record<string, number | null> = {};
   showForexPopup = false;
   showCapitalFlowsForm = false;
   submittingCapitalFlow = false;
@@ -185,7 +193,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
     });
 
     this.loadAll();
+    setTimeout(() => { this.hasAnimated = true; }, 1500);
     this.refreshSub = this.uiActionService.refresh.subscribe(() => { this.uiActionService.beginRefresh(); this.loadAll(() => this.uiActionService.endRefresh()); });
+    this.refreshSub.add(this.uiActionService.silentRefresh.subscribe(() => this.loadAll()));
+    this.refreshSub.add(this.uiActionService.equityPrices$.subscribe(p => { this.livePricesEquity = p; this.cdr.markForCheck(); }));
+    this.refreshSub.add(this.uiActionService.mfPrices$.subscribe(p => { this.livePricesMF = p; this.cdr.markForCheck(); }));
+    this.refreshSub.add(this.uiActionService.commodityPrices$.subscribe(p => { this.livePricesCommodity = p; this.cdr.markForCheck(); }));
     this.restoreAICache();
     this.investmentService.getSetting('targetAllocation').subscribe(res => {
       if (res.value) {
@@ -229,7 +242,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
       forex: this.investmentService.getForex(),
       capitalFlows: this.investmentService.getCapitalFlowsSummary(),
       capitalFlowsList: this.investmentService.getCapitalFlows(),
-      unrealizedPnL: this.investmentService.getUnrealizedPnL()
+      unrealizedPnL: this.investmentService.getUnrealizedPnL(),
+      equityTickers: this.investmentService.getEquityTickers(),
+      mfTickers: this.investmentService.getMFTickers(),
+      commodityTickers: this.investmentService.getCommodityTickers()
     }).subscribe({
       next: (data) => {
         this.summary = data.summary;
@@ -243,6 +259,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
         this.capitalFlowsSummary = data.capitalFlows;
         this.capitalFlows = (data.capitalFlowsList || []).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         this.unrealizedPnLData = data.unrealizedPnL;
+        this.equityTickerMap = data.equityTickers;
+        this.mfTickerMap = data.mfTickers;
+        this.commodityTickerMap = data.commodityTickers;
         this.refreshing = false;
       },
       error: () => this.refreshing = false
@@ -250,7 +269,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   loadAll(onComplete?: () => void): void {
-    this.loading = true;
+    if (this.equityData.length === 0) this.loading = true;
     forkJoin({
       summary: this.investmentService.getSummary(),
       equity: this.investmentService.getEquity(),
@@ -262,7 +281,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
       forex: this.investmentService.getForex(),
       capitalFlows: this.investmentService.getCapitalFlowsSummary(),
       capitalFlowsList: this.investmentService.getCapitalFlows(),
-      unrealizedPnL: this.investmentService.getUnrealizedPnL()
+      unrealizedPnL: this.investmentService.getUnrealizedPnL(),
+      equityTickers: this.investmentService.getEquityTickers(),
+      mfTickers: this.investmentService.getMFTickers(),
+      commodityTickers: this.investmentService.getCommodityTickers()
     }).subscribe({
       next: (data) => {
         this.summary = data.summary;
@@ -276,6 +298,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
         this.capitalFlowsSummary = data.capitalFlows;
         this.capitalFlows = (data.capitalFlowsList || []).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         this.unrealizedPnLData = data.unrealizedPnL;
+        this.equityTickerMap = data.equityTickers;
+        this.mfTickerMap = data.mfTickers;
+        this.commodityTickerMap = data.commodityTickers;
         this.loading = false;
         onComplete?.();
       },
@@ -720,6 +745,123 @@ export class DashboardComponent implements OnInit, OnDestroy {
         withdrawalPct: Math.round((v.withdrawals / maxDep) * 100),
       };
     });
+  }
+
+  // ── Cumulative Deployment Chart ──
+
+  get cumulativeDeploymentData(): { value: number; pct: number }[] {
+    const bars = this.monthlyDeploymentBars;
+    if (!bars.length) return [];
+    let running = 0;
+    const vals = bars.map(b => { running += b.net; return Math.max(0, running); });
+    const maxVal = Math.max(...vals, 1);
+    return vals.map(v => ({ value: Math.round(v), pct: Math.round(v / maxVal * 100) }));
+  }
+
+  get cumulativeLinePoints(): string {
+    const data = this.cumulativeDeploymentData;
+    if (!data.length) return '';
+    const n = data.length;
+    return data.map((d, i) => `${((2 * i + 1) / (2 * n)) * 100},${28 - d.pct * 0.26}`).join(' ');
+  }
+
+  get cumulativeAreaPoints(): string {
+    const data = this.cumulativeDeploymentData;
+    if (!data.length) return '';
+    const n = data.length;
+    const firstX = (1 / (2 * n)) * 100;
+    const lastX = ((2 * (n - 1) + 1) / (2 * n)) * 100;
+    return `${firstX},28 ${this.cumulativeLinePoints} ${lastX},28`;
+  }
+
+  // ── Best & Worst Performer (live prices required) ──
+
+  private get allHoldingPerformers(): { name: string; category: string; pct: number; pnl: number }[] {
+    const results: { name: string; category: string; pct: number; pnl: number }[] = [];
+
+    // Equity — net qty per stock
+    const usdInrRate = this.forexLatestRate;
+    const eqNetQty = new Map<string, number>();
+    for (const e of this.equityData) {
+      const sign = e.buy_sell === 'Buy' ? 1 : -1;
+      eqNetQty.set(e.name, (eqNetQty.get(e.name) || 0) + sign * (e.quantity || 0));
+    }
+    for (const h of this.equityFifoHoldings) {
+      if (h.value <= 0) continue;
+      const t = this.equityTickerMap[h.name];
+      if (!t?.ticker) continue;
+      const priceRaw = this.livePricesEquity[t.ticker] ?? null;
+      if (priceRaw == null) continue;
+      const netQty = eqNetQty.get(h.name) || 0;
+      if (netQty <= 0) continue;
+      // US stocks: price is in USD — convert to INR for a fair comparison with INR cost basis
+      const priceInr = h.market === 'USA' ? priceRaw * (usdInrRate || 0) : priceRaw;
+      if (h.market === 'USA' && usdInrRate <= 0) continue;
+      const mv = priceInr * netQty;
+      const pnl = mv - h.value;
+      const pct = Math.round(pnl / h.value * 10000) / 100;
+      results.push({ name: h.name, category: h.market === 'USA' ? 'Equity USA' : 'Equity India', pct, pnl: Math.round(pnl) });
+    }
+
+    // Mutual Funds
+    const mfHoldings = new Map<string, { buyQty: number; buyVal: number; sellQty: number }>();
+    for (const e of this.mfData) {
+      const h = mfHoldings.get(e.name) || { buyQty: 0, buyVal: 0, sellQty: 0 };
+      h.buyQty += e.buy_quantity || 0;
+      h.buyVal += e.buy_value || 0;
+      h.sellQty += e.sell_quantity || 0;
+      mfHoldings.set(e.name, h);
+    }
+    for (const [name, h] of mfHoldings) {
+      const netQty = h.buyQty - h.sellQty;
+      if (netQty <= 0) continue;
+      const t = this.mfTickerMap[name];
+      if (!t?.ticker) continue;
+      const price = this.livePricesMF[t.ticker] ?? null;
+      if (price == null) continue;
+      const cost = h.buyQty > 0 ? (h.buyVal / h.buyQty) * netQty : 0;
+      if (cost <= 0) continue;
+      const pnl = price * netQty - cost;
+      const pct = Math.round(pnl / cost * 10000) / 100;
+      results.push({ name, category: 'Mutual Funds', pct, pnl: Math.round(pnl) });
+    }
+
+    // Commodity
+    const cmdHoldings = new Map<string, { buyQty: number; buyVal: number; sellQty: number }>();
+    for (const e of this.commodityData) {
+      const h = cmdHoldings.get(e.name) || { buyQty: 0, buyVal: 0, sellQty: 0 };
+      h.buyQty += e.buy_quantity || 0;
+      h.buyVal += e.buy_value || 0;
+      h.sellQty += e.sell_quantity || 0;
+      cmdHoldings.set(e.name, h);
+    }
+    for (const [name, h] of cmdHoldings) {
+      const netQty = h.buyQty - h.sellQty;
+      if (netQty <= 0) continue;
+      const t = this.commodityTickerMap[name];
+      if (!t?.ticker) continue;
+      const price = this.livePricesCommodity[t.ticker] ?? null;
+      if (price == null) continue;
+      const cost = h.buyQty > 0 ? (h.buyVal / h.buyQty) * netQty : 0;
+      if (cost <= 0) continue;
+      const pnl = price * netQty - cost;
+      const pct = Math.round(pnl / cost * 10000) / 100;
+      results.push({ name, category: 'Commodity', pct, pnl: Math.round(pnl) });
+    }
+
+    return results;
+  }
+
+  get bestPerformer(): { name: string; category: string; pct: number; pnl: number } | null {
+    const p = this.allHoldingPerformers;
+    if (!p.length) return null;
+    return p.reduce((best, cur) => cur.pct > best.pct ? cur : best);
+  }
+
+  get worstPerformer(): { name: string; category: string; pct: number; pnl: number } | null {
+    const p = this.allHoldingPerformers;
+    if (!p.length) return null;
+    return p.reduce((worst, cur) => cur.pct < worst.pct ? cur : worst);
   }
 
   // ── Equity FIFO holdings (per-stock cost of remaining lots, always from all data) ──

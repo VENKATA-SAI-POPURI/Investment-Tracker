@@ -138,6 +138,16 @@ def _auto_create_capital_flows(sheet_name, transaction_data):
                     "remarks": f"{transaction_data.get('name', 'P2P')} lending on {transaction_data.get('platform', '')}"
                 }
                 db_service.add_row("Capital Flows", capital_flow)
+                # Auto-create matching Escrow deposit
+                lending_id = transaction_data.get("lending_id", "")
+                escrow_entry = {
+                    "date": transaction_data.get("date", ""),
+                    "type": "Deposit",
+                    "amount": float(amount),
+                    "platform": transaction_data.get("platform", ""),
+                    "remarks": f"Auto: {lending_id} - {transaction_data.get('name', 'P2P')} lending"
+                }
+                db_service.add_row("P2P Escrow", escrow_entry)
         
         elif sheet_name == "P2P Repayments":
             # Create Withdrawal for P2P repayment (platform fee is informational only)
@@ -553,6 +563,14 @@ def delete_p2p(row_id):
             to_delete = [r["id"] for r in repayments if r.get("lending_id") == lending_id]
             for rid in sorted(to_delete, reverse=True):
                 db_service.delete_row("P2P Repayments", rid)
+            # Cascade-delete auto-created escrow deposits for this lending
+            escrow_rows = db_service.get_all("P2P Escrow")
+            escrow_to_delete = [
+                r["id"] for r in escrow_rows
+                if str(r.get("remarks", "")).startswith(f"Auto: {lending_id}")
+            ]
+            for rid in sorted(escrow_to_delete, reverse=True):
+                db_service.delete_row("P2P Escrow", rid)
         return jsonify({"message": "Entry and related repayments deleted"})
     return jsonify({"error": "Row not found"}), 404
 

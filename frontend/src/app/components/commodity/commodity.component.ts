@@ -214,6 +214,12 @@ export class CommodityComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.addSub = this.uiActionService.addEntry.subscribe(page => { if (page === 'commodity') this.openAddForm(); });
     this.addSub.add(this.uiActionService.refresh.subscribe(() => { this.uiActionService.beginRefresh(); this.loadEntries(() => this.uiActionService.endRefresh()); }));
+    this.addSub.add(this.uiActionService.commodityPrices$.subscribe(prices => {
+      if (Object.keys(prices).length > 0) {
+        this.livePrices = { ...this.livePrices, ...prices };
+        this.pricesLastFetched = new Date();
+      }
+    }));
     this.loadEntries();
     this.loadTickerMap();
   }
@@ -236,7 +242,7 @@ export class CommodityComponent implements OnInit, OnDestroy {
   }
 
   loadEntries(onComplete?: () => void): void {
-    this.loading = true;
+    if (this.allEntries.length === 0) this.loading = true;
     this.investmentService.getCommodity().subscribe({
       next: (data) => {
         this.allEntries = data;
@@ -338,6 +344,7 @@ export class CommodityComponent implements OnInit, OnDestroy {
           this.submitting = false; this.toast('Entry updated successfully', 'success'); this.showForm = false; this.editingId = null;
           if (tickerToSave) { this.tickerMap[this.form.name] = tickerToSave; this.investmentService.saveCommodityTicker(this.form.name, tickerToSave).subscribe({ error: () => {} }); }
           this.formTicker = '';
+          this.uiActionService.triggerSilentRefresh();
         },
         error: () => { this.submitting = false; this.toast('Failed to update entry', 'error'); }
       });
@@ -359,6 +366,7 @@ export class CommodityComponent implements OnInit, OnDestroy {
           this.submitting = false; this.toast(res.upserted ? 'Existing entry updated (values added)' : 'Entry added successfully', 'success'); this.showForm = false;
           if (tickerToSave) { this.tickerMap[this.form.name] = tickerToSave; this.investmentService.saveCommodityTicker(this.form.name, tickerToSave).subscribe({ error: () => {} }); }
           this.formTicker = '';
+          this.uiActionService.triggerSilentRefresh();
         },
         error: () => { this.submitting = false; this.toast('Failed to add entry', 'error'); }
       });
@@ -373,6 +381,7 @@ export class CommodityComponent implements OnInit, OnDestroy {
           this.allEntries = this.allEntries.filter(e => e.id !== id);
           this.applyFilter();
           this.deleting = false; this.toast('Entry deleted successfully', 'success');
+          this.uiActionService.triggerSilentRefresh();
         },
         error: () => { this.deleting = false; this.toast('Failed to delete entry', 'error'); }
       });
@@ -426,6 +435,7 @@ export class CommodityComponent implements OnInit, OnDestroy {
     this.investmentService.fetchCommodityPrices(symbols).subscribe({
       next: (prices) => {
         this.livePrices = prices;
+        this.uiActionService.commodityPrices$.next(prices);
         this.pricesLastFetched = new Date();
         this.pricesFetching = false;
         this.toast('Prices updated', 'success');

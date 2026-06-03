@@ -664,7 +664,7 @@ export class P2PComponent implements OnInit, OnDestroy {
   // ── Data operations ──
 
   loadData(onComplete?: () => void): void {
-    this.loading = true;
+    if (this.allEntries.length === 0) this.loading = true;
     this.investmentService.getP2P().subscribe({
       next: (data) => {
         this.allEntries = data;
@@ -785,6 +785,7 @@ export class P2PComponent implements OnInit, OnDestroy {
           if (idx >= 0) this.allEntries[idx] = { ...this.form, id: this.editingId! };
           this.applyFilter();
           this.submitting = false; this.toast('Lending updated', 'success'); this.showForm = false; this.editingId = null;
+          this.uiActionService.triggerSilentRefresh();
         },
         error: () => { this.submitting = false; this.toast('Failed to update', 'error'); }
       });
@@ -794,6 +795,7 @@ export class P2PComponent implements OnInit, OnDestroy {
           this.allEntries.push({ ...this.form, id: res.id });
           this.applyFilter();
           this.submitting = false; this.toast('Lending added', 'success'); this.showForm = false;
+          this.uiActionService.triggerSilentRefresh();
         },
         error: () => { this.submitting = false; this.toast('Failed to add', 'error'); }
       });
@@ -815,6 +817,7 @@ export class P2PComponent implements OnInit, OnDestroy {
           this.allEntries = this.allEntries.filter(e => e.id !== id);
           this.applyFilter();
           this.deleting = false; this.toast('Lending deleted', 'success');
+          this.uiActionService.triggerSilentRefresh();
         },
         error: () => { this.deleting = false; this.toast('Failed to delete', 'error'); }
       });
@@ -998,12 +1001,12 @@ export class P2PComponent implements OnInit, OnDestroy {
     this.submittingRepayment = true;
     if (editingId) {
       this.investmentService.updateP2PRepayment(editingId, this.repaymentForm).subscribe({
-        next: () => { this.submittingRepayment = false; this.toast('Repayment updated', 'success'); this.showRepaymentForm = false; this.editingRepaymentId = null; afterSave(); },
+        next: () => { this.submittingRepayment = false; this.toast('Repayment updated', 'success'); this.showRepaymentForm = false; this.editingRepaymentId = null; afterSave(); this.uiActionService.triggerSilentRefresh(); },
         error: () => { this.submittingRepayment = false; this.toast('Failed to update repayment', 'error'); }
       });
     } else {
       this.investmentService.addP2PRepayment(this.repaymentForm).subscribe({
-        next: (res) => { this.submittingRepayment = false; this.toast('Repayment recorded', 'success'); this.showRepaymentForm = false; afterSave(res.id); },
+        next: (res) => { this.submittingRepayment = false; this.toast('Repayment recorded', 'success'); this.showRepaymentForm = false; afterSave(res.id); this.uiActionService.triggerSilentRefresh(); },
         error: () => { this.submittingRepayment = false; this.toast('Failed to add repayment', 'error'); }
       });
     }
@@ -1047,6 +1050,7 @@ export class P2PComponent implements OnInit, OnDestroy {
                     if (idx >= 0) this.allEntries[idx] = updated;
                     this.applyFilter();
                     this.toast('Lending re-activated (pending amount remaining)', 'success');
+                    this.uiActionService.triggerSilentRefresh();
                   },
                   error: () => this.applyFilter()
                 });
@@ -1055,6 +1059,7 @@ export class P2PComponent implements OnInit, OnDestroy {
             }
           }
           this.applyFilter();
+          this.uiActionService.triggerSilentRefresh();
         },
         error: () => { this.deletingRepayment = false; this.toast('Failed to delete repayment', 'error'); }
       });
@@ -1101,11 +1106,10 @@ export class P2PComponent implements OnInit, OnDestroy {
     return this.totalPending > this.escrowBalance * 1.05;
   }
 
-  get escrowImpactPreview(): { newTotalActive: number; deficiency: number; needsDeposit: boolean } {
-    const amount = this.form.status === 'Active' ? (this.form.amount || 0) : 0;
-    const newTotalActive = this.pendingActiveLentAmount + amount;
-    const deficiency = newTotalActive - this.escrowBalance;
-    return { newTotalActive, deficiency, needsDeposit: deficiency > 0 };
+  get escrowImpactPreview(): { netPendingLent: number; deficiency: number; needsDeposit: boolean } {
+    const netPendingLent = this.pendingActiveLentAmount - this.totalReturns;
+    const deficiency = netPendingLent - this.escrowBalance;
+    return { netPendingLent, deficiency, needsDeposit: deficiency > 0 };
   }
 
   get escrowTransactionsSorted(): P2PEscrow[] {

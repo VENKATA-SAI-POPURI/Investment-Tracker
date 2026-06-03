@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { Subject } from 'rxjs';
+import { BehaviorSubject, Subject } from 'rxjs';
 
 @Injectable({ providedIn: 'root' })
 export class UiActionService {
@@ -13,12 +13,26 @@ export class UiActionService {
   refreshDone = this.refreshDone$.asObservable();
   private pendingRefresh = 0;
 
+  // Shared live price stores — components subscribe to these so prices
+  // are available even if the component hasn't been visited yet.
+  equityPrices$ = new BehaviorSubject<Record<string, number | null>>({});
+  mfPrices$ = new BehaviorSubject<Record<string, number | null>>({});
+  commodityPrices$ = new BehaviorSubject<Record<string, number | null>>({});
+
+  private silentRefresh$ = new Subject<void>();
+  /** Emitted after any data mutation so the dashboard can quietly re-fetch totals. */
+  silentRefresh = this.silentRefresh$.asObservable();
+
   triggerAddEntry(page: string) {
     this.addEntry$.next(page);
   }
 
   triggerRefresh() {
     this.refresh$.next();
+  }
+
+  triggerSilentRefresh() {
+    this.silentRefresh$.next();
   }
 
   beginRefresh(): void {

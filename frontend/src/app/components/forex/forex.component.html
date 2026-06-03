@@ -25,7 +25,7 @@
       <div style="display:flex;align-items:baseline;gap:0.5rem;flex-wrap:wrap;">
         <span class="stat-value">₹{{ avgDepositRate }}</span>
         <span class="stat-sub" *ngIf="latestRateNum > 0"
-          [style.color]="depositRateDiff <= 0 ? '#4caf50' : '#f44336'">
+          [class.pnl-positive]="depositRateDiff <= 0" [class.pnl-negative]="depositRateDiff > 0">
           {{ depositRateDiff <= 0 ? '▼' : '▲' }} {{ (depositRateDiff < 0 ? -depositRateDiff : depositRateDiff) | number:'1.2-2' }} vs latest
         </span>
       </div>
@@ -35,19 +35,19 @@
       <div style="display:flex;align-items:baseline;gap:0.5rem;flex-wrap:wrap;">
         <span class="stat-value">₹{{ avgWithdrawalRate }}</span>
         <span class="stat-sub" *ngIf="latestRateNum > 0 && avgWithdrawalRate !== '-'"
-          [style.color]="withdrawalRateDiff >= 0 ? '#4caf50' : '#f44336'">
+          [class.pnl-positive]="withdrawalRateDiff >= 0" [class.pnl-negative]="withdrawalRateDiff < 0">
           {{ withdrawalRateDiff >= 0 ? '▲' : '▼' }} {{ (withdrawalRateDiff < 0 ? -withdrawalRateDiff : withdrawalRateDiff) | number:'1.2-2' }} vs latest
         </span>
       </div>
     </div>
     <div class="forex-stat">
       <span class="stat-label">Forex Impact on Withdrawals</span>
-      <span class="stat-value" [style.color]="forexWithdrawalImpact >= 0 ? '#4caf50' : '#f44336'">₹{{ (forexWithdrawalImpact < 0 ? -forexWithdrawalImpact : forexWithdrawalImpact) | number:'1.2-2' }}</span>
+      <span class="stat-value" [class.pnl-positive]="forexWithdrawalImpact >= 0" [class.pnl-negative]="forexWithdrawalImpact < 0">₹{{ (forexWithdrawalImpact < 0 ? -forexWithdrawalImpact : forexWithdrawalImpact) | number:'1.2-2' }}</span>
       <span class="stat-sub">{{ forexWithdrawalImpact >= 0 ? 'extra INR received vs avg deposit rate' : 'INR lost vs avg deposit rate' }}</span>
     </div>
     <div class="forex-stat">
       <span class="stat-label">Forex Impact on Deposits</span>
-      <span class="stat-value" [style.color]="forexDepositImpact >= 0 ? '#f44336' : '#4caf50'">₹{{ (forexDepositImpact < 0 ? -forexDepositImpact : forexDepositImpact) | number:'1.2-2' }}</span>
+      <span class="stat-value" [class.pnl-positive]="forexDepositImpact < 0" [class.pnl-negative]="forexDepositImpact >= 0">₹{{ (forexDepositImpact < 0 ? -forexDepositImpact : forexDepositImpact) | number:'1.2-2' }}</span>
       <span class="stat-sub">{{ forexDepositImpact >= 0 ? 'extra INR paid vs cheapest deposit rate' : 'INR saved vs cheapest deposit rate' }}</span>
     </div>
   </div>

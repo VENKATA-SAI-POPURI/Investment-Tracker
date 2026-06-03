@@ -80,14 +80,14 @@
         <div class="kpi-icon">💼</div>
         <div class="kpi-content">
           <div class="kpi-label">Total Investment</div>
-          <div class="kpi-value">₹{{ totalInvestment | number:'1.2-2' }}</div>
+          <div class="kpi-value" [countUp]="totalInvestment" countUpPrefix="₹" [countUpDecimals]="2"></div>
         </div>
       </div>
       <div class="kpi-card invested">
         <div class="kpi-icon">🎯</div>
         <div class="kpi-content">
           <div class="kpi-label">Current Investment</div>
-          <div class="kpi-value">₹{{ currentInvestment | number:'1.2-2' }}</div>
+          <div class="kpi-value" [countUp]="currentInvestment" countUpPrefix="₹" [countUpDecimals]="2"></div>
           <div class="kpi-sub" *ngIf="forexWalletBalanceUSD > 0">Wallet: ${{ forexWalletBalanceUSD | number:'1.2-2' }} · &#8377;{{ forexWalletBalanceINR | number:'1.2-2' }}</div>
         </div>
         <button class="kpi-forex-btn" (click)="toggleForexPopup()" title="Forex Analysis">💱</button>
@@ -96,11 +96,11 @@
         <div class="kpi-icon">💸</div>
         <div class="kpi-content">
           <div class="kpi-label">Total Sale Value</div>
-          <div class="kpi-value">₹{{ totalSaleValue | number:'1.2-2' }}</div>
+          <div class="kpi-value" [countUp]="totalSaleValue" countUpPrefix="₹" [countUpDecimals]="2"></div>
           <div class="kpi-sub" *ngIf="totalSaleValue > 0">
             Cost ₹{{ costOfSold | number:'1.2-2' }}
             &nbsp;&middot;&nbsp;
-            <span [style.color]="netPnL >= 0 ? '#10b981' : '#ef4444'">
+            <span [class.pnl-positive]="netPnL >= 0" [class.pnl-negative]="netPnL < 0">
               {{ netPnL >= 0 ? '+' : '-' }}₹{{ (netPnL >= 0 ? netPnL : -netPnL) | number:'1.2-2' }}
             </span>
           </div>
@@ -133,7 +133,7 @@
         <div class="kpi-icon">💳</div>
         <div class="kpi-content">
           <div class="kpi-label">Actual Investment</div>
-          <div class="kpi-value">₹{{ actualInvestment | number:'1.2-2' }}</div>
+          <div class="kpi-value" [countUp]="actualInvestment" countUpPrefix="₹" [countUpDecimals]="2"></div>
           <div class="kpi-sub">Net capital deployed</div>
         </div>
         <button class="kpi-add-btn" (click)="toggleCapitalFlowsForm()" title="Add Capital Flow">+</button>
@@ -142,7 +142,7 @@
         <div class="kpi-icon">🔄</div>
         <div class="kpi-content">
           <div class="kpi-label">Reinvested Profit</div>
-          <div class="kpi-value" [style.color]="reinvestedProfit >= 0 ? '#10b981' : '#ef4444'">
+          <div class="kpi-value" [class.pnl-positive]="reinvestedProfit >= 0" [class.pnl-negative]="reinvestedProfit < 0">
             {{ reinvestedProfit >= 0 ? '' : '-' }}₹{{ (reinvestedProfit >= 0 ? reinvestedProfit : -reinvestedProfit) | number:'1.2-2' }}
           </div>
           <div class="kpi-sub">Current - Actual Investment</div>
@@ -227,20 +227,28 @@
                 <td class="num-col">₹{{ row.currentHoldings | number:'1.0-0' }}</td>
                 <td class="num-col">{{ row.totalSales > 0 ? ('₹' + (row.totalSales | number:'1.0-0')) : '—' }}</td>
                 <td class="num-col" [class.pnl-pos]="row.netPnL > 0" [class.pnl-neg]="row.netPnL < 0">
-                  {{ row.netPnL === 0 ? '—' : ((row.netPnL > 0 ? '+' : '') + '₹' + (row.netPnL | number:'1.0-0')) }}
+                  <span [class.pill-pos]="row.netPnL > 0" [class.pill-neg]="row.netPnL < 0">
+                    {{ row.netPnL === 0 ? '—' : ((row.netPnL > 0 ? '+' : '') + '₹' + (row.netPnL | number:'1.0-0')) }}
+                  </span>
                 </td>
                 <td class="num-col" [class.pnl-pos]="row.returnPct > 0" [class.pnl-neg]="row.returnPct < 0">
-                  {{ row.totalSales === 0 ? '—' : ((row.returnPct >= 0 ? '+' : '') + (row.returnPct | number:'1.1-1') + '%') }}
+                  <span [class.pill-pos]="row.returnPct > 0 && row.totalSales > 0" [class.pill-neg]="row.returnPct < 0 && row.totalSales > 0">
+                    {{ row.totalSales === 0 ? '—' : ((row.returnPct >= 0 ? '+' : '') + (row.returnPct | number:'1.1-1') + '%') }}
+                  </span>
                 </td>
                 <td class="num-col" [class.pnl-pos]="row.unrealizedPct > 0" [class.pnl-neg]="row.unrealizedPct < 0">
                   <ng-container *ngIf="row.hasUnrealizedPrice; else noUnrealized">
-                    {{ row.unrealizedPct >= 0 ? '+' : '' }}{{ row.unrealizedPct | number:'1.1-1' }}%
-                    <span class="cat-sub-val">₹{{ row.unrealizedPnL | number:'1.0-0' }}</span>
+                    <span [class.pill-pos]="row.unrealizedPct > 0" [class.pill-neg]="row.unrealizedPct < 0">
+                      {{ row.unrealizedPct >= 0 ? '+' : '' }}{{ row.unrealizedPct | number:'1.1-1' }}%
+                      <span class="cat-sub-val">₹{{ row.unrealizedPnL | number:'1.0-0' }}</span>
+                    </span>
                   </ng-container>
                   <ng-template #noUnrealized>—</ng-template>
                 </td>
                 <td class="num-col" [class.pnl-pos]="row.xirr !== null && row.xirr > 0" [class.pnl-neg]="row.xirr !== null && row.xirr < 0">
-                  {{ row.xirr === null ? '—' : ((row.xirr >= 0 ? '+' : '') + (row.xirr | number:'1.1-1') + '%') }}
+                  <span [class.pill-pos]="row.xirr !== null && row.xirr > 0" [class.pill-neg]="row.xirr !== null && row.xirr < 0">
+                    {{ row.xirr === null ? '—' : ((row.xirr >= 0 ? '+' : '') + (row.xirr | number:'1.1-1') + '%') }}
+                  </span>
                 </td>
               </tr>
             </tbody>
@@ -255,6 +263,7 @@
           <span class="chart-legend">
             <span class="legend-dot" style="background:#6366f1"></span> Deposits
             <span class="legend-dot" style="background:#ef4444"></span> Withdrawals
+            <span class="legend-line-mark"></span> Cumulative
           </span>
         </div>
         <div class="monthly-chart">
@@ -269,8 +278,48 @@
             </div>
           </div>
         </div>
+        <div class="cumulative-section" *ngIf="cumulativeDeploymentData.length > 1">
+          <div class="cumulative-header">
+            <span class="cumulative-label">Cumulative Capital Deployed</span>
+            <span class="cumulative-total">₹{{ cumulativeDeploymentData[cumulativeDeploymentData.length - 1].value | number:'1.0-0' }}</span>
+          </div>
+          <svg class="cumulative-svg" viewBox="0 0 100 28" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="cumulGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" style="stop-color:#10b981;stop-opacity:0.25"/>
+                <stop offset="100%" style="stop-color:#10b981;stop-opacity:0.03"/>
+              </linearGradient>
+            </defs>
+            <polygon [attr.points]="cumulativeAreaPoints" fill="url(#cumulGrad)"/>
+            <polyline [attr.points]="cumulativeLinePoints" fill="none" stroke="#10b981" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle *ngFor="let d of cumulativeDeploymentData; let i = index"
+              [attr.cx]="((2*i+1)/(2*cumulativeDeploymentData.length))*100"
+              [attr.cy]="28 - d.pct * 0.26"
+              r="1.4" fill="#10b981"
+              [attr.title]="'₹' + (d.value | number:'1.0-0')"/>
+          </svg>
+        </div>
       </div>
 
+    </div>
+
+    <!-- Best & Worst Performer Cards -->
+    <div class="performer-strip" *ngIf="bestPerformer || worstPerformer">
+      <div class="performer-card best" *ngIf="bestPerformer">
+        <div class="performer-badge">🏆 Best Performer</div>
+        <div class="performer-name">{{ bestPerformer.name }}</div>
+        <div class="performer-cat">{{ bestPerformer.category }}</div>
+        <div class="performer-pct pnl-pos">{{ bestPerformer.pct >= 0 ? '+' : '' }}{{ bestPerformer.pct | number:'1.2-2' }}%</div>
+        <div class="performer-pnl pnl-pos">{{ bestPerformer.pnl >= 0 ? '+' : '' }}₹{{ (bestPerformer.pnl >= 0 ? bestPerformer.pnl : -bestPerformer.pnl) | number:'1.0-0' }}</div>
+      </div>
+      <div class="performer-divider"></div>
+      <div class="performer-card worst" *ngIf="worstPerformer">
+        <div class="performer-badge">📉 Worst Performer</div>
+        <div class="performer-name">{{ worstPerformer.name }}</div>
+        <div class="performer-cat">{{ worstPerformer.category }}</div>
+        <div class="performer-pct" [class.pnl-pos]="worstPerformer.pct >= 0" [class.pnl-neg]="worstPerformer.pct < 0">{{ worstPerformer.pct >= 0 ? '+' : '' }}{{ worstPerformer.pct | number:'1.2-2' }}%</div>
+        <div class="performer-pnl" [class.pnl-pos]="worstPerformer.pnl >= 0" [class.pnl-neg]="worstPerformer.pnl < 0">{{ worstPerformer.pnl >= 0 ? '+' : '-' }}₹{{ (worstPerformer.pnl >= 0 ? worstPerformer.pnl : -worstPerformer.pnl) | number:'1.0-0' }}</div>
+      </div>
     </div>
 
   </section>

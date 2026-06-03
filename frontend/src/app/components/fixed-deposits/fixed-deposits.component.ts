@@ -73,7 +73,7 @@ export class FixedDepositsComponent implements OnInit, OnDestroy {
   }
 
   loadEntries(onComplete?: () => void): void {
-    this.loading = true;
+    if (this.allEntries.length === 0) this.loading = true;
     this.investmentService.getFixedDeposits().subscribe({
       next: (data) => { this.allEntries = data; this.applyFilter(); this.loading = false; onComplete?.(); },
       error: () => { this.toast('Failed to load entries', 'error'); this.loading = false; onComplete?.(); }
@@ -140,6 +140,7 @@ export class FixedDepositsComponent implements OnInit, OnDestroy {
           if (idx >= 0) this.allEntries[idx] = { ...this.form, id: this.editingId! };
           this.applyFilter();
           this.submitting = false; this.toast('Entry updated successfully', 'success'); this.showForm = false; this.editingId = null;
+          this.uiActionService.triggerSilentRefresh();
         },
         error: () => { this.submitting = false; this.toast('Failed to update entry', 'error'); }
       });
@@ -149,6 +150,7 @@ export class FixedDepositsComponent implements OnInit, OnDestroy {
           this.allEntries.push({ ...this.form, id: res.id });
           this.applyFilter();
           this.submitting = false; this.toast(res.upserted ? 'Existing entry updated (values added)' : 'Entry added successfully', 'success'); this.showForm = false;
+          this.uiActionService.triggerSilentRefresh();
         },
         error: () => { this.submitting = false; this.toast('Failed to add entry', 'error'); }
       });
@@ -163,6 +165,7 @@ export class FixedDepositsComponent implements OnInit, OnDestroy {
           this.allEntries = this.allEntries.filter(e => e.id !== id);
           this.applyFilter();
           this.deleting = false; this.toast('Entry deleted successfully', 'success');
+          this.uiActionService.triggerSilentRefresh();
         },
         error: () => { this.deleting = false; this.toast('Failed to delete entry', 'error'); }
       });

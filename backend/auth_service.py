@@ -3,7 +3,7 @@ import jwt
 import json
 import base64
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime
 from functools import wraps
 from flask import request, jsonify
 from google.oauth2 import id_token
@@ -16,7 +16,6 @@ JWT_SECRET = os.environ.get("JWT_SECRET")
 if not JWT_SECRET:
     import warnings
     warnings.warn("JWT_SECRET environment variable is not set — tokens will fail to sign/verify")
-JWT_EXPIRY_HOURS = 24
 
 # Will be injected from app.py
 db_service = None
@@ -164,10 +163,9 @@ def create_user_session(user_info):
         conn.commit()
         conn.close()
         
-        # Create JWT token
+        # Create JWT token (no expiry — device is remembered permanently)
         payload = {
             "email": email,
-            "exp": datetime.utcnow() + timedelta(hours=JWT_EXPIRY_HOURS),
             "iat": datetime.utcnow(),
         }
         
