@@ -97,8 +97,10 @@
           <td class="number">{{ entry.return_value !== null ? '₹' + (entry.return_value | number:'1.2-2') : '-' }}</td>
           <td class="remarks">{{ entry.remarks }}</td>
           <td class="actions">
-            <button class="btn-icon edit" (click)="openEditForm(entry)" title="Edit">✏️</button>
-            <button class="btn-icon delete" (click)="deleteEntry(entry.id!)" [disabled]="deleting" title="Delete">🗑️</button>
+            <ng-container *ngIf="canWrite">
+              <button class="btn-icon edit" (click)="openEditForm(entry)" title="Edit">✏️</button>
+              <button class="btn-icon delete" (click)="deleteEntry(entry.id!)" [disabled]="deleting" title="Delete">🗑️</button>
+            </ng-container>
           </td>
         </tr>
       </tbody>
@@ -112,7 +114,7 @@
           <div class="card-row" *ngIf="entry.interest"><span>Interest:</span><span>{{ entry.interest }}%</span></div>
           <div class="card-row" *ngIf="entry.maturity_date"><span>Maturity:</span><span>{{ entry.maturity_date }}</span></div>
         </div>
-        <div class="card-actions">
+        <div class="card-actions" *ngIf="canWrite">
           <button class="btn-icon edit" (click)="openEditForm(entry)" title="Edit">✏️</button>
           <button class="btn-icon delete" (click)="deleteEntry(entry.id!)" [disabled]="deleting" title="Delete">🗑️</button>
         </div>

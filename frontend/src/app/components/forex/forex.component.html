@@ -132,8 +132,10 @@
           <td class="number">₹{{ entry.rate | number:'1.4-4' }}</td>
           <td class="remarks">{{ entry.remarks }}</td>
           <td class="actions">
-            <button class="btn-icon edit" (click)="openEditForm(entry)" title="Edit">✏️</button>
-            <button class="btn-icon delete" (click)="deleteEntry(entry.id!)" [disabled]="deleting" title="Delete">🗑️</button>
+            <ng-container *ngIf="canWrite">
+              <button class="btn-icon edit" (click)="openEditForm(entry)" title="Edit">✏️</button>
+              <button class="btn-icon delete" (click)="deleteEntry(entry.id!)" [disabled]="deleting" title="Delete">🗑️</button>
+            </ng-container>
           </td>
         </tr>
       </tbody>
@@ -150,7 +152,7 @@
           <div class="card-row"><span>USD:</span><span>${{ entry.usd_amount | number:'1.2-2' }}</span></div>
           <div class="card-row"><span>Rate:</span><span>₹{{ entry.rate | number:'1.4-4' }}</span></div>
         </div>
-        <div class="card-actions">
+        <div class="card-actions" *ngIf="canWrite">
           <button class="btn-icon edit" (click)="openEditForm(entry)" title="Edit">✏️</button>
           <button class="btn-icon delete" (click)="deleteEntry(entry.id!)" [disabled]="deleting" title="Delete">🗑️</button>
         </div>

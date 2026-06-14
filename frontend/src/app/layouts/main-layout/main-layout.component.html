@@ -1,4 +1,11 @@
 <div class="app-container">
+  <!-- Impersonation Banner -->
+  <div class="impersonation-banner" *ngIf="isImpersonating">
+    <span class="impersonation-icon">👁️</span>
+    <span class="impersonation-text">Viewing as <strong>{{ impersonatingEmail }}</strong> — you are seeing this user's data</span>
+    <button class="btn-exit-impersonation" (click)="exitImpersonation()">✕ Exit View</button>
+  </div>
+
   <!-- Top Ribbon -->
   <header class="top-ribbon">
     <div class="ribbon-left">
@@ -20,6 +27,7 @@
       <div class="ribbon-user" *ngIf="currentUser">
         <img *ngIf="currentUser.picture" [src]="currentUser.picture" class="ribbon-avatar" referrerpolicy="no-referrer" alt="avatar">
         <span class="ribbon-username">{{ currentUser.name || currentUser.email }}</span>
+        <span class="ribbon-role-badge" [class]="'role-' + userRole" [title]="'Role: ' + userRole">{{ userRole }}</span>
       </div>
       <button class="ribbon-icon-btn" (click)="toggleDarkMode()" [title]="darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'">
         {{ darkMode ? '☀️' : '🌙' }}
@@ -56,7 +64,7 @@
           [title]="sidebarCollapsed ? 'Equity' : ''">
           <span class="nav-icon">📈</span><span class="nav-label"> Equity</span>
         </button>
-        <button *ngIf="isActive('equity')" class="nav-plus-btn" (click)="triggerAddEntry()" title="Add Equity Entry">+</button>
+        <button *ngIf="isActive('equity') && canWrite" class="nav-plus-btn" (click)="triggerAddEntry()" title="Add Equity Entry">+</button>
       </div>
 
       <div class="nav-row">
@@ -67,7 +75,7 @@
           [title]="sidebarCollapsed ? 'Mutual Funds' : ''">
           <span class="nav-icon">💼</span><span class="nav-label"> Mutual Funds</span>
         </button>
-        <button *ngIf="isActive('mutual-funds')" class="nav-plus-btn" (click)="triggerAddEntry()" title="Add Mutual Fund Entry">+</button>
+        <button *ngIf="isActive('mutual-funds') && canWrite" class="nav-plus-btn" (click)="triggerAddEntry()" title="Add Mutual Fund Entry">+</button>
       </div>
 
       <div class="nav-row">
@@ -78,7 +86,7 @@
           [title]="sidebarCollapsed ? 'Commodity' : ''">
           <span class="nav-icon">⛏️</span><span class="nav-label"> Commodity</span>
         </button>
-        <button *ngIf="isActive('commodity')" class="nav-plus-btn" (click)="triggerAddEntry()" title="Add Commodity Entry">+</button>
+        <button *ngIf="isActive('commodity') && canWrite" class="nav-plus-btn" (click)="triggerAddEntry()" title="Add Commodity Entry">+</button>
       </div>
 
       <div class="nav-row">
@@ -89,7 +97,7 @@
           [title]="sidebarCollapsed ? 'P2P' : ''">
           <span class="nav-icon">👥</span><span class="nav-label"> P2P</span>
         </button>
-        <button *ngIf="isActive('p2p')" class="nav-plus-btn" (click)="triggerAddEntry()" title="Add P2P Entry">+</button>
+        <button *ngIf="isActive('p2p') && canWrite" class="nav-plus-btn" (click)="triggerAddEntry()" title="Add P2P Entry">+</button>
       </div>
 
       <div class="nav-row">
@@ -100,7 +108,7 @@
           [title]="sidebarCollapsed ? 'Fixed Deposits' : ''">
           <span class="nav-icon">🏦</span><span class="nav-label"> Fixed Deposits</span>
         </button>
-        <button *ngIf="isActive('fixed-deposits')" class="nav-plus-btn" (click)="triggerAddEntry()" title="Add Fixed Deposit">+</button>
+        <button *ngIf="isActive('fixed-deposits') && canWrite" class="nav-plus-btn" (click)="triggerAddEntry()" title="Add Fixed Deposit">+</button>
       </div>
 
       <div class="nav-row">
@@ -111,7 +119,7 @@
           [title]="sidebarCollapsed ? 'Forex' : ''">
           <span class="nav-icon">💱</span><span class="nav-label"> Forex</span>
         </button>
-        <button *ngIf="isActive('forex')" class="nav-plus-btn" (click)="triggerAddEntry()" title="Add Forex Entry">+</button>
+        <button *ngIf="isActive('forex') && canWrite" class="nav-plus-btn" (click)="triggerAddEntry()" title="Add Forex Entry">+</button>
       </div>
 
       <hr class="divider">
@@ -141,6 +149,17 @@
         [title]="sidebarCollapsed ? 'Chatbot' : ''">
         <span class="nav-icon">💬</span><span class="nav-label"> Chatbot</span>
       </button>
+
+      <ng-container *ngIf="isAdmin">
+        <hr class="divider">
+        <button
+          class="nav-btn nav-btn-admin"
+          [class.active]="isActive('user-management')"
+          (click)="navigateTo('user-management')"
+          [title]="sidebarCollapsed ? 'User Management' : ''">
+          <span class="nav-icon">👥</span><span class="nav-label"> Users</span>
+        </button>
+      </ng-container>
     </nav>
   </aside>
 
@@ -166,6 +185,9 @@
 
     <!-- Forex -->
     <app-forex *ngIf="visitedPages.has('forex')" [hidden]="currentPage !== 'forex'"></app-forex>
+
+    <!-- User Management (Admin only) -->
+    <app-user-management *ngIf="isAdmin && currentPage === 'user-management'" (viewAs)="onViewAs($event)"></app-user-management>
   </main>
   </div>
 
@@ -213,6 +235,9 @@
       <button class="more-sheet-btn" [class.active]="isActive('chatbot')" (click)="navigateTo('chatbot')">
         <span class="more-sheet-btn-icon">💬</span><span>Chatbot</span>
       </button>
+      <button *ngIf="isAdmin" class="more-sheet-btn" [class.active]="isActive('user-management')" (click)="navigateTo('user-management'); closeMoreSheet()">
+        <span class="more-sheet-btn-icon">👥</span><span>Users</span>
+      </button>
     </div>
     <div class="more-sheet-divider"></div>
     <div class="more-sheet-utils">
@@ -231,3 +256,4 @@
   <button class="mobile-fab" *ngIf="showAddEntry" (click)="triggerAddEntry()" title="Add Entry">+</button>
 
 </div>
+ 

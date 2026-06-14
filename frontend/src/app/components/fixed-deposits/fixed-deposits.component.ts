@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { InvestmentService } from '../../services/investment.service';
+import { AuthService } from '../../services/auth.service';
 import { UiActionService } from '../../services/ui-action.service';
 import { CsvExportService } from '../../services/csv-export.service';
 import { FixedDepositEntry } from '../../models/investment.model';
@@ -41,19 +42,33 @@ export class FixedDepositsComponent implements OnInit, OnDestroy {
   toasts: { msg: string; type: string }[] = [];
 
   form: FixedDepositEntry = this.emptyForm();
+  globalBankNameSuggestions: string[] = [];
+  globalFDPlatformMap: Record<string, { platform: string }> = {};
 
   get bankNameSuggestions(): string[] {
-    return [...new Set(this.allEntries.map(e => e.bank_name).filter(Boolean))];
+    return [...new Set([
+      ...this.allEntries.map(e => e.bank_name).filter(Boolean),
+      ...this.globalBankNameSuggestions
+    ])] as string[];
   }
 
   private addSub?: Subscription;
 
-  constructor(private investmentService: InvestmentService, private uiActionService: UiActionService, private csvExport: CsvExportService) {}
+  constructor(private investmentService: InvestmentService, private uiActionService: UiActionService, private csvExport: CsvExportService, public authService: AuthService) {}
+
+  get canWrite(): boolean { return this.authService.canWrite(); }
 
   ngOnInit(): void {
     this.addSub = this.uiActionService.addEntry.subscribe(page => { if (page === 'fixed-deposits') this.openAddForm(); });
     this.addSub.add(this.uiActionService.refresh.subscribe(() => { this.uiActionService.beginRefresh(); this.loadEntries(() => this.uiActionService.endRefresh()); }));
     this.loadEntries();
+    this.investmentService.getNameSuggestions().subscribe({
+      next: (s) => {
+        this.globalBankNameSuggestions = s.fixed_deposits ?? [];
+        this.globalFDPlatformMap = s.fd_meta ?? {};
+      },
+      error: () => {}
+    });
   }
 
   ngOnDestroy(): void { this.addSub?.unsubscribe(); }
@@ -124,9 +139,15 @@ export class FixedDepositsComponent implements OnInit, OnDestroy {
 
   onBankNameChange(): void {
     if (this.editingId) return;
-    const match = this.allEntries.find(e => e.bank_name?.toLowerCase() === this.form.bank_name?.toLowerCase().trim());
+    const bank = this.form.bank_name?.toLowerCase().trim() ?? '';
+    const match = this.allEntries.find(e => e.bank_name?.toLowerCase() === bank);
     if (match) {
       this.form.platform = match.platform;
+    } else {
+      const global = this.globalFDPlatformMap[this.form.bank_name?.trim() ?? ''];
+      if (global) {
+        this.form.platform = global.platform;
+      }
     }
   }
 

@@ -1,7 +1,7 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
-import { Subscription, forkJoin, of, switchMap } from 'rxjs';
+import { Subscription, forkJoin, switchMap } from 'rxjs';
 import { DashboardComponent } from '../../components/dashboard/dashboard.component';
 import { EquityComponent } from '../../components/equity/equity.component';
 import { CommodityComponent } from '../../components/commodity/commodity.component';
@@ -9,11 +9,12 @@ import { MutualFundsComponent } from '../../components/mutual-funds/mutual-funds
 import { P2PComponent } from '../../components/p2p/p2p.component';
 import { FixedDepositsComponent } from '../../components/fixed-deposits/fixed-deposits.component';
 import { ForexComponent } from '../../components/forex/forex.component';
+import { UserManagementComponent } from '../../components/user-management/user-management.component';
 import { UiActionService } from '../../services/ui-action.service';
 import { AuthService } from '../../services/auth.service';
 import { InvestmentService } from '../../services/investment.service';
 
-type Page = 'home' | 'equity' | 'mutual-funds' | 'commodity' | 'p2p' | 'fixed-deposits' | 'forex' | 'investment-analysis' | 'chatbot';
+type Page = 'home' | 'equity' | 'mutual-funds' | 'commodity' | 'p2p' | 'fixed-deposits' | 'forex' | 'investment-analysis' | 'chatbot' | 'user-management';
 
 const PAGES_WITH_ADD: Page[] = ['equity', 'mutual-funds', 'commodity', 'p2p', 'fixed-deposits', 'forex'];
 
@@ -28,7 +29,8 @@ const PAGES_WITH_ADD: Page[] = ['equity', 'mutual-funds', 'commodity', 'p2p', 'f
     MutualFundsComponent,
     P2PComponent,
     FixedDepositsComponent,
-    ForexComponent
+    ForexComponent,
+    UserManagementComponent
   ],
   templateUrl: './main-layout.component.html',
   styleUrl: './main-layout.component.scss'
@@ -124,6 +126,7 @@ export class MainLayoutComponent implements OnInit, OnDestroy {
       'forex': '💱',
       'investment-analysis': '📊',
       'chatbot': '💬',
+      'user-management': '👥',
     };
     return icons[this.currentPage] ?? '';
   }
@@ -138,12 +141,16 @@ export class MainLayoutComponent implements OnInit, OnDestroy {
       'forex': 'Forex (INR ↔ USD)',
       'investment-analysis': 'Investment Analysis',
       'chatbot': 'Chatbot',
+      'user-management': 'User Management',
     };
     return labels[this.currentPage] ?? '';
   }
 
+  private readonly DASHBOARD_PAGES = new Set<Page>(['home', 'investment-analysis', 'chatbot']);
+
   navigateTo(page: Page): void {
     if (page === this.currentPage) { this.showMoreSheet = false; return; }
+    const isDashboardTarget = this.DASHBOARD_PAGES.has(page);
     const content = document.querySelector('.content-area') as HTMLElement | null;
     if (content) {
       content.classList.add('page-exiting');
@@ -155,11 +162,13 @@ export class MainLayoutComponent implements OnInit, OnDestroy {
         content.scrollTop = 0;
         content.classList.add('page-entering');
         setTimeout(() => content.classList.remove('page-entering'), 300);
+        if (isDashboardTarget) { this.uiActionService.triggerSilentRefresh(); }
       }, 180);
     } else {
       this.visitedPages.add(page);
       this.currentPage = page;
       this.showMoreSheet = false;
+      if (isDashboardTarget) { this.uiActionService.triggerSilentRefresh(); }
     }
   }
 
@@ -180,17 +189,13 @@ export class MainLayoutComponent implements OnInit, OnDestroy {
         const equitySymbols = [...new Set(Object.values(equityTickers).map(v => v.ticker).filter((t): t is string => !!t))];
         const mfSymbols = [...new Set(Object.values(mfTickers).map(v => v.ticker).filter((t): t is string => !!t))];
         const commoditySymbols = [...new Set(Object.values(commodityTickers).map(v => v.ticker).filter((t): t is string => !!t))];
-        return forkJoin({
-          equity: equitySymbols.length ? this.investmentService.fetchEquityPrices(equitySymbols) : of<Record<string, number | null>>({}),
-          mf: mfSymbols.length ? this.investmentService.fetchMFPrices(mfSymbols) : of<Record<string, number | null>>({}),
-          commodity: commoditySymbols.length ? this.investmentService.fetchCommodityPrices(commoditySymbols) : of<Record<string, number | null>>({}),
-        });
+        return this.investmentService.fetchAllPrices(equitySymbols, mfSymbols, commoditySymbols);
       })
     ).subscribe({
-      next: ({ equity, mf, commodity }) => {
-        this.uiActionService.equityPrices$.next(equity);
-        this.uiActionService.mfPrices$.next(mf);
-        this.uiActionService.commodityPrices$.next(commodity);
+      next: (prices) => {
+        this.uiActionService.equityPrices$.next(prices.equity || {});
+        this.uiActionService.mfPrices$.next(prices.mf || {});
+        this.uiActionService.commodityPrices$.next(prices.commodity || {});
         this.investmentService.saveSetting(this.PRICE_FETCH_KEY, String(Date.now())).subscribe();
         this.lastPriceFetchTime = new Date();
         this.isFetchingAllPrices = false;
@@ -215,7 +220,40 @@ export class MainLayoutComponent implements OnInit, OnDestroy {
   }
 
   get showAddEntry(): boolean {
-    return PAGES_WITH_ADD.includes(this.currentPage);
+    return PAGES_WITH_ADD.includes(this.currentPage) && this.authService.canWrite();
+  }
+
+  get canWrite(): boolean {
+    return this.authService.canWrite();
+  }
+
+  get isAdmin(): boolean {
+    return this.authService.isAdmin();
+  }
+
+  get isImpersonating(): boolean {
+    return this.authService.isImpersonating();
+  }
+
+  get impersonatingEmail(): string {
+    return this.authService.getUser()?.email ?? '';
+  }
+
+  exitImpersonation(): void {
+    this.authService.stopImpersonation();
+    this.investmentService.clearAllCache();
+    this.uiActionService.triggerRefresh();
+    this.navigateTo('user-management');
+  }
+
+  onViewAs(email: string): void {
+    this.investmentService.clearAllCache();
+    this.navigateTo('home');
+    this.uiActionService.triggerRefresh();
+  }
+
+  get userRole(): string {
+    return this.authService.getRole();
   }
 
   triggerAddEntry(): void {
@@ -223,7 +261,7 @@ export class MainLayoutComponent implements OnInit, OnDestroy {
   }
 
   get isMorePage(): boolean {
-    return ['fixed-deposits', 'forex', 'investment-analysis', 'chatbot'].includes(this.currentPage);
+    return ['fixed-deposits', 'forex', 'investment-analysis', 'chatbot', 'user-management'].includes(this.currentPage);
   }
 
   toggleMoreSheet(): void {

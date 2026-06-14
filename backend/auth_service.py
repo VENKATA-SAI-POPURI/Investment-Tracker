@@ -74,28 +74,30 @@ def verify_google_token(token):
 
 
 def check_allowlist(email):
-    """Check if email is in allowlist"""
+    """Check if email is in allowlist. Returns role string ('admin'/'user'/'guest') or None."""
     try:
         conn = db_service._connect()
         cursor = conn.execute(
-            "SELECT 1 FROM allowlist WHERE email = ? LIMIT 1",
+            "SELECT role FROM allowlist WHERE email = ? LIMIT 1",
             (email,)
         )
-        result = cursor.fetchone() is not None
+        row = cursor.fetchone()
         conn.close()
-        return result
+        if row is None:
+            return None
+        return row["role"] if hasattr(row, '__getitem__') else row[0]
     except Exception as e:
         print(f"[auth_service] check_allowlist error: {e}")
-        return False
+        return None
 
 
-def add_to_allowlist(email):
-    """Add email to allowlist"""
+def add_to_allowlist(email, role='user'):
+    """Add email to allowlist with given role"""
     try:
         conn = db_service._connect()
         conn.execute(
-            "INSERT OR IGNORE INTO allowlist (email, added_date) VALUES (?, ?)",
-            (email, datetime.now().isoformat())
+            "INSERT OR IGNORE INTO allowlist (email, added_date, role) VALUES (?, ?, ?)",
+            (email, datetime.now().isoformat(), role)
         )
         conn.commit()
         conn.close()
@@ -106,23 +108,37 @@ def add_to_allowlist(email):
 
 
 def get_allowlist():
-    """Get all emails in allowlist"""
+    """Get all emails in allowlist with roles"""
     try:
         conn = db_service._connect()
-        cursor = conn.execute("SELECT email, added_date FROM allowlist ORDER BY added_date DESC")
+        cursor = conn.execute("SELECT email, added_date, role FROM allowlist ORDER BY added_date DESC")
         rows = cursor.fetchall()
         conn.close()
         
         result = []
         for row in rows:
-            result.append({
-                "email": row[0] if isinstance(row, tuple) else row["email"],
-                "added_date": row[1] if isinstance(row, tuple) else row["added_date"],
-            })
+            if isinstance(row, tuple):
+                result.append({"email": row[0], "added_date": row[1], "role": row[2]})
+            else:
+                result.append({
+                    "email": row["email"],
+                    "added_date": row["added_date"],
+                    "role": row["role"],
+                })
         return result
     except Exception as e:
         print(f"[auth_service] Error getting allowlist: {e}")
         return []
+
+
+def update_user_role(email, role):
+    """Update role for a user in the allowlist."""
+    return db_service.update_allowlist_role(email, role)
+
+
+def remove_from_allowlist(email):
+    """Remove user from allowlist."""
+    return db_service.remove_from_allowlist(email)
 
 
 def create_user_session(user_info):
@@ -163,9 +179,13 @@ def create_user_session(user_info):
         conn.commit()
         conn.close()
         
+        # Fetch role from allowlist
+        role = db_service.get_user_role(email) or 'user'
+        
         # Create JWT token (no expiry — device is remembered permanently)
         payload = {
             "email": email,
+            "role": role,
             "iat": datetime.utcnow(),
         }
         
@@ -185,6 +205,36 @@ def verify_jwt_token(token):
         return None
     except jwt.InvalidTokenError:
         return None
+
+
+def create_impersonation_token(target_email, admin_email):
+    """Create a short-lived JWT that lets an admin view the app as another user."""
+    role = db_service.get_user_role(target_email) or 'user'
+    # Fetch target user's display info (name/picture) from users table if available
+    try:
+        conn = db_service._connect()
+        cursor = conn.execute(
+            "SELECT name, picture FROM users WHERE email = ? LIMIT 1",
+            (target_email,)
+        )
+        row = cursor.fetchone()
+        conn.close()
+        name = (row["name"] if hasattr(row, '__getitem__') else row[0]) if row else None
+        picture = (row["picture"] if hasattr(row, '__getitem__') else row[1]) if row else None
+    except Exception:
+        name = None
+        picture = None
+
+    payload = {
+        "email": target_email,
+        "role": role,
+        "name": name,
+        "picture": picture,
+        "impersonated_by": admin_email,
+        "iat": datetime.utcnow(),
+    }
+    token = jwt.encode(payload, JWT_SECRET, algorithm="HS256")
+    return token, role
 
 
 def require_auth(f):
@@ -208,8 +258,9 @@ def require_auth(f):
         if not payload:
             return jsonify({"error": "Invalid or expired token"}), 401
         
-        # Inject user email into request
+        # Inject user email and role into request
         request.user_email = payload.get("email")
+        request.user_role = payload.get("role", "user")
         
         return f(*args, **kwargs)
     

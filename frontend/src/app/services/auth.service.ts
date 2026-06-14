@@ -8,6 +8,8 @@ export interface AuthUser {
   email: string;
   name?: string;
   picture?: string;
+  role: 'admin' | 'user' | 'guest';
+  impersonated_by?: string;
 }
 
 @Injectable({
@@ -17,6 +19,10 @@ export class AuthService {
   private token$ = new BehaviorSubject<string | null>(this.getStoredToken());
   private user$ = new BehaviorSubject<AuthUser | null>(this.getStoredUser());
   private _isAuthenticated$ = new BehaviorSubject<boolean>(!!this.getStoredToken());
+
+  // Impersonation: stores the real admin token/user so we can restore it
+  private _adminToken: string | null = null;
+  private _adminUser: AuthUser | null = null;
 
   constructor(private http: HttpClient) {}
 
@@ -110,5 +116,52 @@ export class AuthService {
    */
   verifyToken(): Observable<any> {
     return this.http.get(`${environment.apiUrl}/auth/verify`);
+  }
+
+  getRole(): 'admin' | 'user' | 'guest' {
+    return this.getUser()?.role ?? 'guest';
+  }
+
+  isAdmin(): boolean {
+    return this.getRole() === 'admin';
+  }
+
+  isGuest(): boolean {
+    return this.getRole() === 'guest';
+  }
+
+  canWrite(): boolean {
+    return this.getRole() !== 'guest';
+  }
+
+  /** True when currently viewing as another user */
+  isImpersonating(): boolean {
+    return !!this.user$.value?.impersonated_by;
+  }
+
+  /** Switch perspective to another user. Stores admin session for restoration. */
+  startImpersonation(targetEmail: string, targetRole: 'admin' | 'user' | 'guest'): void {
+    // Save real admin credentials
+    this._adminToken = this.token$.value;
+    this._adminUser = this.user$.value;
+    // Build a synthetic user object (admin JWT still sent, but X-View-As header scopes data)
+    const impersonatedUser: AuthUser = {
+      email: targetEmail,
+      role: targetRole,
+      name: targetEmail,
+      impersonated_by: this._adminUser?.email,
+    };
+    this.user$.next(impersonatedUser);
+    // Token stays the same — we use X-View-As header to scope data
+  }
+
+  /** Restore admin session */
+  stopImpersonation(): void {
+    if (this._adminUser) {
+      this.token$.next(this._adminToken);
+      this.user$.next(this._adminUser);
+      this._adminToken = null;
+      this._adminUser = null;
+    }
   }
 }

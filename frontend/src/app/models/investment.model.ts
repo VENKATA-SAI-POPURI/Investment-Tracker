@@ -10,6 +10,7 @@ export interface EquityEntry {
   value_usd: number | null;
   buy_sell: string;
   remarks: string;
+  created_by?: string | null;
 }
 
 export interface CommodityEntry {
@@ -24,6 +25,7 @@ export interface CommodityEntry {
   sell_value: number | null;
   buy_sell: string;
   remarks: string;
+  created_by?: string | null;
 }
 
 export interface MutualFundEntry {
@@ -39,11 +41,13 @@ export interface MutualFundEntry {
   sell_value: number | null;
   buy_sell: string;
   remarks: string;
+  created_by?: string | null;
 }
 
 export interface P2PEntry {
   id?: number;
   lending_id: string;
+  loan_id?: string;
   platform: string;
   name: string;
   date: string;
@@ -52,6 +56,7 @@ export interface P2PEntry {
   maturity_date: string;
   status: string;
   remarks: string;
+  created_by?: string | null;
 }
 
 export interface P2PRepayment {
@@ -62,7 +67,50 @@ export interface P2PRepayment {
   interest: number | null;
   platform_fee: number | null;
   amount: number | null;  // = principal + interest (auto-computed on save)
+  source?: string | null; // 'manual' | 'statement_import'
   remarks: string;
+  created_by?: string | null;
+}
+
+export interface LendenStatementRow {
+  loan_id: string;
+  lending_id: string;
+  entry_id: number;
+  platform: string;
+  name: string;
+  date: string;
+  stmt_principal: number;
+  stmt_interest: number;
+  stmt_platform_fee: number;
+  already_posted_principal: number;
+  already_posted_interest: number;
+  already_posted_platform_fee: number;
+  delta_principal: number;
+  delta_interest: number;
+  delta_platform_fee: number;
+  delta_total: number;
+  remarks: string;
+  selected: boolean;
+  // status change (populated from warnings)
+  new_status?: string;
+  old_status?: string;
+}
+
+export interface LendenStatementWarning {
+  type: 'unmatched' | 'status_change';
+  loan_id: string;
+  lending_id?: string;
+  entry_id?: number;
+  old_status?: string;
+  new_status?: string;
+  message: string;
+}
+
+export interface LendenParseResult {
+  from_date: string;
+  to_date: string;
+  suggested: LendenStatementRow[];
+  warnings: LendenStatementWarning[];
 }
 
 export interface P2PEscrow {
@@ -72,6 +120,7 @@ export interface P2PEscrow {
   amount: number | null;
   platform: string;
   remarks: string;
+  created_by?: string | null;
 }
 
 export interface FixedDepositEntry {
@@ -85,6 +134,7 @@ export interface FixedDepositEntry {
   maturity_date: string;
   return_value: number | null;
   remarks: string;
+  created_by?: string | null;
 }
 
 export interface Summary {
@@ -96,6 +146,16 @@ export interface Summary {
   };
 }
 
+export interface EquityDividend {
+  id?: number;
+  name: string;
+  date: string;
+  amount: number;
+  remarks?: string;
+  capital_flow_id?: number;
+  created_by?: string | null;
+}
+
 export interface ForexEntry {
   id?: number;
   date: string;
@@ -104,4 +164,5 @@ export interface ForexEntry {
   usd_amount: number | null;
   rate: number | null;
   remarks: string;
+  created_by?: string | null;
 }

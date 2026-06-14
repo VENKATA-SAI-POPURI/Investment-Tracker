@@ -26,12 +26,19 @@ export class AuthInterceptor implements HttpInterceptor {
 
     // Add JWT token to request headers
     const token = this.authService.getToken();
+    const headers: Record<string, string> = {};
     if (token) {
-      request = request.clone({
-        setHeaders: {
-          Authorization: `Bearer ${token}`
-        }
-      });
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    // When admin is impersonating, add X-View-As header so backend scopes data
+    const user = this.authService.getUser();
+    if (user?.impersonated_by) {
+      headers['X-View-As'] = user.email;
+    }
+
+    if (Object.keys(headers).length > 0) {
+      request = request.clone({ setHeaders: headers });
     }
 
     return next.handle(request).pipe(

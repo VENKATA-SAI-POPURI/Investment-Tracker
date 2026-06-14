@@ -6,7 +6,7 @@ import { forkJoin, Observable, Subscription } from 'rxjs';
 import { InvestmentService } from '../../services/investment.service';
 import { AuthService, AuthUser } from '../../services/auth.service';
 import { UiActionService } from '../../services/ui-action.service';
-import { Summary, EquityEntry, CommodityEntry, MutualFundEntry, P2PEntry, P2PRepayment, FixedDepositEntry, ForexEntry } from '../../models/investment.model';
+import { Summary, EquityEntry, CommodityEntry, MutualFundEntry, P2PEntry, P2PRepayment, FixedDepositEntry, ForexEntry, EquityDividend } from '../../models/investment.model';
 import { CountUpDirective } from '../../directives/count-up.directive';
 
 interface PieSlice {
@@ -97,6 +97,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   equityTickerMap: Record<string, { ticker: string; price: number | null }> = {};
   mfTickerMap: Record<string, { ticker: string; price: number | null }> = {};
   commodityTickerMap: Record<string, { ticker: string; price: number | null }> = {};
+  equityDividends: EquityDividend[] = [];
   livePricesEquity: Record<string, number | null> = {};
   livePricesMF: Record<string, number | null> = {};
   livePricesCommodity: Record<string, number | null> = {};
@@ -270,37 +271,23 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   loadAll(onComplete?: () => void): void {
     if (this.equityData.length === 0) this.loading = true;
-    forkJoin({
-      summary: this.investmentService.getSummary(),
-      equity: this.investmentService.getEquity(),
-      commodity: this.investmentService.getCommodity(),
-      mf: this.investmentService.getMutualFunds(),
-      p2p: this.investmentService.getP2P(),
-      p2pRep: this.investmentService.getP2PRepayments(),
-      fd: this.investmentService.getFixedDeposits(),
-      forex: this.investmentService.getForex(),
-      capitalFlows: this.investmentService.getCapitalFlowsSummary(),
-      capitalFlowsList: this.investmentService.getCapitalFlows(),
-      unrealizedPnL: this.investmentService.getUnrealizedPnL(),
-      equityTickers: this.investmentService.getEquityTickers(),
-      mfTickers: this.investmentService.getMFTickers(),
-      commodityTickers: this.investmentService.getCommodityTickers()
-    }).subscribe({
+    this.investmentService.getBulkLoad().subscribe({
       next: (data) => {
-        this.summary = data.summary;
-        this.equityData = data.equity;
-        this.commodityData = data.commodity;
-        this.mfData = data.mf;
-        this.p2pData = data.p2p;
-        this.p2pRepayments = data.p2pRep;
-        this.fdData = data.fd;
-        this.forexData = data.forex;
-        this.capitalFlowsSummary = data.capitalFlows;
-        this.capitalFlows = (data.capitalFlowsList || []).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-        this.unrealizedPnLData = data.unrealizedPnL;
-        this.equityTickerMap = data.equityTickers;
-        this.mfTickerMap = data.mfTickers;
-        this.commodityTickerMap = data.commodityTickers;
+        this.summary = data.summary ?? {};
+        this.equityData = data.equity ?? [];
+        this.commodityData = data.commodity ?? [];
+        this.mfData = data.mutual_funds ?? [];
+        this.p2pData = data.p2p ?? [];
+        this.p2pRepayments = data.p2p_repayments ?? [];
+        this.fdData = data.fixed_deposits ?? [];
+        this.forexData = data.forex ?? [];
+        this.capitalFlowsSummary = data.capital_flows_summary ?? null;
+        this.capitalFlows = (data.capital_flows ?? []).sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        this.unrealizedPnLData = data.unrealized_pnl ?? null;
+        this.equityTickerMap = data.equity_tickers ?? {};
+        this.mfTickerMap = data.mf_tickers ?? {};
+        this.commodityTickerMap = data.commodity_tickers ?? {};
+        this.equityDividends = data.equity_dividends ?? [];
         this.loading = false;
         onComplete?.();
       },
@@ -544,15 +531,25 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   get netPnL(): number {
-    return this.totalSaleValue - (this.totalInvestment - this.currentInvestment) + this.forexImpact;
+    // Exclude forexWalletBalanceINR from currentInvestment here: forex deposits are not tracked
+    // in totalInvestment (Forex category is excluded), so including the wallet in currentInvestment
+    // would artificially reduce costOfSold and inflate realized P&L.
+    const currentInvForPnL = this.currentInvestment - this.forexWalletBalanceINR;
+    return this.totalSaleValue + this.totalDividendIncome - (this.totalInvestment - currentInvForPnL) + this.forexImpact;
+  }
+
+  get totalDividendIncome(): number {
+    return Math.round(this.equityDividends.reduce((s, d) => s + (d.amount || 0), 0) * 100) / 100;
   }
 
   get costOfSold(): number {
-    return Math.round((this.totalInvestment - this.currentInvestment) * 100) / 100;
+    const currentInvForPnL = this.currentInvestment - this.forexWalletBalanceINR;
+    return Math.round((this.totalInvestment - currentInvForPnL) * 100) / 100;
   }
 
   get netPnLPct(): number {
-    const exitedValue = this.totalInvestment - this.currentInvestment;
+    const currentInvForPnL = this.currentInvestment - this.forexWalletBalanceINR;
+    const exitedValue = this.totalInvestment - currentInvForPnL;
     return exitedValue > 0 ? Math.round((this.netPnL / exitedValue) * 10000) / 100 : 0;
   }
 
@@ -597,9 +594,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const eqIndFifo  = this.equityFifoHoldings.filter(h => h.market !== 'USA').reduce((s, h) => s + h.value, 0);
     const eqIndInv   = this.equityData.filter(e => e.market !== 'USA' && e.buy_sell === 'Buy').reduce((s, e) => s + (e.value || 0), 0);
     const eqIndSales = this.equityData.filter(e => e.market !== 'USA' && e.buy_sell === 'Sell').reduce((s, e) => s + (e.value || 0), 0);
+    const eqIndDiv   = this.equityDividends.filter(d => {
+      const entry = this.equityData.find(e => e.name === d.name);
+      return !entry || entry.market !== 'USA';
+    }).reduce((s, d) => s + (d.amount || 0), 0);
     const eqIndCost  = eqIndInv - eqIndFifo;
     const eqIndFlows = [
       ...this.equityData.filter(e => e.market !== 'USA').map(e => ({ date: new Date(e.date), amount: e.buy_sell === 'Buy' ? -(e.value || 0) : +(e.value || 0) })),
+      ...this.equityDividends.filter(d => { const entry = this.equityData.find(e => e.name === d.name); return !entry || entry.market !== 'USA'; }).map(d => ({ date: new Date(d.date), amount: +(d.amount || 0) })),
       { date: today, amount: eqIndFifo }   // terminal = remaining cost basis only (sells already in flows)
     ];
 
@@ -607,9 +609,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const eqUsaFifo  = this.equityFifoHoldings.filter(h => h.market === 'USA').reduce((s, h) => s + h.value, 0);
     const eqUsaInv   = this.equityData.filter(e => e.market === 'USA' && e.buy_sell === 'Buy').reduce((s, e) => s + (e.value || 0), 0);
     const eqUsaSales = this.equityData.filter(e => e.market === 'USA' && e.buy_sell === 'Sell').reduce((s, e) => s + (e.value || 0), 0);
+    const eqUsaDiv   = this.equityDividends.filter(d => {
+      const entry = this.equityData.find(e => e.name === d.name);
+      return entry?.market === 'USA';
+    }).reduce((s, d) => s + (d.amount || 0), 0);
     const eqUsaCost  = eqUsaInv - eqUsaFifo;
     const eqUsaFlows = [
       ...this.equityData.filter(e => e.market === 'USA').map(e => ({ date: new Date(e.date), amount: e.buy_sell === 'Buy' ? -(e.value || 0) : +(e.value || 0) })),
+      ...this.equityDividends.filter(d => { const entry = this.equityData.find(e => e.name === d.name); return entry?.market === 'USA'; }).map(d => ({ date: new Date(d.date), amount: +(d.amount || 0) })),
       { date: today, amount: eqUsaFifo }   // terminal = remaining cost basis only
     ];
 
@@ -667,8 +674,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const bycat = this.unrealizedPnLData?.by_category ?? {};
     const ucat = (key: string) => bycat[key] ?? { unrealized: 0, unrealized_pct: 0, has_prices: false };
     return [
-      { category: 'Equity India',   icon: '📈', totalInvested: r(eqIndInv), currentHoldings: r(eqIndFifo), totalSales: r(eqIndSales), netPnL: r(eqIndSales - eqIndCost), returnPct: pct(eqIndSales - eqIndCost, eqIndCost), xirr: this.xirrSafe(eqIndFlows), unrealizedPnL: ucat('equity_india').unrealized, unrealizedPct: ucat('equity_india').unrealized_pct, hasUnrealizedPrice: ucat('equity_india').has_prices },
-      { category: 'Equity USA',     icon: '🌐', totalInvested: r(eqUsaInv), currentHoldings: r(eqUsaFifo), totalSales: r(eqUsaSales), netPnL: r(eqUsaSales - eqUsaCost + fxNetPnL), returnPct: pct(eqUsaSales - eqUsaCost + fxNetPnL, eqUsaCost), xirr: this.xirrSafe(eqUsaFlows), unrealizedPnL: ucat('equity_usa').unrealized, unrealizedPct: ucat('equity_usa').unrealized_pct, hasUnrealizedPrice: ucat('equity_usa').has_prices },
+      { category: 'Equity India',   icon: '📈', totalInvested: r(eqIndInv), currentHoldings: r(eqIndFifo), totalSales: r(eqIndSales), netPnL: r(eqIndSales + eqIndDiv - eqIndCost), returnPct: pct(eqIndSales + eqIndDiv - eqIndCost, eqIndCost), xirr: this.xirrSafe(eqIndFlows), unrealizedPnL: ucat('equity_india').unrealized, unrealizedPct: ucat('equity_india').unrealized_pct, hasUnrealizedPrice: ucat('equity_india').has_prices },
+      { category: 'Equity USA',     icon: '🌐', totalInvested: r(eqUsaInv), currentHoldings: r(eqUsaFifo), totalSales: r(eqUsaSales), netPnL: r(eqUsaSales + eqUsaDiv - eqUsaCost + fxNetPnL), returnPct: pct(eqUsaSales + eqUsaDiv - eqUsaCost + fxNetPnL, eqUsaCost), xirr: this.xirrSafe(eqUsaFlows), unrealizedPnL: ucat('equity_usa').unrealized, unrealizedPct: ucat('equity_usa').unrealized_pct, hasUnrealizedPrice: ucat('equity_usa').has_prices },
       { category: 'Mutual Funds',   icon: '📊', totalInvested: r(mfInv),  currentHoldings: r(mfCurr),  totalSales: r(mfSales),  netPnL: r(mfSales  - mfCost),  returnPct: pct(mfSales  - mfCost,  mfCost),  xirr: this.xirrSafe(mfFlows),  unrealizedPnL: ucat('mutual_funds').unrealized, unrealizedPct: ucat('mutual_funds').unrealized_pct, hasUnrealizedPrice: ucat('mutual_funds').has_prices },
       { category: 'Commodity',      icon: '🥇', totalInvested: r(cmdInv), currentHoldings: r(cmdCurr), totalSales: r(cmdSales), netPnL: r(cmdSales - cmdCost), returnPct: pct(cmdSales - cmdCost, cmdCost), xirr: this.xirrSafe(cmdFlows), unrealizedPnL: ucat('commodity').unrealized, unrealizedPct: ucat('commodity').unrealized_pct, hasUnrealizedPrice: ucat('commodity').has_prices },
       { category: 'P2P',            icon: '🤝', totalInvested: r(p2pInv), currentHoldings: r(p2pCurr), totalSales: r(p2pSales), netPnL: r(p2pSales - p2pCost), returnPct: pct(p2pSales - p2pCost, p2pCost), xirr: this.xirrSafe(p2pFlows), unrealizedPnL: 0, unrealizedPct: 0, hasUnrealizedPrice: false },
@@ -971,12 +978,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
       if (val > 0) catData.push({ label: c.label, value: Math.round(val * 100) / 100 });
     });
 
-    // P2P: use current_invested (outstanding loan principal) — same metric as the KPI card
-    const p2pSummary = this.summary['P2P'];
-    if (p2pSummary) {
-      const p2pVal = (p2pSummary as any).current_invested || 0;
-      if (p2pVal > 0) catData.push({ label: 'P2P', value: Math.round(p2pVal * 100) / 100 });
-    }
+    // P2P: use outstanding principal (FIFO logic, same as Category P&L Summary)
+    const p2pVal = this.p2pOutstandingPrincipal;
+    if (p2pVal > 0) catData.push({ label: 'P2P', value: Math.round(p2pVal * 100) / 100 });
 
     const total = catData.reduce((s, d) => s + d.value, 0);
     const slices: PieSlice[] = catData.map((d, i) => ({
@@ -1128,7 +1132,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   // Per-stock realized P&L helper: sell value − proportional buy cost.
   // Stocks with no sells contribute 0 (unrealized P&L is unknown without live prices).
-  private equityPnL(entries: EquityEntry[]): { name: string; pnl: number; market: string; market_cap: string; sector: string }[] {
+  private equityPnL(entries: EquityEntry[], dividends: EquityDividend[] = []): { name: string; pnl: number; market: string; market_cap: string; sector: string }[] {
     const metaByName = new Map<string, { market: string; market_cap: string; sector: string }>();
     const sellsByNameDate = new Map<string, Map<string, { qty: number; value: number; market: string; market_cap: string; sector: string }>>();
 
@@ -1205,7 +1209,32 @@ export class DashboardComponent implements OnInit, OnDestroy {
       result.push({ name, pnl: Math.round((intradayPnL + remSellValue - fifoCost) * 100) / 100, ...meta });
     }
 
+    // Add dividend income per stock
+    if (dividends.length > 0) {
+      const resultMap = new Map<string, typeof result[0]>();
+      result.forEach(r => resultMap.set(r.name, r));
+      dividends.forEach(d => {
+        const existing = resultMap.get(d.name);
+        if (existing) {
+          existing.pnl = Math.round((existing.pnl + (d.amount || 0)) * 100) / 100;
+        } else {
+          const entryMeta = this.equityData.find(e => e.name === d.name);
+          if (entryMeta) {
+            const newEntry = { name: d.name, pnl: Math.round((d.amount || 0) * 100) / 100, market: entryMeta.market, market_cap: entryMeta.market_cap, sector: entryMeta.sector };
+            result.push(newEntry);
+            resultMap.set(d.name, newEntry);
+          }
+        }
+      });
+    }
+
     return result;
+  }
+
+  private get filteredEquityDividends(): EquityDividend[] {
+    return this.selectedYears.length > 0
+      ? this.equityDividends.filter(d => this.selectedYears.includes(this.dateToFY(d.date)))
+      : this.equityDividends;
   }
 
   private equityEntryValue(e: EquityEntry): number {
@@ -1235,16 +1264,39 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return filtered;
   }
 
-  get equityPnLDiverging(): { dimension: string; items: { label: string; pnl: number; barPct: number }[] }[] {
-    const pnlData = this.equityPnL(this.equityFilteredEntries).filter(h => h.pnl !== 0);
+  get equityPnLDiverging(): { dimension: string; items: { label: string; pnl: number; barPct: number; pnlPct: number }[] }[] {
+    const pnlData = this.equityPnL(this.equityFilteredEntries, this.filteredEquityDividends).filter(h => h.pnl !== 0);
     if (pnlData.length === 0) return [];
-    const groupBy = (dimension: string, keyFn: (h: { pnl: number; market: string; market_cap: string; sector: string }) => string) => {
-      const map = new Map<string, number>();
-      pnlData.forEach(h => { const k = keyFn(h) || 'Unknown'; map.set(k, (map.get(k) || 0) + h.pnl); });
-      const items = [...map.entries()].map(([label, pnl]) => ({ label, pnl: Math.round(pnl * 100) / 100 }))
-        .sort((a, b) => b.pnl - a.pnl);
+
+    // Build buy value per stock (from filtered entries) for % calculation
+    const buyValByName = new Map<string, number>();
+    this.equityFilteredEntries.filter(e => e.buy_sell === 'Buy').forEach(e => {
+      buyValByName.set(e.name, (buyValByName.get(e.name) || 0) + (e.value || 0));
+    });
+
+    const groupBy = (dimension: string, keyFn: (h: { name: string; pnl: number; market: string; market_cap: string; sector: string }) => string) => {
+      const pnlMap = new Map<string, number>();
+      const buyMap = new Map<string, number>();
+      pnlData.forEach(h => {
+        const k = keyFn(h) || 'Unknown';
+        pnlMap.set(k, (pnlMap.get(k) || 0) + h.pnl);
+        buyMap.set(k, (buyMap.get(k) || 0) + (buyValByName.get(h.name) || 0));
+      });
+      const items = [...pnlMap.entries()].map(([label, pnl]) => ({
+        label,
+        pnl: Math.round(pnl * 100) / 100,
+        buyVal: buyMap.get(label) || 0
+      })).sort((a, b) => b.pnl - a.pnl);
       const maxAbs = Math.max(...items.map(i => Math.abs(i.pnl)), 1);
-      return { dimension, items: items.map(i => ({ ...i, barPct: Math.round(Math.abs(i.pnl) / maxAbs * 100) })) };
+      return {
+        dimension,
+        items: items.map(i => ({
+          label: i.label,
+          pnl: i.pnl,
+          barPct: Math.round(Math.abs(i.pnl) / maxAbs * 100),
+          pnlPct: i.buyVal > 0 ? Math.round((i.pnl / i.buyVal) * 10000) / 100 : 0
+        }))
+      };
     };
     return [
       groupBy('By Market',     h => h.market),
@@ -1261,7 +1313,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       india = holdings.filter(h => h.market === 'India').reduce((s, h) => s + h.value, 0);
       usa   = holdings.filter(h => h.market === 'USA').reduce((s, h) => s + h.value, 0);
     } else if (this.selectedMetric === 'Net P&L') {
-      const pnl = this.equityPnL(entries);
+      const pnl = this.equityPnL(entries, this.filteredEquityDividends);
       india = pnl.filter(h => h.market === 'India').reduce((s, h) => s + h.pnl, 0);
       usa   = pnl.filter(h => h.market === 'USA').reduce((s, h) => s + h.pnl, 0);
     } else {
@@ -1289,7 +1341,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
         india = holdings.filter(h => h.market === 'India').reduce((s, h) => s + h.value, 0);
         usa   = holdings.filter(h => h.market === 'USA').reduce((s, h) => s + h.value, 0);
       } else if (this.selectedMetric === 'Net P&L') {
-        const pnl = this.equityPnL(ye);
+        const yearDivs = this.equityDividends.filter(d => this.dateToFY(d.date) === year);
+        const pnl = this.equityPnL(ye, yearDivs);
         india = pnl.filter(h => h.market === 'India').reduce((s, h) => s + h.pnl, 0);
         usa   = pnl.filter(h => h.market === 'USA').reduce((s, h) => s + h.pnl, 0);
       } else {
@@ -1324,7 +1377,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
         map.set(cap, (map.get(cap) || 0) + h.value);
       });
     } else if (this.selectedMetric === 'Net P&L') {
-      this.equityPnL(this.equityFilteredEntries).forEach(h => {
+      this.equityPnL(this.equityFilteredEntries, this.filteredEquityDividends).forEach(h => {
         const cap = h.market_cap || 'Unknown';
         map.set(cap, (map.get(cap) || 0) + h.pnl);
       });
@@ -1358,7 +1411,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
         map.set(sector, (map.get(sector) || 0) + h.value);
       });
     } else if (this.selectedMetric === 'Net P&L') {
-      this.equityPnL(this.equityFilteredEntries).forEach(h => {
+      this.equityPnL(this.equityFilteredEntries, this.filteredEquityDividends).forEach(h => {
         const sector = h.sector || 'Unknown';
         map.set(sector, (map.get(sector) || 0) + h.pnl);
       });
@@ -1738,7 +1791,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   get catNetPnL(): number {
-    return this.catTotalSales - (this.catTotalInvested - this.catCurrentInvestment);
+    const base = this.catTotalSales - (this.catTotalInvested - this.catCurrentInvestment);
+    if (this.selectedCategory === 'Equity') {
+      const divIncome = this.equityDividends
+        .filter(d => this.selectedYears.length === 0 || this.selectedYears.includes(this.dateToFY(d.date)))
+        .reduce((s, d) => s + (d.amount || 0), 0);
+      return Math.round((base + divIncome) * 100) / 100;
+    }
+    return base;
   }
 
   get catCostOfSold(): number {
@@ -1760,6 +1820,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
       const eqCurr = this.equityFifoHoldings.reduce((s, h) => s + h.value, 0);
       const flows = [
         ...this.equityData.map(e => ({ date: new Date(e.date), amount: e.buy_sell === 'Buy' ? -(e.value || 0) : +(e.value || 0) })),
+        ...this.equityDividends
+          .filter(d => this.selectedYears.length === 0 || this.selectedYears.includes(this.dateToFY(d.date)))
+          .map(d => ({ date: new Date(d.date), amount: +(d.amount || 0) })),
         { date: today, amount: eqCurr }
       ];
       return this.xirrSafe(flows);
@@ -1849,6 +1912,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private buildPieChart(dimension: string): PieChart {
     const entries = this.catEntries;
     const map = new Map<string, number>();
+    const divMap = this.equityDividendsByDimension(dimension);
 
     entries.forEach(e => {
       const key = e.group[dimension] || 'Unknown';
@@ -1871,6 +1935,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
       }
       map.set(key, existing + val);
     });
+
+    // Add dividend income to Net P&L slices
+    if (this.selectedMetric === 'Net P&L') {
+      divMap.forEach((divAmt, key) => {
+        map.set(key, (map.get(key) || 0) + divAmt);
+      });
+    }
 
     const sorted = Array.from(map.entries())
       .map(([label, value]) => ({ label, value: Math.round(value * 100) / 100 }))
@@ -1900,6 +1971,33 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   // ── Bar Charts (for Net P&L) ──
 
+  /** For equity: returns a map of {dimension-key -> total dividend income} filtered by selectedYears */
+  private equityDividendsByDimension(dimension: string): Map<string, number> {
+    if (this.selectedCategory !== 'Equity') return new Map();
+    // Build stock-name → metadata map from equityData
+    const metaByName = new Map<string, { FY: string; Market: string; 'Market Cap': string; Sector: string }>();
+    for (const e of this.equityData) {
+      if (!metaByName.has(e.name)) {
+        metaByName.set(e.name, { FY: '', Market: e.market, 'Market Cap': e.market_cap, Sector: e.sector });
+      }
+    }
+    const divByKey = new Map<string, number>();
+    const filtered = this.selectedYears.length > 0
+      ? this.equityDividends.filter(d => this.selectedYears.includes(this.dateToFY(d.date)))
+      : this.equityDividends;
+    for (const d of filtered) {
+      const meta = metaByName.get(d.name);
+      let key: string;
+      if (dimension === 'FY') {
+        key = this.dateToFY(d.date) || 'N/A';
+      } else {
+        key = meta ? (meta as any)[dimension] || 'Unknown' : 'Unknown';
+      }
+      divByKey.set(key, (divByKey.get(key) || 0) + (d.amount || 0));
+    }
+    return divByKey;
+  }
+
   get barCharts(): BarChart[] {
     return this.groupDimensions.map(dim => this.buildBarChart(dim));
   }
@@ -1908,6 +2006,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const entries = this.catEntries;
     const pnlMap = new Map<string, number>();
     const exitedMap = new Map<string, number>();
+    const divMap = this.equityDividendsByDimension(dimension);
 
     entries.forEach(e => {
       const key = e.group[dimension] || 'Unknown';
@@ -1916,6 +2015,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
       const ts = e.sellVal || 0;
       pnlMap.set(key, (pnlMap.get(key) || 0) + (ts - (ti - ci)));
       exitedMap.set(key, (exitedMap.get(key) || 0) + (ti - ci));
+    });
+
+    // Add dividend income to each group's P&L
+    divMap.forEach((divAmt, key) => {
+      pnlMap.set(key, (pnlMap.get(key) || 0) + divAmt);
     });
 
     const sorted = Array.from(pnlMap.entries())

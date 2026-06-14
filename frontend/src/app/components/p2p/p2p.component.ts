@@ -3,9 +3,10 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { InvestmentService } from '../../services/investment.service';
+import { AuthService } from '../../services/auth.service';
 import { UiActionService } from '../../services/ui-action.service';
 import { CsvExportService } from '../../services/csv-export.service';
-import { P2PEntry, P2PRepayment, P2PEscrow } from '../../models/investment.model';
+import { P2PEntry, P2PRepayment, P2PEscrow, LendenStatementRow, LendenStatementWarning, LendenParseResult } from '../../models/investment.model';
 
 @Component({
   selector: 'app-p2p',
@@ -42,13 +43,23 @@ export class P2PComponent implements OnInit, OnDestroy {
   sortDirection: 'asc' | 'desc' = 'asc';
   toasts: { msg: string; type: string }[] = [];
 
+  // ── LenDen Statement Import ──
+  showImportModal = false;
+  importParsing = false;
+  importSubmitting = false;
+  importParseResult: LendenParseResult | null = null;
+  importError = '';
+  importSelectedFile: File | null = null;
+
   form: P2PEntry = this.emptyForm();
   repaymentForm: P2PRepayment = this.emptyRepaymentForm();
   escrowForm: P2PEscrow = this.emptyEscrowForm();
 
   private addSub?: Subscription;
 
-  constructor(private investmentService: InvestmentService, private uiActionService: UiActionService, private csvExport: CsvExportService) {}
+  constructor(private investmentService: InvestmentService, private uiActionService: UiActionService, private csvExport: CsvExportService, public authService: AuthService) {}
+
+  get canWrite(): boolean { return this.authService.canWrite(); }
 
   ngOnInit(): void {
     this.addSub = this.uiActionService.addEntry.subscribe(page => { if (page === 'p2p') this.openAddForm(); });
@@ -61,6 +72,7 @@ export class P2PComponent implements OnInit, OnDestroy {
   emptyForm(): P2PEntry {
     return {
       lending_id: '',
+      loan_id: '',
       platform: '',
       name: '',
       date: new Date().toISOString().split('T')[0],
@@ -255,9 +267,13 @@ export class P2PComponent implements OnInit, OnDestroy {
 
   getNextInstallmentDate(entry: P2PEntry): string {
     if (entry.status !== 'Active' || !entry.date || !entry.tenure) return '-';
-    const reps = this.getRepayments(entry.lending_id);
-    const repCount = reps.length;
-    const nextInstallmentNum = repCount + 1;
+    const pp = this.getPrincipalPerInstallment(entry);
+    if (!pp) return '-';
+    const principalReceived = this.getTotalRepaid(entry.lending_id);
+    // Round ratio to 2 decimal places before flooring to handle stored amounts
+    // being truncated (e.g. 250/3 = 83.333... stored as 83.33 → ratio 0.99996 → should be 1)
+    const completedInstallments = Math.floor(Math.round(principalReceived / pp * 100) / 100);
+    const nextInstallmentNum = completedInstallments + 1;
     if (nextInstallmentNum > entry.tenure) return '-';
     return this._getInstallmentDate(entry, nextInstallmentNum).toISOString().split('T')[0];
   }
@@ -771,9 +787,13 @@ export class P2PComponent implements OnInit, OnDestroy {
 
   saveEntry(): void {
     if (!this.form.platform?.trim()) { this.toast('Platform is required', 'error'); return; }
+    if (!this.form.loan_id?.trim()) { this.toast('Loan ID is required', 'error'); return; }
     if (!this.form.name?.trim()) { this.toast('Name is required', 'error'); return; }
     if (!this.form.amount || this.form.amount <= 0) { this.toast('Amount is required', 'error'); return; }
     if (!this.form.tenure || this.form.tenure <= 0) { this.toast('Tenure is required', 'error'); return; }
+
+    // Normalize loan_id: uppercase and trim
+    if (this.form.loan_id) this.form.loan_id = this.form.loan_id.trim().toUpperCase();
 
     this.form.maturity_date = this.computeMaturityDate();
 
@@ -1064,6 +1084,121 @@ export class P2PComponent implements OnInit, OnDestroy {
         error: () => { this.deletingRepayment = false; this.toast('Failed to delete repayment', 'error'); }
       });
     }
+  }
+
+  // ── LenDen Statement Import ──
+
+  openImportModal(): void {
+    this.showImportModal = true;
+    this.importParseResult = null;
+    this.importError = '';
+    this.importSelectedFile = null;
+  }
+
+  closeImportModal(): void {
+    this.showImportModal = false;
+    this.importParseResult = null;
+    this.importError = '';
+    this.importSelectedFile = null;
+  }
+
+  onImportFileChange(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0] || null;
+    this.importParseResult = null;
+    if (file && !file.name.toLowerCase().endsWith('.xlsx')) {
+      this.importSelectedFile = null;
+      this.importError = 'Invalid file format. Please select a .xlsx file.';
+      input.value = '';
+    } else {
+      this.importSelectedFile = file;
+      this.importError = '';
+    }
+  }
+
+  parseStatement(): void {
+    if (!this.importSelectedFile) return;
+    this.importParsing = true;
+    this.importError = '';
+    this.importParseResult = null;
+    this.investmentService.parseLendenStatement(this.importSelectedFile).subscribe({
+      next: (result) => {
+        // Merge status_change warnings into suggested rows
+        result.warnings.forEach(w => {
+          if (w.type === 'status_change') {
+            const row = result.suggested.find(s => s.loan_id === w.loan_id);
+            if (row) {
+              row.new_status = w.new_status;
+              row.old_status = w.old_status;
+            }
+          }
+        });
+        this.importParseResult = result;
+        this.importParsing = false;
+      },
+      error: (e) => {
+        this.importError = e.error?.error || 'Failed to parse statement';
+        this.importParsing = false;
+      }
+    });
+  }
+
+  get importUnmatchedWarnings(): LendenStatementWarning[] {
+    return (this.importParseResult?.warnings || []).filter(w => w.type === 'unmatched');
+  }
+
+  get importSelectedRows(): LendenStatementRow[] {
+    return (this.importParseResult?.suggested || []).filter(r => r.selected);
+  }
+
+  get entriesMissingLoanId(): number {
+    return this.allEntries.filter(e => !e.loan_id?.trim()).length;
+  }
+
+  toggleAllImportRows(event: Event): void {
+    const checked = (event.target as HTMLInputElement).checked;
+    this.importParseResult?.suggested.forEach(r => r.selected = checked);
+  }
+
+  submitImport(): void {
+    const rows = this.importSelectedRows;
+    if (!rows.length) return;
+    this.importSubmitting = true;
+
+    const payload = rows.map(r => ({
+      loan_id:          r.loan_id,
+      lending_id:       r.lending_id,
+      platform:         r.platform,
+      entry_id:         r.entry_id,
+      delta_principal:  r.delta_principal,
+      delta_interest:   r.delta_interest,
+      delta_platform_fee: r.delta_platform_fee,
+      remarks:          r.remarks,
+      to_date:          this.importParseResult?.to_date || '',
+      new_status:       r.new_status || null,
+    }));
+
+    this.investmentService.importLendenStatement(payload).subscribe({
+      next: (resp) => {
+        this.importSubmitting = false;
+        const allResults = (resp.results || []);
+        const failures = allResults.filter((r: any) => !r.success);
+        const posted = allResults.filter((r: any) => r.success && !r.skipped).length;
+        if (failures.length === 0) {
+          this.toast(`Successfully posted ${posted} repayment(s)`, 'success');
+          this.closeImportModal();
+          this.loadData();
+          this.uiActionService.triggerSilentRefresh();
+        } else {
+          const failedIds = failures.map((f: any) => f.loan_id).join(', ');
+          this.toast(`${posted} posted, ${failures.length} failed: ${failedIds}`, 'error');
+        }
+      },
+      error: (e) => {
+        this.importSubmitting = false;
+        this.toast(e.error?.error || 'Import failed', 'error');
+      }
+    });
   }
 
   toast(msg: string, type: string): void {

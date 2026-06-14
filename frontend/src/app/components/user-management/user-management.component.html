@@ -1,0 +1,165 @@
+<div class="user-mgmt-container">
+  <div class="section-header">
+    <div class="header-left">
+      <h2>User Management</h2>
+      <p class="subtitle">Manage who can access this app and their permission level.</p>
+    </div>
+    <button class="btn btn-primary" (click)="showAddForm = !showAddForm; clearMessages()">
+      {{ showAddForm ? '✕ Cancel' : '+ Add User' }}
+    </button>
+  </div>
+
+  <!-- Add User Form -->
+  <div class="add-form-panel" *ngIf="showAddForm">
+    <h3>Add New User</h3>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Email Address</label>
+        <input
+          type="email"
+          [(ngModel)]="newEmail"
+          placeholder="user@example.com"
+          class="form-input"
+          (keydown.enter)="addUser()"
+        />
+      </div>
+      <div class="form-group">
+        <label>Role</label>
+        <select [(ngModel)]="newRole" class="form-select">
+          <option value="admin">👑 Admin — Full access</option>
+          <option value="user">✏️ User — Read & write own entries</option>
+          <option value="guest">👁️ Guest — View only</option>
+        </select>
+      </div>
+      <button class="btn btn-primary" (click)="addUser()" [disabled]="adding || !newEmail.trim()">
+        {{ adding ? 'Adding...' : 'Add User' }}
+      </button>
+    </div>
+  </div>
+
+  <!-- Messages -->
+  <div class="alert alert-error" *ngIf="error">{{ error }}</div>
+  <div class="alert alert-success" *ngIf="successMsg">{{ successMsg }}</div>
+
+  <!-- Loading -->
+  <div class="loading-state" *ngIf="loading">
+    <div class="spinner"></div>
+    <span>Loading users...</span>
+  </div>
+
+  <!-- Users Table (desktop) -->
+  <div class="table-wrapper" *ngIf="!loading">
+    <table *ngIf="users.length > 0" class="desktop-table">
+      <thead>
+        <tr>
+          <th>Email</th>
+          <th>Added Date</th>
+          <th>Role</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let user of users">
+          <td class="email-cell">{{ user.email }}</td>
+          <td class="date-cell">{{ user.added_date | date:'d MMM yyyy' }}</td>
+          <td>
+            <!-- Inline role editor -->
+            <ng-container *ngIf="editingRoleFor === user.email; else roleBadge">
+              <div class="role-edit-inline">
+                <select [(ngModel)]="editingRole" class="form-select form-select-sm">
+                  <option value="admin">👑 Admin</option>
+                  <option value="user">✏️ User</option>
+                  <option value="guest">👁️ Guest</option>
+                </select>
+                <button class="btn btn-sm btn-primary" (click)="saveRole()" [disabled]="savingRole">
+                  {{ savingRole ? '...' : '✓' }}
+                </button>
+                <button class="btn btn-sm btn-secondary" (click)="cancelEditRole()">✕</button>
+              </div>
+            </ng-container>
+            <ng-template #roleBadge>
+              <span class="role-badge" [class]="roleBadgeClass(user.role)">{{ roleLabel(user.role) }}</span>
+            </ng-template>
+          </td>
+          <td class="actions">
+            <button
+              class="btn-icon edit"
+              (click)="startEditRole(user)"
+              title="Change Role"
+              *ngIf="editingRoleFor !== user.email">
+              ✏️
+            </button>
+            <button
+              class="btn-icon view-as"
+              (click)="viewAsUser(user.email, user.role)"
+              [disabled]="viewingAsEmail === user.email"
+              title="View app as this user"
+              *ngIf="editingRoleFor !== user.email">
+              {{ viewingAsEmail === user.email ? '⏳' : '👁️' }}
+            </button>
+            <button
+              class="btn-icon delete"
+              (click)="removeUser(user.email)"
+              [disabled]="removingEmail === user.email"
+              title="Remove User">
+              🗑️
+            </button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Users Card List (mobile) -->
+    <div class="mobile-user-list" *ngIf="users.length > 0">
+      <div class="user-card" *ngFor="let user of users">
+        <div class="user-card-top">
+          <span class="user-card-email">{{ user.email }}</span>
+          <span class="role-badge" [class]="roleBadgeClass(user.role)">{{ roleLabel(user.role) }}</span>
+        </div>
+        <div class="user-card-date">Added {{ user.added_date | date:'d MMM yyyy' }}</div>
+
+        <!-- Inline role editor (mobile) -->
+        <div class="role-edit-inline" *ngIf="editingRoleFor === user.email">
+          <select [(ngModel)]="editingRole" class="form-select form-select-sm" style="flex:1">
+            <option value="admin">👑 Admin</option>
+            <option value="user">✏️ User</option>
+            <option value="guest">👁️ Guest</option>
+          </select>
+          <button class="btn btn-sm btn-primary" (click)="saveRole()" [disabled]="savingRole">
+            {{ savingRole ? '...' : '✓' }}
+          </button>
+          <button class="btn btn-sm btn-secondary" (click)="cancelEditRole()">✕</button>
+        </div>
+
+        <div class="user-card-actions" *ngIf="editingRoleFor !== user.email">
+          <button class="btn btn-sm btn-secondary" (click)="startEditRole(user)" title="Change Role">✏️ Change Role</button>
+          <button class="btn btn-sm btn-secondary" (click)="viewAsUser(user.email, user.role)" [disabled]="viewingAsEmail === user.email" title="View as this user">
+            {{ viewingAsEmail === user.email ? '⏳' : '👁️' }} View As
+          </button>
+          <button class="btn btn-sm btn-danger" (click)="removeUser(user.email)" [disabled]="removingEmail === user.email" title="Remove User">🗑️</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="empty" *ngIf="users.length === 0">No users in the allowlist yet.</div>
+  </div>
+
+  <!-- Role Legend -->
+  <div class="role-legend">
+    <h4>Role Permissions</h4>
+    <div class="legend-grid">
+      <div class="legend-item">
+        <span class="role-badge badge-admin">👑 Admin</span>
+        <p>Full access — view all entries, add/edit/delete any entry, manage users.</p>
+      </div>
+      <div class="legend-item">
+        <span class="role-badge badge-user">✏️ User</span>
+        <p>Can add new entries and edit/delete only their own entries.</p>
+      </div>
+      <div class="legend-item">
+        <span class="role-badge badge-guest">👁️ Guest</span>
+        <p>View-only — can see all data but cannot add, edit, or delete anything.</p>
+      </div>
+    </div>
+  </div>
+</div>

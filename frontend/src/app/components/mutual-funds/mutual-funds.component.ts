@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { InvestmentService } from '../../services/investment.service';
+import { AuthService } from '../../services/auth.service';
 import { UiActionService } from '../../services/ui-action.service';
 import { CsvExportService } from '../../services/csv-export.service';
 import { MutualFundEntry } from '../../models/investment.model';
@@ -58,9 +59,14 @@ export class MutualFundsComponent implements OnInit, OnDestroy {
   livePrices: Record<string, number | null> = {};
   pricesFetching = false;
   pricesLastFetched: Date | null = null;
+  globalNameSuggestions: string[] = [];
+  globalMFMetaMap: Record<string, { category: string; fund_type: string }> = {};
 
   get nameSuggestions(): string[] {
-    return [...new Set(this.allEntries.map(e => e.name).filter(Boolean))];
+    return [...new Set([
+      ...this.allEntries.map(e => e.name).filter(Boolean),
+      ...this.globalNameSuggestions
+    ])] as string[];
   }
 
   get availableFYs(): string[] {
@@ -211,7 +217,9 @@ export class MutualFundsComponent implements OnInit, OnDestroy {
 
   private addSub?: Subscription;
 
-  constructor(private investmentService: InvestmentService, private uiActionService: UiActionService, private csvExport: CsvExportService) {}
+  constructor(private investmentService: InvestmentService, private uiActionService: UiActionService, private csvExport: CsvExportService, public authService: AuthService) {}
+
+  get canWrite(): boolean { return this.authService.canWrite(); }
 
   ngOnInit(): void {
     this.addSub = this.uiActionService.addEntry.subscribe(page => { if (page === 'mutual-funds') this.openAddForm(); });
@@ -224,6 +232,13 @@ export class MutualFundsComponent implements OnInit, OnDestroy {
     }));
     this.loadEntries();
     this.loadTickerMap();
+    this.investmentService.getNameSuggestions().subscribe({
+      next: (s) => {
+        this.globalNameSuggestions = s.mutual_funds ?? [];
+        this.globalMFMetaMap = s.mf_meta ?? {};
+      },
+      error: () => {}
+    });
   }
 
   ngOnDestroy(): void { this.addSub?.unsubscribe(); }
@@ -314,10 +329,17 @@ export class MutualFundsComponent implements OnInit, OnDestroy {
 
   onNameChange(): void {
     if (this.editingId) return;
-    const match = this.allEntries.find(e => e.name?.toLowerCase() === this.form.name?.toLowerCase().trim());
+    const name = this.form.name?.toLowerCase().trim() ?? '';
+    const match = this.allEntries.find(e => e.name?.toLowerCase() === name);
     if (match) {
       this.form.category = match.category;
       this.form.fund_type = match.fund_type;
+    } else {
+      const global = this.globalMFMetaMap[this.form.name?.trim() ?? ''];
+      if (global) {
+        this.form.category = global.category;
+        this.form.fund_type = global.fund_type;
+      }
     }
     this.formTicker = this.tickerMap[this.form.name?.trim() ?? ''] ?? '';
   }

@@ -247,8 +247,10 @@
                       <td class="number">{{ t.buy_quantity && t.buy_value ? '₹' + (t.buy_value / t.buy_quantity | number:'1.2-2') : '-' }}</td>
                       <td class="remarks">{{ t.remarks }}</td>
                       <td class="actions">
-                        <button class="btn-icon edit" (click)="openEditForm(t)" title="Edit">✏️</button>
-                        <button class="btn-icon delete" (click)="deleteEntry(t.id!)" [disabled]="deleting" title="Delete">🗑️</button>
+                        <ng-container *ngIf="canWrite">
+                          <button class="btn-icon edit" (click)="openEditForm(t)" title="Edit">✏️</button>
+                          <button class="btn-icon delete" (click)="deleteEntry(t.id!)" [disabled]="deleting" title="Delete">🗑️</button>
+                        </ng-container>
                       </td>
                     </tr>
                   </tbody>
@@ -300,8 +302,10 @@
           <td class="number">{{ entry.buy_quantity && entry.buy_value ? '₹' + (entry.buy_value / entry.buy_quantity | number:'1.2-2') : '-' }}</td>
           <td class="remarks">{{ entry.remarks }}</td>
           <td class="actions">
-            <button class="btn-icon edit" (click)="openEditForm(entry)" title="Edit">✏️</button>
-            <button class="btn-icon delete" (click)="deleteEntry(entry.id!)" [disabled]="deleting" title="Delete">🗑️</button>
+            <ng-container *ngIf="canWrite">
+              <button class="btn-icon edit" (click)="openEditForm(entry)" title="Edit">✏️</button>
+              <button class="btn-icon delete" (click)="deleteEntry(entry.id!)" [disabled]="deleting" title="Delete">🗑️</button>
+            </ng-container>
           </td>
         </tr>
       </tbody>
@@ -322,7 +326,7 @@
           <div class="card-row" *ngIf="entry.buy_quantity"><span>Buy:</span><span>{{ entry.buy_quantity }} &#64; ₹{{ entry.buy_value | number:'1.2-2' }}</span></div>
           <div class="card-row" *ngIf="entry.sell_quantity"><span>Sell:</span><span>{{ entry.sell_quantity }} &#64; ₹{{ entry.sell_value | number:'1.2-2' }}</span></div>
         </div>
-        <div class="card-actions">
+        <div class="card-actions" *ngIf="canWrite">
           <button class="btn-icon edit" (click)="openEditForm(entry)" title="Edit">✏️</button>
           <button class="btn-icon delete" (click)="deleteEntry(entry.id!)" [disabled]="deleting" title="Delete">🗑️</button>
         </div>

@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { InvestmentService } from '../../services/investment.service';
+import { AuthService } from '../../services/auth.service';
 import { UiActionService } from '../../services/ui-action.service';
 import { CsvExportService } from '../../services/csv-export.service';
 import { ForexEntry, EquityEntry } from '../../models/investment.model';
@@ -32,7 +33,9 @@ export class ForexComponent implements OnInit, OnDestroy {
 
   private addSub?: Subscription;
 
-  constructor(private investmentService: InvestmentService, private uiActionService: UiActionService, private csvExport: CsvExportService) {}
+  constructor(private investmentService: InvestmentService, private uiActionService: UiActionService, private csvExport: CsvExportService, public authService: AuthService) {}
+
+  get canWrite(): boolean { return this.authService.canWrite(); }
 
   ngOnInit(): void {
     this.addSub = this.uiActionService.addEntry.subscribe(page => { if (page === 'forex') this.openAddForm(); });
@@ -277,7 +280,10 @@ export class ForexComponent implements OnInit, OnDestroy {
     } else {
       this.investmentService.addForex(this.form).subscribe({
         next: (res) => {
-          this.allEntries.push({ ...this.form, id: res.id });
+          const inr = this.form.inr_amount ?? 0;
+          const usd = this.form.usd_amount ?? 0;
+          const computedRate = usd > 0 ? Math.round((inr / usd) * 10000) / 10000 : null;
+          this.allEntries.push({ ...this.form, id: res.id, rate: computedRate });
           this.applyFilter();
           this.submitting = false;
           this.toast('Entry added', 'success');

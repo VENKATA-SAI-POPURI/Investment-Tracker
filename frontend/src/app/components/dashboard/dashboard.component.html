@@ -656,6 +656,7 @@
               </div>
               <span class="div-val" [class.div-pos]="item.pnl >= 0" [class.div-neg]="item.pnl < 0">
                 {{ item.pnl >= 0 ? '+' : '-' }}&#8377;{{ abs(item.pnl) | number:'1.0-0' }}
+                <span class="div-pct">{{ item.pnlPct >= 0 ? '+' : '' }}{{ item.pnlPct | number:'1.1-1' }}%</span>
               </span>
             </div>
           </div>

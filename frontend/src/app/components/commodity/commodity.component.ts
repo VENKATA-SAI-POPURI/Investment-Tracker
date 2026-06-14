@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { InvestmentService } from '../../services/investment.service';
+import { AuthService } from '../../services/auth.service';
 import { UiActionService } from '../../services/ui-action.service';
 import { CsvExportService } from '../../services/csv-export.service';
 import { CommodityEntry } from '../../models/investment.model';
@@ -58,9 +59,14 @@ export class CommodityComponent implements OnInit, OnDestroy {
   livePrices: Record<string, number | null> = {};
   pricesFetching = false;
   pricesLastFetched: Date | null = null;
+  globalNameSuggestions: string[] = [];
+  globalCommodityMetaMap: Record<string, { commodity: string }> = {};
 
   get nameSuggestions(): string[] {
-    return [...new Set(this.allEntries.map(e => e.name).filter(Boolean))];
+    return [...new Set([
+      ...this.allEntries.map(e => e.name).filter(Boolean),
+      ...this.globalNameSuggestions
+    ])] as string[];
   }
 
   get availableFYs(): string[] {
@@ -209,7 +215,9 @@ export class CommodityComponent implements OnInit, OnDestroy {
 
   private addSub?: Subscription;
 
-  constructor(private investmentService: InvestmentService, private uiActionService: UiActionService, private csvExport: CsvExportService) {}
+  constructor(private investmentService: InvestmentService, private uiActionService: UiActionService, private csvExport: CsvExportService, public authService: AuthService) {}
+
+  get canWrite(): boolean { return this.authService.canWrite(); }
 
   ngOnInit(): void {
     this.addSub = this.uiActionService.addEntry.subscribe(page => { if (page === 'commodity') this.openAddForm(); });
@@ -222,6 +230,13 @@ export class CommodityComponent implements OnInit, OnDestroy {
     }));
     this.loadEntries();
     this.loadTickerMap();
+    this.investmentService.getNameSuggestions().subscribe({
+      next: (s) => {
+        this.globalNameSuggestions = s.commodity ?? [];
+        this.globalCommodityMetaMap = s.commodity_meta ?? {};
+      },
+      error: () => {}
+    });
   }
 
   ngOnDestroy(): void { this.addSub?.unsubscribe(); }
@@ -317,9 +332,15 @@ export class CommodityComponent implements OnInit, OnDestroy {
 
   onNameChange(): void {
     if (this.editingId) return;
-    const match = this.allEntries.find(e => e.name?.toLowerCase() === this.form.name?.toLowerCase().trim());
+    const name = this.form.name?.toLowerCase().trim() ?? '';
+    const match = this.allEntries.find(e => e.name?.toLowerCase() === name);
     if (match) {
       this.form.commodity = match.commodity;
+    } else {
+      const global = this.globalCommodityMetaMap[this.form.name?.trim() ?? ''];
+      if (global) {
+        this.form.commodity = global.commodity;
+      }
     }
     this.formTicker = this.tickerMap[this.form.name?.trim() ?? ''] ?? '';
   }

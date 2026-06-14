@@ -1,4 +1,4 @@
-import { Component, OnInit, ViewEncapsulation } from '@angular/core';
+import { Component, NgZone, OnInit, ViewEncapsulation } from '@angular/core';
 import { Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -24,7 +24,8 @@ export class LoginComponent implements OnInit {
 
   constructor(
     private authService: AuthService,
-    private router: Router
+    private router: Router,
+    private ngZone: NgZone
   ) {}
 
   ngOnInit(): void {
@@ -49,7 +50,9 @@ export class LoginComponent implements OnInit {
         window.google.accounts.id.initialize({
           client_id: '264259769121-grmgud6svdqkbi2o58rsoqmjg6f04cka.apps.googleusercontent.com',
           callback: (response: any) => {
-            this.handleCredentialResponse(response);
+            // Google's GSI callback fires outside Angular's NgZone — wrap it
+            // so that change detection runs properly after login.
+            this.ngZone.run(() => this.handleCredentialResponse(response));
           },
           auto_select: false,
           cancel_on_tap_outside: true,

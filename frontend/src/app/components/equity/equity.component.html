@@ -202,6 +202,7 @@
           <th class="bucket-col gt2y-col" title="Held more than 2 years">&gt; 2Y</th>
           <th>Net Invested</th>
           <th>Cost / Unit</th>
+          <th>Dividend</th>
           <th>Realized P&amp;L</th>
           <th>Unrealized P&amp;L</th>
         </tr>
@@ -229,6 +230,16 @@
               <span *ngIf="h.market === 'USA'">${{ h.costPerUnitUsd | number:'1.2-2' }}</span>
               <span *ngIf="h.market !== 'USA'">&#8377;{{ h.costPerUnit | number:'1.2-2' }}</span>
             </td>
+            <td class="number dividend-cell">
+              <ng-container *ngIf="getDividendTotalForStock(h.name) > 0; else noDividend">
+                <span class="pill-pos">
+                  +{{ getDividendPctForStock(h) | number:'1.2-2' }}%
+                  <span class="sub-text">&#8377;{{ getDividendTotalForStock(h.name) | number:'1.0-0' }}</span>
+                </span>
+              </ng-container>
+              <ng-template #noDividend><span class="pnl-neutral">—</span></ng-template>
+              <button *ngIf="canWrite" class="btn-icon dividend-btn" (click)="openDividendModal(h)" title="Add/View Dividends">💰</button>
+            </td>
             <td class="number" [class.pnl-pos]="h.realizedPnL > 0" [class.pnl-neg]="h.realizedPnL < 0">
               <span [class.pill-pos]="h.realizedPnL > 0" [class.pill-neg]="h.realizedPnL < 0">
                 {{ h.realizedPnL === 0 ? '—' : ((h.realizedPnLPct >= 0 ? '+' : '') + (h.realizedPnLPct | number:'1.2-2') + '%') }}
@@ -247,7 +258,7 @@
           <!-- Expanded transaction rows -->
           <tr class="txn-expand-header" *ngIf="expandedName === h.name">
             <td></td>
-            <td colspan="13">
+            <td colspan="14">
               <div class="txn-section">
                 <div class="txn-section-title">Transactions for {{ h.name }} ({{ getTransactionsForStock(h.name).length }})</div>
                 <table class="txn-table">
@@ -271,8 +282,10 @@
                       <td class="number">{{ costPerUnit(t) }}</td>
                       <td class="remarks">{{ t.remarks }}</td>
                       <td class="actions">
-                        <button class="btn-icon edit" (click)="openEditForm(t)" title="Edit">✏️</button>
-                        <button class="btn-icon delete" (click)="deleteEntry(t.id!)" [disabled]="deleting" title="Delete">🗑️</button>
+                        <ng-container *ngIf="canWrite">
+                          <button class="btn-icon edit" (click)="openEditForm(t)" title="Edit">✏️</button>
+                          <button class="btn-icon delete" (click)="deleteEntry(t.id!)" [disabled]="deleting" title="Delete">🗑️</button>
+                        </ng-container>
                       </td>
                     </tr>
                   </tbody>
@@ -319,8 +332,10 @@
           <td class="number">{{ costPerUnit(entry) }}</td>
           <td class="remarks">{{ entry.remarks }}</td>
           <td class="actions">
-            <button class="btn-icon edit" (click)="openEditForm(entry)" title="Edit">✏️</button>
-            <button class="btn-icon delete" (click)="deleteEntry(entry.id!)" [disabled]="deleting" title="Delete">🗑️</button>
+            <ng-container *ngIf="canWrite">
+              <button class="btn-icon edit" (click)="openEditForm(entry)" title="Edit">✏️</button>
+              <button class="btn-icon delete" (click)="deleteEntry(entry.id!)" [disabled]="deleting" title="Delete">🗑️</button>
+            </ng-container>
           </td>
         </tr>
       </tbody>
@@ -339,7 +354,7 @@
           <div class="card-row"><span>Qty:</span><span>{{ entry.quantity }}</span></div>
           <div class="card-row"><span>Value:</span><span>{{ entry.market === 'USA' ? ('$' + ((entry.value_usd || 0) | number:'1.2-2') + ' / ₹' + ((entry.value || 0) | number:'1.2-2')) : ('₹' + ((entry.value || 0) | number:'1.2-2')) }}</span></div>
         </div>
-        <div class="card-actions">
+        <div class="card-actions" *ngIf="canWrite">
           <button class="btn-icon edit" (click)="openEditForm(entry)" title="Edit">✏️</button>
           <button class="btn-icon delete" (click)="deleteEntry(entry.id!)" [disabled]="deleting" title="Delete">🗑️</button>
         </div>
@@ -347,6 +362,57 @@
     </div>
     <div class="empty" *ngIf="entries.length === 0">
       No equity entries yet. Click <strong>+ Add Entry</strong> to get started.
+    </div>
+  </div>
+
+  <!-- Dividend Modal -->
+  <div class="form-overlay" *ngIf="showDividendModal" (click)="closeDividendModal()">
+    <div class="form-modal dividend-modal" (click)="$event.stopPropagation()">
+      <h2>💰 Dividends — {{ dividendStockName }}</h2>
+
+      <!-- Add / Edit Form -->
+      <form (ngSubmit)="submitDividend()" class="dividend-form">
+        <div class="form-row">
+          <label>Date</label>
+          <input type="date" [(ngModel)]="dividendForm.date" name="divDate" required />
+        </div>
+        <div class="form-row">
+          <label>Amount (₹)</label>
+          <input type="number" [(ngModel)]="dividendForm.amount" name="divAmount" placeholder="0.00" min="0" step="0.01" required />
+        </div>
+        <div class="form-row">
+          <label>Remarks</label>
+          <input type="text" [(ngModel)]="dividendForm.remarks" name="divRemarks" placeholder="Optional" />
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary" [disabled]="dividendSubmitting">
+            {{ dividendSubmitting ? 'Saving...' : dividendEditingId ? 'Update' : 'Add Dividend' }}
+          </button>
+          <button type="button" class="btn btn-secondary" (click)="dividendEditingId ? cancelDividendEdit() : closeDividendModal()">Cancel</button>
+        </div>
+      </form>
+
+      <!-- Previous Entries Table -->
+      <div class="dividend-history" *ngIf="getDividendsForStock(dividendStockName).length > 0">
+        <h4>History ({{ getDividendsForStock(dividendStockName).length }} entries · Total: ₹{{ getDividendTotalForStock(dividendStockName) | number:'1.2-2' }} / {{ getDividendPctByValue(dividendStockName, dividendStockBuyValue) | number:'1.2-2' }}% of buy value)</h4>
+        <table class="txn-table">
+          <thead>
+            <tr><th>Date</th><th>Amount</th><th>Remarks</th><th>Actions</th></tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let d of getDividendsForStock(dividendStockName)">
+              <td>{{ d.date }}</td>
+              <td class="number pill-pos">₹{{ d.amount | number:'1.2-2' }}</td>
+              <td>{{ d.remarks || '—' }}</td>
+              <td class="actions">
+                <button class="btn-icon edit" (click)="editDividend(d)" title="Edit">✏️</button>
+                <button class="btn-icon delete" (click)="deleteDividend(d)" title="Delete">🗑️</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div *ngIf="getDividendsForStock(dividendStockName).length === 0" class="empty" style="margin-top:1rem;">No dividend entries yet for this stock.</div>
     </div>
   </div>
 </div>

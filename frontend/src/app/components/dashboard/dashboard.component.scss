@@ -2426,8 +2426,18 @@ app-dashboard.animations-done {
 .div-val {
   font-size: 0.78rem;
   font-weight: 700;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 5.5rem;
   &.div-pos { color: #10b981; }
   &.div-neg { color: #ef4444; }
+}
+
+.div-pct {
+  font-size: 0.68rem;
+  font-weight: 500;
+  opacity: 0.75;
 }
 
 // Responsive equity panel

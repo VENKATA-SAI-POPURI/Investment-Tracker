@@ -5,7 +5,8 @@ import { firstValueFrom, Subscription } from 'rxjs';
 import { InvestmentService } from '../../services/investment.service';
 import { UiActionService } from '../../services/ui-action.service';
 import { CsvExportService } from '../../services/csv-export.service';
-import { EquityEntry, ForexEntry } from '../../models/investment.model';
+import { AuthService } from '../../services/auth.service';
+import { EquityEntry, ForexEntry, EquityDividend } from '../../models/investment.model';
 
 
 interface HoldingRow {
@@ -68,6 +69,15 @@ export class EquityComponent implements OnInit, OnDestroy {
   pricesLastFetched: Date | null = null;
   livePricesVisible = false;
 
+  // Dividend modal state
+  dividendData: EquityDividend[] = [];
+  showDividendModal = false;
+  dividendStockName = '';
+  dividendStockBuyValue = 0;
+  dividendForm: { date: string; amount: string; remarks: string } = { date: '', amount: '', remarks: '' };
+  dividendEditingId: number | null = null;
+  dividendSubmitting = false;
+
   sectors = [
     'Communication Services',
     'Consumer Discretionary',
@@ -84,9 +94,14 @@ export class EquityComponent implements OnInit, OnDestroy {
   ];
 
   form: EquityEntry = this.emptyForm();
+  globalNameSuggestions: string[] = [];
+  globalEquityMetaMap: Record<string, { market: string; market_cap: string; sector: string }> = {};
 
   get nameSuggestions(): string[] {
-    return [...new Set(this.allEntries.map(e => e.name).filter(Boolean))];
+    return [...new Set([
+      ...this.allEntries.map(e => e.name).filter(Boolean),
+      ...this.globalNameSuggestions
+    ])] as string[];
   }
 
   get indiaNetINR(): number {
@@ -274,11 +289,13 @@ export class EquityComponent implements OnInit, OnDestroy {
 
   private addSub?: Subscription;
 
-  constructor(private investmentService: InvestmentService, private uiActionService: UiActionService, private csvExport: CsvExportService) {}
+  constructor(private investmentService: InvestmentService, private uiActionService: UiActionService, private csvExport: CsvExportService, public authService: AuthService) {}
+
+  get canWrite(): boolean { return this.authService.canWrite(); }
 
   ngOnInit(): void {
     this.addSub = this.uiActionService.addEntry.subscribe(page => { if (page === 'equity') this.openAddForm(); });
-    this.addSub.add(this.uiActionService.refresh.subscribe(() => { this.uiActionService.beginRefresh(); this.loadEntries(() => this.uiActionService.endRefresh()); }));
+    this.addSub.add(this.uiActionService.refresh.subscribe(() => { this.uiActionService.beginRefresh(); this.loadEntries(() => this.uiActionService.endRefresh()); this.loadDividends(); }));
     this.addSub.add(this.uiActionService.equityPrices$.subscribe(prices => {
       if (Object.keys(prices).length > 0) {
         this.livePrices = { ...this.livePrices, ...prices };
@@ -289,6 +306,14 @@ export class EquityComponent implements OnInit, OnDestroy {
     this.loadForexData();
     this.loadEntries();
     this.loadTickerMap();
+    this.loadDividends();
+    this.investmentService.getNameSuggestions().subscribe({
+      next: (s) => {
+        this.globalNameSuggestions = s.equity ?? [];
+        this.globalEquityMetaMap = s.equity_meta ?? {};
+      },
+      error: () => {}
+    });
   }
 
   ngOnDestroy(): void { this.addSub?.unsubscribe(); }
@@ -339,6 +364,102 @@ export class EquityComponent implements OnInit, OnDestroy {
         this.loading = false;
         onComplete?.();
       }
+    });
+  }
+
+  loadDividends(): void {
+    // Always bypass cache to get fresh data
+    delete (this.investmentService as any).cache['equity-dividends'];
+    this.investmentService.getEquityDividends().subscribe({
+      next: (data) => { this.dividendData = data; },
+      error: () => {}
+    });
+  }
+
+  // ── Dividend helpers ──
+
+  getDividendsForStock(name: string): EquityDividend[] {
+    return this.dividendData
+      .filter(d => d.name === name)
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }
+
+  getDividendTotalForStock(name: string): number {
+    return this.dividendData
+      .filter(d => d.name === name)
+      .reduce((s, d) => s + (d.amount || 0), 0);
+  }
+
+  getDividendPctForStock(h: HoldingRow): number {
+    if (!h.totalBuyValue || h.totalBuyValue === 0) return 0;
+    return Math.round((this.getDividendTotalForStock(h.name) / h.totalBuyValue) * 10000) / 100;
+  }
+
+  getDividendPctByValue(name: string, buyValue: number): number {
+    if (!buyValue || buyValue === 0) return 0;
+    return Math.round((this.getDividendTotalForStock(name) / buyValue) * 10000) / 100;
+  }
+
+  openDividendModal(h: HoldingRow): void {
+    this.dividendStockName = h.name;
+    this.dividendStockBuyValue = h.totalBuyValue;
+    this.dividendEditingId = null;
+    this.dividendForm = { date: new Date().toISOString().split('T')[0], amount: '', remarks: '' };
+    this.showDividendModal = true;
+  }
+
+  closeDividendModal(): void {
+    this.showDividendModal = false;
+    this.dividendEditingId = null;
+  }
+
+  editDividend(d: EquityDividend): void {
+    this.dividendEditingId = d.id!;
+    this.dividendForm = { date: d.date, amount: String(d.amount), remarks: d.remarks || '' };
+  }
+
+  cancelDividendEdit(): void {
+    this.dividendEditingId = null;
+    this.dividendForm = { date: new Date().toISOString().split('T')[0], amount: '', remarks: '' };
+  }
+
+  submitDividend(): void {
+    if (!this.dividendForm.amount || isNaN(+this.dividendForm.amount)) return;
+    this.dividendSubmitting = true;
+    const payload = { name: this.dividendStockName, date: this.dividendForm.date, amount: +this.dividendForm.amount, remarks: this.dividendForm.remarks };
+
+    if (this.dividendEditingId) {
+      this.investmentService.updateEquityDividend(this.dividendEditingId, payload).subscribe({
+        next: () => {
+          this.investmentService.getEquityDividends().subscribe(data => { this.dividendData = data; });
+          this.dividendSubmitting = false;
+          this.dividendEditingId = null;
+          this.dividendForm = { date: new Date().toISOString().split('T')[0], amount: '', remarks: '' };
+          this.uiActionService.triggerSilentRefresh();
+        },
+        error: () => { this.dividendSubmitting = false; this.toast('Failed to update dividend', 'error'); }
+      });
+    } else {
+      this.investmentService.addEquityDividend(payload).subscribe({
+        next: () => {
+          this.investmentService.getEquityDividends().subscribe(data => { this.dividendData = data; });
+          this.dividendSubmitting = false;
+          this.dividendForm = { date: new Date().toISOString().split('T')[0], amount: '', remarks: '' };
+          this.uiActionService.triggerSilentRefresh();
+        },
+        error: () => { this.dividendSubmitting = false; this.toast('Failed to add dividend', 'error'); }
+      });
+    }
+  }
+
+  deleteDividend(d: EquityDividend): void {
+    if (!confirm('Delete this dividend entry?')) return;
+    this.investmentService.deleteEquityDividend(d.id!).subscribe({
+      next: () => {
+        this.dividendData = this.dividendData.filter(x => x.id !== d.id);
+        this.uiActionService.triggerSilentRefresh();
+      },
+      error: () => { this.toast('Failed to delete dividend', 'error'); }
     });
   }
 
@@ -455,11 +576,19 @@ export class EquityComponent implements OnInit, OnDestroy {
 
   onNameChange(): void {
     if (this.editingId) return;
-    const match = this.allEntries.find(e => e.name?.toLowerCase() === this.form.name?.toLowerCase().trim());
+    const name = this.form.name?.toLowerCase().trim() ?? '';
+    const match = this.allEntries.find(e => e.name?.toLowerCase() === name);
     if (match) {
       this.form.market = match.market;
       this.form.market_cap = match.market_cap;
       this.form.sector = match.sector;
+    } else {
+      const global = this.globalEquityMetaMap[this.form.name?.trim() ?? ''];
+      if (global) {
+        this.form.market = global.market;
+        this.form.market_cap = global.market_cap;
+        this.form.sector = global.sector;
+      }
     }
     this.formTicker = this.tickerMap[this.form.name?.trim() ?? ''] ?? '';
   }

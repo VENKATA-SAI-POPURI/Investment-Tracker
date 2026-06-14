@@ -1,8 +1,10 @@
 import os
 import sqlite3
 import threading
+import time
 import warnings
 import requests
+from contextlib import contextmanager
 
 
 class TursoConnection:
@@ -45,6 +47,56 @@ class TursoConnection:
             raise Exception(result["error"]["message"])
         res = result["response"]["result"]
         return TursoCursor(res)
+
+    def execute_pipeline(self, queries):
+        """Batch multiple SQL queries into a single HTTP round-trip.
+        queries: list of (sql, params_list_or_None)
+        Returns: list of TursoCursor, one per query.
+        """
+        def _make_args(params):
+            if not params:
+                return None
+            args = []
+            for v in params:
+                if v is None:
+                    args.append({"type": "null"})
+                elif isinstance(v, bool):
+                    args.append({"type": "integer", "value": str(int(v))})
+                elif isinstance(v, int):
+                    args.append({"type": "integer", "value": str(v)})
+                elif isinstance(v, float):
+                    args.append({"type": "float", "value": v})
+                else:
+                    args.append({"type": "text", "value": str(v)})
+            return args
+
+        requests_list = []
+        for sql, params in queries:
+            stmt = {"sql": sql}
+            args = _make_args(params)
+            if args:
+                stmt["args"] = args
+            requests_list.append({"type": "execute", "stmt": stmt})
+        requests_list.append({"type": "close"})
+
+        body = {"requests": requests_list}
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            resp = requests.post(self._url, json=body, headers=self._headers, timeout=15, verify=self._verify_ssl)
+        if resp.status_code != 200:
+            raise Exception(f"Turso HTTP {resp.status_code}: {resp.text}")
+        data = resp.json()
+        if "results" not in data:
+            raise Exception(f"Turso unexpected response: {data}")
+
+        cursors = []
+        for i in range(len(queries)):
+            result = data["results"][i]
+            if result["type"] == "error":
+                raise Exception(result["error"]["message"])
+            res = result["response"]["result"]
+            cursors.append(TursoCursor(res))
+        return cursors
 
     def commit(self):
         pass  # Turso auto-commits
@@ -131,12 +183,12 @@ TABLES = {
         "sell_col": "sell_value",
     },
     "p2p": {
-        "columns": ["lending_id", "platform", "name", "date", "amount", "tenure", "maturity_date", "status", "remarks"],
+        "columns": ["lending_id", "loan_id", "platform", "name", "date", "amount", "tenure", "maturity_date", "status", "remarks"],
         "buy_col": "amount",
         "sell_col": None,
     },
     "p2p_repayments": {
-        "columns": ["lending_id", "date", "principal", "interest", "platform_fee", "amount", "remarks"],
+        "columns": ["lending_id", "date", "principal", "interest", "platform_fee", "amount", "source", "remarks"],
         "buy_col": None,
         "sell_col": "amount",
     },
@@ -161,8 +213,14 @@ TABLES = {
         "sell_col": None,
         "no_upsert": True,
     },
+    "equity_dividends": {
+        "columns": ["name", "date", "amount", "remarks", "capital_flow_id"],
+        "buy_col": None,
+        "sell_col": None,
+        "no_upsert": True,
+    },
     "allowlist": {
-        "columns": ["email", "added_date"],
+        "columns": ["email", "added_date", "role"],
         "no_upsert": True,
     },
     "users": {
@@ -182,6 +240,7 @@ SHEET_TO_TABLE = {
     "Fixed Deposits": "fixed_deposits",
     "Forex": "forex",
     "Capital Flows": "capital_flows",
+    "Equity Dividends": "equity_dividends",
 }
 
 NUMERIC_FIELDS = {
@@ -194,6 +253,8 @@ NUMERIC_FIELDS = {
     "inr_amount", "usd_amount", "rate",
     # P2P repayment breakdown fields
     "principal", "platform_fee",
+    # Dividend capital flow linkage
+    "capital_flow_id",
 }
 
 UPSERT_FIELDS = NUMERIC_FIELDS | {"date", "maturity_date", "buy_sell"}
@@ -205,12 +266,45 @@ def _col_type(col):
     return "TEXT"
 
 
+class _Cache:
+    """Simple in-memory TTL cache for DB query results."""
+    def __init__(self, ttl=60):
+        self._store = {}
+        self._ttl = ttl
+        self._lock = threading.Lock()
+
+    def get(self, key):
+        with self._lock:
+            entry = self._store.get(key)
+        if entry:
+            val, ts = entry
+            if time.time() - ts < self._ttl:
+                return val
+            with self._lock:
+                self._store.pop(key, None)
+        return None
+
+    def set(self, key, val):
+        with self._lock:
+            self._store[key] = (val, time.time())
+
+    def invalidate(self, *keys):
+        with self._lock:
+            for k in keys:
+                self._store.pop(k, None)
+
+    def clear(self):
+        with self._lock:
+            self._store.clear()
+
+
 class DbService:
     def __init__(self, db_path, turso_url=None, turso_token=None):
         self.db_path = db_path
         self.turso_url = turso_url
         self.turso_token = turso_token
         self._lock = threading.Lock()
+        self._cache = _Cache(ttl=60)
         self._init_db()
 
     def _connect(self):
@@ -221,6 +315,32 @@ class DbService:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
         return conn
+
+    @contextmanager
+    def _db_lock(self):
+        """Skip threading lock for Turso (each call is a stateless HTTP request);
+        use lock only for local SQLite to prevent concurrent write corruption."""
+        if self.turso_url:
+            yield
+        else:
+            with self._lock:
+                yield
+
+    def _migrate_p2p_v3(self, conn):
+        """Add loan_id to p2p and source to p2p_repayments if missing."""
+        for tbl, col in [("p2p", "loan_id"), ("p2p_repayments", "source")]:
+            try:
+                conn.execute(f"SELECT {col} FROM {tbl} LIMIT 0")
+            except Exception as e:
+                if "no such table" in str(e).lower():
+                    continue
+                try:
+                    conn.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} TEXT")
+                    conn.commit()
+                    print(f"[db_service] {tbl} migrated: added {col} column.")
+                except Exception:
+                    import traceback
+                    traceback.print_exc()
 
     def _migrate_p2p_repayments_v2(self, conn):
         """Add principal, interest, platform_fee columns to p2p_repayments if missing."""
@@ -291,9 +411,37 @@ class DbService:
             import traceback
             traceback.print_exc()
 
+    def _migrate_rbac(self, conn):
+        """Add role column to allowlist and created_by to all data tables."""
+        # allowlist: add role column
+        try:
+            conn.execute("SELECT role FROM allowlist LIMIT 0")
+        except Exception:
+            try:
+                conn.execute("ALTER TABLE allowlist ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
+                conn.commit()
+                print("[db_service] allowlist migrated: added role column.")
+            except Exception:
+                pass
+
+        # All data tables: add created_by column
+        data_tables = ["equity", "commodity", "mutual_funds", "p2p", "p2p_repayments",
+                       "p2p_escrow", "fixed_deposits", "forex", "capital_flows", "equity_dividends"]
+        for tbl in data_tables:
+            try:
+                conn.execute(f"SELECT created_by FROM {tbl} LIMIT 0")
+            except Exception:
+                try:
+                    conn.execute(f"ALTER TABLE {tbl} ADD COLUMN created_by TEXT")
+                    conn.commit()
+                    print(f"[db_service] {tbl} migrated: added created_by column.")
+                except Exception:
+                    pass
+
     def _init_db(self):
         with self._lock:
             conn = self._connect()
+            self._migrate_p2p_v3(conn)
             self._migrate_p2p_repayments_v2(conn)
             self._migrate_equity_v2(conn)
             for table, config in TABLES.items():
@@ -312,6 +460,7 @@ class DbService:
                 "CREATE TABLE IF NOT EXISTS equity_tickers (name TEXT PRIMARY KEY, ticker TEXT NOT NULL, price REAL)"
             )
             self._migrate_equity_tickers_price(conn)
+            self._migrate_rbac(conn)
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS mf_tickers (name TEXT PRIMARY KEY, ticker TEXT NOT NULL, price REAL)"
             )
@@ -323,13 +472,28 @@ class DbService:
 
     # ── Public API (same signatures as ExcelService) ──
 
-    def get_all(self, sheet_name):
+    def get_all(self, sheet_name, user_email=None, role=None):
+        # Users see only their own rows; admins and guests see all
+        if role == 'user' and user_email:
+            cache_key = f"rows:{sheet_name}:user:{user_email}"
+        else:
+            cache_key = f"rows:{sheet_name}"
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         table = SHEET_TO_TABLE[sheet_name]
         config = TABLES[table]
         columns = config["columns"]
-        with self._lock:
+        with self._db_lock():
             conn = self._connect()
-            cursor = conn.execute(f"SELECT id, {', '.join(columns)} FROM {table} ORDER BY id")
+            if role == 'user' and user_email:
+                cursor = conn.execute(
+                    f"SELECT id, {', '.join(columns)}, created_by FROM {table} WHERE created_by = ? ORDER BY id",
+                    (user_email,)
+                )
+            else:
+                cursor = conn.execute(f"SELECT id, {', '.join(columns)}, created_by FROM {table} ORDER BY id")
             rows = []
             for row in cursor:
                 entry = {"id": row["id"]}
@@ -341,11 +505,16 @@ class DbService:
                         except (ValueError, TypeError):
                             pass
                     entry[col] = val
+                try:
+                    entry["created_by"] = row["created_by"]
+                except Exception:
+                    entry["created_by"] = None
                 rows.append(entry)
             conn.close()
+        self._cache.set(cache_key, rows)
         return rows
 
-    def add_row(self, sheet_name, data):
+    def add_row(self, sheet_name, data, created_by=None):
         table = SHEET_TO_TABLE[sheet_name]
         config = TABLES[table]
         columns = config["columns"]
@@ -356,16 +525,22 @@ class DbService:
             name_key = "name" if "name" in columns else ("bank_name" if "bank_name" in columns else None)
         lookup_name = data.get(name_key, "").strip() if name_key else ""
 
-        with self._lock:
+        with self._db_lock():
             conn = self._connect()
 
-            # Check for existing entry (upsert logic)
+            # Check for existing entry (upsert logic — scoped to the same user)
             existing_id = None
             if lookup_name:
-                cursor = conn.execute(
-                    f"SELECT id FROM {table} WHERE LOWER(TRIM({name_key})) = LOWER(TRIM(?))",
-                    (lookup_name,),
-                )
+                if created_by:
+                    cursor = conn.execute(
+                        f"SELECT id FROM {table} WHERE LOWER(TRIM({name_key})) = LOWER(TRIM(?)) AND created_by = ?",
+                        (lookup_name, created_by),
+                    )
+                else:
+                    cursor = conn.execute(
+                        f"SELECT id FROM {table} WHERE LOWER(TRIM({name_key})) = LOWER(TRIM(?)) AND (created_by IS NULL OR created_by = '')",
+                        (lookup_name,),
+                    )
                 row = cursor.fetchone()
                 if row:
                     existing_id = row["id"]
@@ -395,7 +570,7 @@ class DbService:
                     )
                 conn.commit()
                 conn.close()
-                return {"id": existing_id, "upserted": True}
+                result = {"id": existing_id, "upserted": True}
             else:
                 cols_present = []
                 vals = []
@@ -411,6 +586,9 @@ class DbService:
                             val = None
                     cols_present.append(col)
                     vals.append(val)
+                # Append created_by column
+                cols_present.append("created_by")
+                vals.append(created_by)
                 placeholders = ", ".join("?" for _ in cols_present)
                 cursor = conn.execute(
                     f"INSERT INTO {table} ({', '.join(cols_present)}) VALUES ({placeholders})",
@@ -419,19 +597,34 @@ class DbService:
                 new_id = cursor.lastrowid
                 conn.commit()
                 conn.close()
-                return {"id": new_id, "upserted": False}
+                result = {"id": new_id, "upserted": False}
 
-    def update_row(self, sheet_name, row_id, data):
+        self._cache.invalidate(f"rows:{sheet_name}", "summary", "capital_flows_summary")
+        if created_by:
+            self._cache.invalidate(
+                f"rows:{sheet_name}:user:{created_by}",
+                f"summary:user:{created_by}",
+                f"capital_flows_summary:user:{created_by}",
+            )
+        return result
+
+    def update_row(self, sheet_name, row_id, data, user_email=None, role=None):
         table = SHEET_TO_TABLE[sheet_name]
         config = TABLES[table]
         columns = config["columns"]
-        with self._lock:
+        with self._db_lock():
             conn = self._connect()
-            # Check row exists
-            cursor = conn.execute(f"SELECT id FROM {table} WHERE id = ?", (row_id,))
-            if not cursor.fetchone():
+            # Check row exists and ownership
+            cursor = conn.execute(f"SELECT id, created_by FROM {table} WHERE id = ?", (row_id,))
+            existing = cursor.fetchone()
+            if not existing:
                 conn.close()
                 return False
+            if role == 'user' and user_email:
+                owner = existing["created_by"] if hasattr(existing, '__getitem__') else None
+                if owner != user_email:
+                    conn.close()
+                    return 'forbidden'
             updates = []
             params = []
             for col in columns:
@@ -452,20 +645,45 @@ class DbService:
                 )
                 conn.commit()
             conn.close()
+        self._cache.invalidate(f"rows:{sheet_name}", "summary", "capital_flows_summary")
+        if user_email:
+            self._cache.invalidate(
+                f"rows:{sheet_name}:user:{user_email}",
+                f"summary:user:{user_email}",
+                f"capital_flows_summary:user:{user_email}",
+            )
         return True
 
-    def delete_row(self, sheet_name, row_id):
+    def delete_row(self, sheet_name, row_id, user_email=None, role=None):
         table = SHEET_TO_TABLE[sheet_name]
-        with self._lock:
+        with self._db_lock():
             conn = self._connect()
+            if role == 'user' and user_email:
+                cursor = conn.execute(f"SELECT created_by FROM {table} WHERE id = ?", (row_id,))
+                row = cursor.fetchone()
+                if row is None:
+                    conn.close()
+                    return False
+                owner = row["created_by"] if hasattr(row, '__getitem__') else None
+                if owner != user_email:
+                    conn.close()
+                    return 'forbidden'
             cursor = conn.execute(f"DELETE FROM {table} WHERE id = ?", (row_id,))
             conn.commit()
             deleted = cursor.rowcount > 0
             conn.close()
+        if deleted:
+            self._cache.invalidate(f"rows:{sheet_name}", "summary", "capital_flows_summary")
+            if user_email:
+                self._cache.invalidate(
+                    f"rows:{sheet_name}:user:{user_email}",
+                    f"summary:user:{user_email}",
+                    f"capital_flows_summary:user:{user_email}",
+                )
         return deleted
 
     def get_setting(self, key: str):
-        with self._lock:
+        with self._db_lock():
             conn = self._connect()
             cursor = conn.execute("SELECT value FROM settings WHERE key = ?", (key,))
             row = cursor.fetchone()
@@ -473,7 +691,7 @@ class DbService:
             return row["value"] if row else None
 
     def set_setting(self, key: str, value: str):
-        with self._lock:
+        with self._db_lock():
             conn = self._connect()
             conn.execute(
                 "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -482,16 +700,86 @@ class DbService:
             conn.commit()
             conn.close()
 
+    def get_distinct_names(self, sheet_name):
+        """Return distinct label values (name/bank_name) for autocomplete suggestions.
+        No RBAC filter — all authenticated users get the full name list for autofill only."""
+        cache_key = f"distinct_names:{sheet_name}"
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        table = SHEET_TO_TABLE.get(sheet_name)
+        if not table:
+            return []
+        columns = TABLES.get(table, {}).get("columns", [])
+
+        if "name" in columns:
+            col = "name"
+        elif "bank_name" in columns:
+            col = "bank_name"
+        else:
+            return []
+
+        with self._db_lock():
+            conn = self._connect()
+            try:
+                cursor = conn.execute(
+                    f"SELECT DISTINCT {col} FROM {table} "
+                    f"WHERE {col} IS NOT NULL AND {col} != '' ORDER BY {col}"
+                )
+                names = [row[0] for row in cursor]
+            except Exception:
+                names = []
+            finally:
+                conn.close()
+
+        self._cache.set(cache_key, names)
+        return names
+
+    def get_name_meta_map(self, sheet_name, name_col, meta_cols):
+        """Return {name: {col: val}} mapping for autocomplete metadata (no RBAC filter).
+        Used to auto-fill categorical fields (sector, market, commodity type, etc.)."""
+        cache_key = f"name_meta:{sheet_name}:{','.join(meta_cols)}"
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
+        table = SHEET_TO_TABLE.get(sheet_name)
+        if not table:
+            return {}
+        select_cols = ', '.join([name_col] + meta_cols)
+        with self._db_lock():
+            conn = self._connect()
+            try:
+                cursor = conn.execute(
+                    f"SELECT {select_cols} FROM {table} "
+                    f"WHERE {name_col} IS NOT NULL AND {name_col} != ''"
+                )
+                result = {}
+                for row in cursor:
+                    name_val = row[0]
+                    if name_val and name_val not in result:
+                        result[name_val] = {col: row[i + 1] for i, col in enumerate(meta_cols)}
+            except Exception:
+                result = {}
+            finally:
+                conn.close()
+        self._cache.set(cache_key, result)
+        return result
+
     def get_all_tickers(self):
-        with self._lock:
+        cached = self._cache.get("tickers:equity")
+        if cached is not None:
+            return cached
+        with self._db_lock():
             conn = self._connect()
             cursor = conn.execute("SELECT name, ticker, price FROM equity_tickers")
             result = {row["name"]: {"ticker": row["ticker"], "price": row["price"]} for row in cursor.fetchall()}
             conn.close()
+        self._cache.set("tickers:equity", result)
         return result
 
     def upsert_ticker(self, name: str, ticker: str):
-        with self._lock:
+        with self._db_lock():
             conn = self._connect()
             conn.execute(
                 "INSERT INTO equity_tickers (name, ticker) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET ticker = excluded.ticker",
@@ -499,6 +787,7 @@ class DbService:
             )
             conn.commit()
             conn.close()
+        self._cache.invalidate("tickers:equity")
 
     def update_ticker_prices(self, prices: dict):
         """Persist latest prices keyed by ticker symbol. prices = {ticker: price}"""
@@ -506,7 +795,7 @@ class DbService:
             print("[equity_tickers] No prices to persist.")
             return
         updated = 0
-        with self._lock:
+        with self._db_lock():
             conn = self._connect()
             for ticker, price in prices.items():
                 if price is not None:
@@ -518,20 +807,25 @@ class DbService:
                         updated += cursor.rowcount
             conn.commit()
             conn.close()
+        self._cache.invalidate("tickers:equity")
         print(f"[equity_tickers] Persisted {len(prices)} prices ({updated} rows updated).")
 
     # ── MF Tickers ──
 
     def get_all_mf_tickers(self):
-        with self._lock:
+        cached = self._cache.get("tickers:mf")
+        if cached is not None:
+            return cached
+        with self._db_lock():
             conn = self._connect()
             cursor = conn.execute("SELECT name, ticker, price FROM mf_tickers")
             result = {row["name"]: {"ticker": row["ticker"], "price": row["price"]} for row in cursor.fetchall()}
             conn.close()
+        self._cache.set("tickers:mf", result)
         return result
 
     def upsert_mf_ticker(self, name: str, ticker: str):
-        with self._lock:
+        with self._db_lock():
             conn = self._connect()
             conn.execute(
                 "INSERT INTO mf_tickers (name, ticker) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET ticker = excluded.ticker",
@@ -539,11 +833,12 @@ class DbService:
             )
             conn.commit()
             conn.close()
+        self._cache.invalidate("tickers:mf")
 
     def update_mf_ticker_prices(self, prices: dict):
         if not prices:
             return
-        with self._lock:
+        with self._db_lock():
             conn = self._connect()
             for ticker, price in prices.items():
                 if price is not None:
@@ -553,20 +848,25 @@ class DbService:
                     )
             conn.commit()
             conn.close()
+        self._cache.invalidate("tickers:mf")
         print(f"[mf_tickers] Persisted {len(prices)} prices.")
 
     # ── Commodity Tickers ──
 
     def get_all_commodity_tickers(self):
-        with self._lock:
+        cached = self._cache.get("tickers:commodity")
+        if cached is not None:
+            return cached
+        with self._db_lock():
             conn = self._connect()
             cursor = conn.execute("SELECT name, ticker, price FROM commodity_tickers")
             result = {row["name"]: {"ticker": row["ticker"], "price": row["price"]} for row in cursor.fetchall()}
             conn.close()
+        self._cache.set("tickers:commodity", result)
         return result
 
     def upsert_commodity_ticker(self, name: str, ticker: str):
-        with self._lock:
+        with self._db_lock():
             conn = self._connect()
             conn.execute(
                 "INSERT INTO commodity_tickers (name, ticker) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET ticker = excluded.ticker",
@@ -574,11 +874,12 @@ class DbService:
             )
             conn.commit()
             conn.close()
+        self._cache.invalidate("tickers:commodity")
 
     def update_commodity_ticker_prices(self, prices: dict):
         if not prices:
             return
-        with self._lock:
+        with self._db_lock():
             conn = self._connect()
             for ticker, price in prices.items():
                 if price is not None:
@@ -588,99 +889,194 @@ class DbService:
                     )
             conn.commit()
             conn.close()
+        self._cache.invalidate("tickers:commodity")
         print(f"[commodity_tickers] Persisted {len(prices)} prices.")
 
-    def get_summary(self):
-        summary = {}
-        # Skip sub-tables that aren't standalone investment categories
-        skip = {"Forex", "P2P Repayments", "P2P Escrow"}
-        with self._lock:
+    def get_user_role(self, email):
+        """Return role string ('admin'/'user'/'guest') for email, or None if not in allowlist."""
+        try:
             conn = self._connect()
-            for sheet_name, table in SHEET_TO_TABLE.items():
-                if sheet_name in skip:
-                    continue
-                config = TABLES[table]
-                buy_col = config["buy_col"]
-                sell_col = config["sell_col"]
+            cursor = conn.execute("SELECT role FROM allowlist WHERE email = ? LIMIT 1", (email,))
+            row = cursor.fetchone()
+            conn.close()
+            if row is None:
+                return None
+            return row["role"] if hasattr(row, '__getitem__') else row[0]
+        except Exception as e:
+            print(f"[db_service] get_user_role error: {e}")
+            return None
 
-                cursor = conn.execute(f"SELECT COUNT(*) as cnt FROM {table}")
-                count = cursor.fetchone()["cnt"]
+    def update_allowlist_role(self, email, role):
+        """Update role for an existing allowlist entry."""
+        try:
+            conn = self._connect()
+            conn.execute("UPDATE allowlist SET role = ? WHERE email = ?", (role, email))
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"[db_service] update_allowlist_role error: {e}")
+            return False
 
-                total_buy = 0
-                if buy_col:
-                    buy_where = config.get("buy_where", "")
+    def remove_from_allowlist(self, email):
+        """Remove user from allowlist."""
+        try:
+            conn = self._connect()
+            cursor = conn.execute("DELETE FROM allowlist WHERE email = ?", (email,))
+            conn.commit()
+            deleted = cursor.rowcount > 0
+            conn.close()
+            return deleted
+        except Exception as e:
+            print(f"[db_service] remove_from_allowlist error: {e}")
+            return False
+
+    def get_summary(self, user_email=None, role=None):
+        if role == 'user' and user_email:
+            cache_key = f"summary:user:{user_email}"
+        else:
+            cache_key = "summary"
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        skip = {"Forex", "P2P Repayments", "P2P Escrow"}
+        queries = []  # list of (sql, params)
+        meta = []     # list of (sheet_name, qtype)
+
+        user_filter = role == 'user' and user_email
+        for sheet_name, table in SHEET_TO_TABLE.items():
+            if sheet_name in skip:
+                continue
+            config = TABLES[table]
+            buy_col = config["buy_col"]
+            sell_col = config["sell_col"]
+
+            if user_filter:
+                queries.append((f"SELECT COUNT(*) as cnt FROM {table} WHERE created_by = ?", (user_email,)))
+            else:
+                queries.append((f"SELECT COUNT(*) as cnt FROM {table}", None))
+            meta.append((sheet_name, "count"))
+
+            if buy_col:
+                buy_where = config.get("buy_where", "")
+                if user_filter:
+                    bw = f" WHERE ({buy_where}) AND created_by = ?" if buy_where else f" WHERE created_by = ?"
+                    queries.append((f"SELECT COALESCE(SUM({buy_col}), 0) as total FROM {table}{bw}", (user_email,)))
+                else:
                     bw = f" WHERE {buy_where}" if buy_where else ""
-                    cursor = conn.execute(f"SELECT COALESCE(SUM({buy_col}), 0) as total FROM {table}{bw}")
-                    total_buy = cursor.fetchone()["total"]
+                    queries.append((f"SELECT COALESCE(SUM({buy_col}), 0) as total FROM {table}{bw}", None))
+                meta.append((sheet_name, "buy"))
 
-                total_sell = 0
-                if sell_col:
-                    sell_where = config.get("sell_where", "")
+            if sell_col:
+                sell_where = config.get("sell_where", "")
+                if user_filter:
+                    sw = f" WHERE ({sell_where}) AND created_by = ?" if sell_where else f" WHERE created_by = ?"
+                    queries.append((f"SELECT COALESCE(SUM({sell_col}), 0) as total FROM {table}{sw}", (user_email,)))
+                else:
                     sw = f" WHERE {sell_where}" if sell_where else ""
-                    cursor = conn.execute(f"SELECT COALESCE(SUM({sell_col}), 0) as total FROM {table}{sw}")
-                    total_sell = cursor.fetchone()["total"]
+                    queries.append((f"SELECT COALESCE(SUM({sell_col}), 0) as total FROM {table}{sw}", None))
+                meta.append((sheet_name, "sell"))
 
-                summary[sheet_name] = {
-                    "count": count,
-                    "total_buy": round(total_buy, 2),
-                    "total_sell": round(total_sell, 2),
-                    "net": round(total_sell - total_buy, 2),
-                }
+        # P2P extra queries (repayments, pending principal, escrow balance)
+        if user_filter:
+            queries.append(("SELECT COALESCE(SUM(amount), 0) as total FROM p2p_repayments WHERE created_by = ?", (user_email,)))
+        else:
+            queries.append(("SELECT COALESCE(SUM(amount), 0) as total FROM p2p_repayments", None))
+        meta.append(("P2P", "repayments"))
+        if user_filter:
+            queries.append((
+                "SELECT COALESCE(SUM(p2p.amount - COALESCE(r.repaid, 0)), 0) as pending "
+                "FROM p2p "
+                "LEFT JOIN (SELECT lending_id, SUM(amount) as repaid FROM p2p_repayments GROUP BY lending_id) r "
+                "ON p2p.lending_id = r.lending_id "
+                "WHERE p2p.amount > COALESCE(r.repaid, 0) AND p2p.created_by = ?", (user_email,)))
+        else:
+            queries.append((
+                "SELECT COALESCE(SUM(p2p.amount - COALESCE(r.repaid, 0)), 0) as pending "
+                "FROM p2p "
+                "LEFT JOIN (SELECT lending_id, SUM(amount) as repaid FROM p2p_repayments GROUP BY lending_id) r "
+                "ON p2p.lending_id = r.lending_id "
+                "WHERE p2p.amount > COALESCE(r.repaid, 0)", None))
+        meta.append(("P2P", "pending"))
+        queries.append((
+            "SELECT COALESCE(SUM(CASE WHEN type = 'Deposit' THEN amount ELSE -amount END), 0) as balance "
+            "FROM p2p_escrow", None))
+        meta.append(("P2P", "escrow"))
 
-            # Add P2P repayments as P2P's total_sell, and compute pending
-            if "P2P" in summary:
-                cursor = conn.execute("SELECT COALESCE(SUM(amount), 0) as total FROM p2p_repayments")
-                p2p_received = cursor.fetchone()["total"]
+        conn = self._connect()
+        if hasattr(conn, "execute_pipeline"):
+            cursors = conn.execute_pipeline(queries)
+        else:
+            # Fallback for local SQLite: run queries sequentially
+            cursors = [conn.execute(sql, params or []) for sql, params in queries]
+        conn.close()
+
+        summary = {}
+        for (sheet_name, qtype), cursor in zip(meta, cursors):
+            row = cursor.fetchone()
+            if sheet_name not in summary:
+                summary[sheet_name] = {"count": 0, "total_buy": 0.0, "total_sell": 0.0, "net": 0.0}
+            if qtype == "count":
+                summary[sheet_name]["count"] = row["cnt"]
+            elif qtype == "buy":
+                summary[sheet_name]["total_buy"] = round(float(row["total"] or 0), 2)
+            elif qtype == "sell":
+                summary[sheet_name]["total_sell"] = round(float(row["total"] or 0), 2)
+            elif qtype == "repayments":
+                p2p_received = float(row["total"] or 0)
                 summary["P2P"]["total_sell"] = round(p2p_received, 2)
                 summary["P2P"]["net"] = round(p2p_received - summary["P2P"]["total_buy"], 2)
+            elif qtype == "pending":
+                summary["P2P"]["current_invested"] = round(float(row["pending"] or 0), 2)
+            elif qtype == "escrow":
+                summary["P2P"]["escrow_balance"] = round(float(row["balance"] or 0), 2)
 
-                # Pending = sum of (amount - repaid) for entries with outstanding balance
-                cursor = conn.execute("""
-                    SELECT COALESCE(SUM(p2p.amount - COALESCE(r.repaid, 0)), 0) as pending
-                    FROM p2p
-                    LEFT JOIN (SELECT lending_id, SUM(amount) as repaid FROM p2p_repayments GROUP BY lending_id) r
-                    ON p2p.lending_id = r.lending_id
-                    WHERE p2p.amount > COALESCE(r.repaid, 0)
-                """)
-                summary["P2P"]["current_invested"] = round(cursor.fetchone()["pending"], 2)
+        # Compute net for non-P2P categories
+        for sheet_name, s in summary.items():
+            if sheet_name != "P2P":
+                s["net"] = round(s["total_sell"] - s["total_buy"], 2)
 
-                # Escrow balance: Deposits are positive, everything else (Repayment, Withdrawal) is negative
-                cursor = conn.execute("""
-                    SELECT COALESCE(SUM(CASE WHEN type = 'Deposit' THEN amount ELSE -amount END), 0) as balance
-                    FROM p2p_escrow
-                """)
-                summary["P2P"]["escrow_balance"] = round(cursor.fetchone()["balance"], 2)
-
-            conn.close()
+        if role == 'user' and user_email:
+            self._cache.set(f"summary:user:{user_email}", summary)
+        else:
+            self._cache.set("summary", summary)
         return summary
 
-    def get_capital_flows_summary(self):
+    def get_capital_flows_summary(self, user_email=None, role=None):
         """Calculate total deposits and withdrawals from capital_flows table."""
-        with self._lock:
-            conn = self._connect()
-            
-            # Get total deposits
-            cursor = conn.execute("""
-                SELECT COALESCE(SUM(amount), 0) as total_deposits
-                FROM capital_flows
-                WHERE type = 'Deposit'
-            """)
-            total_deposits = cursor.fetchone()["total_deposits"]
-            
-            # Get total withdrawals
-            cursor = conn.execute("""
-                SELECT COALESCE(SUM(amount), 0) as total_withdrawals
-                FROM capital_flows
-                WHERE type = 'Withdrawal'
-            """)
-            total_withdrawals = cursor.fetchone()["total_withdrawals"]
-            
-            conn.close()
-            
-            actual_investment = total_deposits - total_withdrawals
-            
-            return {
-                "total_deposits": round(total_deposits, 2),
-                "total_withdrawals": round(total_withdrawals, 2),
-                "actual_investment": round(actual_investment, 2)
-            }
+        if role == 'user' and user_email:
+            cache_key = f"capital_flows_summary:user:{user_email}"
+        else:
+            cache_key = "capital_flows_summary"
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        conn = self._connect()
+        if role == 'user' and user_email:
+            queries = [
+                ("SELECT COALESCE(SUM(amount), 0) as total FROM capital_flows WHERE type = 'Deposit' AND created_by = ?", (user_email,)),
+                ("SELECT COALESCE(SUM(amount), 0) as total FROM capital_flows WHERE type = 'Withdrawal' AND created_by = ?", (user_email,)),
+            ]
+        else:
+            queries = [
+                ("SELECT COALESCE(SUM(amount), 0) as total FROM capital_flows WHERE type = 'Deposit'", None),
+                ("SELECT COALESCE(SUM(amount), 0) as total FROM capital_flows WHERE type = 'Withdrawal'", None),
+            ]
+        if hasattr(conn, "execute_pipeline"):
+            cursors = conn.execute_pipeline(queries)
+            total_deposits = float(cursors[0].fetchone()["total"] or 0)
+            total_withdrawals = float(cursors[1].fetchone()["total"] or 0)
+        else:
+            total_deposits = float(conn.execute(queries[0][0], queries[0][1] or []).fetchone()["total"] or 0)
+            total_withdrawals = float(conn.execute(queries[1][0], queries[1][1] or []).fetchone()["total"] or 0)
+        conn.close()
+
+        result = {
+            "total_deposits": round(total_deposits, 2),
+            "total_withdrawals": round(total_withdrawals, 2),
+            "actual_investment": round(total_deposits - total_withdrawals, 2)
+        }
+        self._cache.set(cache_key, result)
+        return result

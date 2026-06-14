@@ -130,6 +130,7 @@
     </div>
     <input type="text" class="search-input" placeholder="Search by name, platform, status..." [(ngModel)]="searchQuery" (input)="onSearch()">
     <button class="btn btn-secondary btn-sm" (click)="showEscrowPanel = true" title="Escrow Account">💰 Escrow</button>
+    <button *ngIf="canWrite" class="btn btn-secondary btn-sm import-stmt-btn" (click)="openImportModal()" title="Import LenDen Statement">📥 Import Statement</button>
     <button class="btn btn-secondary btn-sm" (click)="exportLendingsCsv()" title="Export lendings to CSV">⬇ Export CSV</button>
     <span class="entry-count">Showing {{ entries.length }} of {{ allEntries.length }} entries</span>
   </div>
@@ -147,6 +148,10 @@
           <div class="form-group">
             <label>Platform *</label>
             <input type="text" [(ngModel)]="form.platform" name="platform" placeholder="e.g. Faircent, LenDenClub" required>
+          </div>
+          <div class="form-group">
+            <label>Loan ID *</label>
+            <input type="text" [(ngModel)]="form.loan_id" name="loan_id" placeholder="e.g. LOA-XXXXXXXX" required>
           </div>
           <div class="form-group">
             <label>Name *</label>
@@ -315,8 +320,10 @@
             </td>
             <td class="actions">
               <button class="btn-icon" (click)="openRepaymentForm(entry.lending_id)" title="Add Repayment">💰</button>
-              <button class="btn-icon edit" (click)="openEditForm(entry)" title="Edit">✏️</button>
-              <button class="btn-icon delete" (click)="deleteEntry(entry.id!)" [disabled]="deleting" title="Delete">🗑️</button>
+              <ng-container *ngIf="canWrite">
+                <button class="btn-icon edit" (click)="openEditForm(entry)" title="Edit">✏️</button>
+                <button class="btn-icon delete" (click)="deleteEntry(entry.id!)" [disabled]="deleting" title="Delete">🗑️</button>
+              </ng-container>
             </td>
           </tr>
           <!-- Expanded repayment rows -->
@@ -351,8 +358,10 @@
                       <td class="number">{{ getRepaymentAnnualizedRate(entry, i) != null ? (getRepaymentAnnualizedRate(entry, i)! | number:'1.2-2') + '%' : '-' }}</td>
                       <td class="remarks">{{ rep.remarks }}</td>
                       <td class="actions">
-                        <button class="btn-icon edit" (click)="openEditRepaymentForm(rep)" title="Edit">✏️</button>
-                        <button class="btn-icon delete" (click)="deleteRepayment(rep.id!)" [disabled]="deletingRepayment" title="Delete">🗑️</button>
+                        <ng-container *ngIf="canWrite">
+                          <button class="btn-icon edit" (click)="openEditRepaymentForm(rep)" title="Edit">✏️</button>
+                          <button class="btn-icon delete" (click)="deleteRepayment(rep.id!)" [disabled]="deletingRepayment" title="Delete">🗑️</button>
+                        </ng-container>
                       </td>
                     </tr>
                   </tbody>
@@ -389,8 +398,10 @@
         </div>
         <div class="card-actions">
           <button class="btn-icon" (click)="openRepaymentForm(entry.lending_id)" title="Add Repayment">💰</button>
-          <button class="btn-icon edit" (click)="openEditForm(entry)" title="Edit">✏️</button>
-          <button class="btn-icon delete" (click)="deleteEntry(entry.id!)" [disabled]="deleting" title="Delete">🗑️</button>
+          <ng-container *ngIf="canWrite">
+            <button class="btn-icon edit" (click)="openEditForm(entry)" title="Edit">✏️</button>
+            <button class="btn-icon delete" (click)="deleteEntry(entry.id!)" [disabled]="deleting" title="Delete">🗑️</button>
+          </ng-container>
         </div>
         <!-- Mobile repayment toggle -->
         <div class="card-repayments" *ngIf="getRepayments(entry.lending_id).length > 0">
@@ -454,8 +465,10 @@
           <td>{{ txn.platform }}</td>
           <td class="remarks">{{ txn.remarks }}</td>
           <td class="actions">
-            <button class="btn-icon edit" (click)="openEditEscrowForm(txn)" title="Edit">✏️</button>
-            <button class="btn-icon delete" (click)="deleteEscrow(txn.id!)" [disabled]="deletingEscrow" title="Delete">🗑️</button>
+            <ng-container *ngIf="canWrite">
+              <button class="btn-icon edit" (click)="openEditEscrowForm(txn)" title="Edit">✏️</button>
+              <button class="btn-icon delete" (click)="deleteEscrow(txn.id!)" [disabled]="deletingEscrow" title="Delete">🗑️</button>
+            </ng-container>
           </td>
         </tr>
       </tbody>
@@ -500,6 +513,121 @@
           <button type="submit" class="btn btn-primary" [disabled]="submittingEscrow">{{ submittingEscrow ? 'Saving...' : editingEscrowId ? 'Update' : 'Add' }}</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- LenDen Statement Import Modal -->
+  <div class="form-overlay" *ngIf="showImportModal" (click)="closeImportModal()">
+    <div class="form-modal import-modal" (click)="$event.stopPropagation()">
+      <h2>📥 Import LenDen Statement</h2>
+
+      <!-- Step 1: File Upload -->
+      <div class="import-step" *ngIf="!importParseResult">
+        <p class="import-hint">Upload the Excel statement downloaded from LenDen. Loans are matched by <strong>Loan ID</strong> — make sure each lending entry has the correct Loan ID set before parsing.</p>
+        <div class="import-warnings" *ngIf="entriesMissingLoanId > 0" style="border-color:#6366f1;background:rgba(99,102,241,0.08);margin-bottom:1rem">
+          <div class="import-warning-title" style="color:#6366f1">ℹ️ {{ entriesMissingLoanId }} lending entr{{ entriesMissingLoanId === 1 ? 'y' : 'ies' }} missing Loan ID</div>
+          <div class="import-warning-row">Edit each lending and add its Loan ID before importing, or unmatched warnings will appear.</div>
+        </div>
+        <label class="file-upload-zone" [class.has-file]="importSelectedFile">
+          <input type="file" accept=".xlsx" (change)="onImportFileChange($event)" style="display:none">
+          <span class="file-upload-icon">{{ importSelectedFile ? '📄' : '📂' }}</span>
+          <span class="file-upload-text">{{ importSelectedFile ? importSelectedFile.name : 'Choose .xlsx file' }}</span>
+          <span class="file-upload-sub">{{ importSelectedFile ? 'Click to change file' : 'Click to browse' }}</span>
+        </label>
+        <div class="import-error" *ngIf="importError">⚠️ {{ importError }}</div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" (click)="closeImportModal()">Cancel</button>
+          <button type="button" class="btn btn-primary" [disabled]="!importSelectedFile || importParsing" (click)="parseStatement()">
+            {{ importParsing ? 'Parsing...' : 'Parse Statement' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- Step 2: Review & Submit -->
+      <div class="import-step" *ngIf="importParseResult">
+        <div class="import-summary">
+          <span>Statement period: <strong>{{ importParseResult.from_date }}</strong> → <strong>{{ importParseResult.to_date }}</strong></span>
+        </div>
+
+        <!-- Missing loan_id notice -->
+        <div class="import-warnings" *ngIf="entriesMissingLoanId > 0" style="border-color:#6366f1;background:rgba(99,102,241,0.08)">
+          <div class="import-warning-title" style="color:#6366f1">ℹ️ {{ entriesMissingLoanId }} lending entr{{ entriesMissingLoanId === 1 ? 'y' : 'ies' }} missing Loan ID</div>
+          <div class="import-warning-row">These entries cannot be matched. Edit each lending and add its Loan ID to enable matching.</div>
+        </div>
+
+        <!-- Unmatched warnings -->
+        <div class="import-warnings" *ngIf="importUnmatchedWarnings.length > 0">
+          <div class="import-warning-title">⚠️ Unmatched Loans ({{ importUnmatchedWarnings.length }})</div>
+          <div class="import-warning-row" *ngFor="let w of importUnmatchedWarnings">
+            <strong>{{ w.loan_id }}</strong> — {{ w.message }}
+          </div>
+        </div>
+
+        <!-- Suggested Postings Table -->
+        <div *ngIf="importParseResult.suggested.length > 0; else noSuggested">
+          <div class="import-table-header">
+            <span class="import-count">{{ importSelectedRows.length }} of {{ importParseResult.suggested.length }} selected</span>
+            <label class="import-select-all">
+              <input type="checkbox" [checked]="importSelectedRows.length === importParseResult.suggested.length" (change)="toggleAllImportRows($event)"> Select All
+            </label>
+          </div>
+          <div class="import-table-wrap">
+            <table class="import-table">
+              <thead>
+                <tr>
+                  <th></th>
+                  <th>Loan ID</th>
+                  <th>Name</th>
+                  <th class="num">Stmt Principal</th>
+                  <th class="num">Stmt Interest</th>
+                  <th class="num">Stmt Fee</th>
+                  <th class="num">Already Posted</th>
+                  <th class="num">Δ Principal</th>
+                  <th class="num">Δ Interest</th>
+                  <th class="num">Δ Fee</th>
+                  <th class="num" title="Delta Principal + Interest (platform fee flows separately)">Δ P+I</th>
+                  <th>Status</th>
+                  <th>Remarks</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let row of importParseResult.suggested" [class.import-row-selected]="row.selected">
+                  <td><input type="checkbox" [(ngModel)]="row.selected"></td>
+                  <td class="loan-id-cell">{{ row.loan_id }}</td>
+                  <td>{{ row.name }}</td>
+                  <td class="num">₹{{ row.stmt_principal | number:'1.2-2' }}</td>
+                  <td class="num">₹{{ row.stmt_interest | number:'1.2-2' }}</td>
+                  <td class="num">₹{{ row.stmt_platform_fee | number:'1.2-2' }}</td>
+                  <td class="num muted">₹{{ row.already_posted_principal | number:'1.2-2' }} P / ₹{{ row.already_posted_interest | number:'1.2-2' }} I</td>
+                  <td class="num delta">₹{{ row.delta_principal | number:'1.2-2' }}</td>
+                  <td class="num delta">₹{{ row.delta_interest | number:'1.2-2' }}</td>
+                  <td class="num delta">₹{{ row.delta_platform_fee | number:'1.2-2' }}</td>
+                  <td class="num delta-total">₹{{ row.delta_total | number:'1.2-2' }}</td>
+                  <td>
+                    <span *ngIf="row.new_status" class="status-change-badge">{{ row.old_status }} → {{ row.new_status }}</span>
+                    <span *ngIf="!row.new_status" class="muted">—</span>
+                  </td>
+                  <td><input type="text" class="import-remarks-input" [(ngModel)]="row.remarks"></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <ng-template #noSuggested>
+          <div class="import-empty">✅ All loans in this statement are already fully posted. Nothing to import.</div>
+        </ng-template>
+
+        <div class="import-error" *ngIf="importError">⚠️ {{ importError }}</div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" (click)="importParseResult = null">← Back</button>
+          <button type="button" class="btn btn-secondary" (click)="closeImportModal()">Cancel</button>
+          <button type="button" class="btn btn-primary"
+            [disabled]="importSelectedRows.length === 0 || importSubmitting"
+            (click)="submitImport()">
+            {{ importSubmitting ? 'Posting...' : 'Post ' + importSelectedRows.length + ' Repayment(s)' }}
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
