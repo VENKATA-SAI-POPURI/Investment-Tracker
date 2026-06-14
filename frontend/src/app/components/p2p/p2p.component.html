@@ -314,9 +314,9 @@
             <td>{{ entry.maturity_date }}</td>
             <td>{{ getNextInstallmentDate(entry) }}</td>
             <td>
-              <span class="badge" [class.buy]="entry.status === 'Active'" [class.sell]="entry.status === 'Defaulted'" [class.completed]="entry.status === 'Closed'">{{ entry.status }}</span>
+              <span class="badge" [class.buy]="entry.status === 'Active' && !isAutoDefaulted(entry)" [class.sell]="entry.status === 'Defaulted' || isAutoDefaulted(entry)" [class.completed]="entry.status === 'Closed'">{{ isAutoDefaulted(entry) ? 'Defaulted' : entry.status }}</span>
               <span class="badge foreclosed" *ngIf="isForeclosed(entry)">Foreclosed</span>
-              <span class="badge overdue-badge" *ngIf="isOverdue(entry)">⚠ Overdue</span>
+              <span class="badge overdue-badge" *ngIf="isOverdue(entry) && !isAutoDefaulted(entry)">⚠ Overdue</span>
             </td>
             <td class="actions">
               <button class="btn-icon" (click)="openRepaymentForm(entry.lending_id)" title="Add Repayment">💰</button>
@@ -382,7 +382,7 @@
         <div class="card-header">
           <strong>{{ entry.name }}</strong>
           <span class="badge platform">{{ entry.platform }}</span>
-          <span class="badge" [class.buy]="entry.status === 'Active'" [class.sell]="entry.status === 'Defaulted'" [class.completed]="entry.status === 'Closed'">{{ entry.status }}</span>
+          <span class="badge" [class.buy]="entry.status === 'Active' && !isAutoDefaulted(entry)" [class.sell]="entry.status === 'Defaulted' || isAutoDefaulted(entry)" [class.completed]="entry.status === 'Closed'">{{ isAutoDefaulted(entry) ? 'Defaulted' : entry.status }}</span>
         </div>
         <div class="card-body">
           <div class="card-row"><span>Date:</span><span>{{ entry.date }}</span></div>

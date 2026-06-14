@@ -196,7 +196,7 @@
                 {{ h.commodity }}
               </span>
             </td>
-            <td class="name-cell"><strong>{{ h.name }}</strong></td>
+            <td class="name-cell" [class.name-neg]="(getUnrealizedPnL(h)?.pnl ?? 0) < 0" [class.name-pos]="(getUnrealizedPnL(h)?.pnl ?? 0) > 0"><strong>{{ h.name }}</strong></td>
             <td class="number">{{ h.netQty | number:'1.0-5' }}</td>
             <td class="number bucket-cell lt6m-cell">{{ h.lt6m > 0 ? (h.lt6m | number:'1.0-5') : '-' }}</td>
             <td class="number bucket-cell lt1y-cell">{{ h.lt1y > 0 ? (h.lt1y | number:'1.0-5') : '-' }}</td>

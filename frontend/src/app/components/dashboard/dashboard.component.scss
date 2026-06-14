@@ -588,6 +588,223 @@ app-dashboard.animations-done {
   margin-left: 6px;
 }
 
+// ── Realized P&L Chart ──
+
+.pnl-chart-card {
+  .insights-header {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+}
+
+.drill-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.drill-back-btn {
+  background: rgba(99, 102, 241, 0.15);
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  color: #818cf8;
+  border-radius: 6px;
+  padding: 2px 10px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: background 0.18s;
+  &:hover { background: rgba(99, 102, 241, 0.28); }
+}
+
+.pnl-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+  }
+  .legend-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+}
+
+.pnl-chart-body {
+  flex: 1;
+  min-height: 240px;
+  overflow-x: auto;
+  padding-top: 1.5rem; // room for data labels above bars
+}
+
+.pnl-chart-bars {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 12px;
+  height: 200px;
+  padding: 0 8px;
+  position: relative;
+}
+
+.pnl-bar-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 72px;
+  max-width: 96px;
+  flex-shrink: 0;
+  height: 100%;
+  position: relative;
+  gap: 0;
+
+  &.drillable {
+    cursor: pointer;
+    border-radius: 6px;
+    &:hover { background: rgba(255,255,255,0.04); }
+  }
+}
+
+.pnl-stack {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 4px 4px 0 0;
+
+  &.positive-stack {
+    flex: 1;
+    justify-content: flex-end;
+    min-height: 0;
+  }
+  &.negative-stack {
+    flex: 1;
+    justify-content: flex-start;
+    min-height: 0;
+  }
+}
+
+.pnl-seg {
+  width: 100%;
+  min-height: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  transition: opacity 0.15s;
+  &:hover { opacity: 0.8; }
+  &.neg-seg { opacity: 0.75; }
+}
+
+.pnl-baseline {
+  width: 100%;
+  height: 2px;
+  background: rgba(255,255,255,0.15);
+  flex-shrink: 0;
+}
+
+.pnl-col-label {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.pnl-data-label {
+  position: absolute;
+  left: 50%;
+  top: -1.4rem;
+  transform: translateX(-50%);
+  text-align: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  pointer-events: none;
+  white-space: nowrap;
+  line-height: 1.2;
+  &.pnl-pos { color: #4ade80; }
+  &.pnl-neg { color: #f87171; }
+}
+
+.seg-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  font-size: 0.58rem;
+  font-weight: 600;
+  color: rgba(255,255,255,0.88);
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pnl-empty {
+  margin: auto;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+@media (max-width: 600px) {
+  .pnl-chart-card {
+    .insights-header {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.4rem;
+      h3 { font-size: 0.9rem; }
+    }
+  }
+
+  .drill-breadcrumb {
+    font-size: 0.72rem;
+    span { display: none; } // hide "FY27 — Monthly" text, keep button
+  }
+
+  .pnl-chart-legend {
+    gap: 0.35rem 0.6rem;
+    .legend-item { font-size: 0.65rem; }
+    .legend-dot  { width: 7px; height: 7px; }
+  }
+
+  .pnl-chart-body {
+    min-height: 200px;
+    padding-top: 1.25rem;
+  }
+
+  .pnl-chart-bars {
+    justify-content: flex-start; // let it scroll for monthly view
+    gap: 6px;
+    height: 170px;
+  }
+
+  .pnl-bar-col {
+    width: 48px;
+    max-width: 48px;
+  }
+
+  .pnl-data-label {
+    font-size: 0.6rem;
+    top: -1.15rem;
+  }
+
+  .pnl-col-label {
+    font-size: 0.6rem;
+  }
+
+  .seg-label {
+    font-size: 0.5rem;
+  }
+}
+
 // ── Best / Worst Performer Strip ──
 
 .performer-strip {

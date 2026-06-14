@@ -386,6 +386,27 @@ export class P2PComponent implements OnInit, OnDestroy {
     return new Date(nextDate) < new Date();
   }
 
+  getOverdueDays(entry: P2PEntry): number {
+    const nextDate = this.getNextInstallmentDate(entry);
+    if (nextDate === '-') return 0;
+    const diff = new Date().getTime() - new Date(nextDate).getTime();
+    return Math.max(0, Math.floor(diff / (1000 * 60 * 60 * 24)));
+  }
+
+  autoUpdateDefaultedStatuses(): void {
+    const toDefault = this.allEntries.filter(e => this.isAutoDefaulted(e));
+    toDefault.forEach(e => {
+      this.investmentService.updateP2P(e.id!, { ...e, status: 'Defaulted' }).subscribe({
+        next: () => { e.status = 'Defaulted'; },
+        error: () => {}
+      });
+    });
+  }
+
+  isAutoDefaulted(entry: P2PEntry): boolean {
+    return entry.status === 'Active' && this.isOverdue(entry) && this.getOverdueDays(entry) > 90;
+  }
+
   get overdueCount(): number {
     return this.allEntries.filter(e => this.isOverdue(e)).length;
   }
@@ -614,15 +635,33 @@ export class P2PComponent implements OnInit, OnDestroy {
     const targetDate = new Date(now.getFullYear(), now.getMonth() + offset, 1);
     const targetMonth = targetDate.getMonth();
     const targetYear = targetDate.getFullYear();
+    const targetStart = targetDate.getTime();
 
     return this.allEntries.filter(e => e.status === 'Active').reduce((sum, e) => {
       if (!e.date || !e.tenure) return sum;
-      const start = new Date(e.date);
       const pp = this.getPrincipalPerInstallment(e);
+
+      // Sum principal already received before the target month started
+      const reps = this.getRepayments(e.lending_id).slice().sort((a, b) => a.date < b.date ? -1 : 1);
+      let principalBeforeMonth = 0;
+      reps.forEach((r, idx) => {
+        if (new Date(r.date).getTime() < targetStart) {
+          principalBeforeMonth += this.getRepaymentPrincipal(r, e, idx);
+        }
+      });
+      const completedInstallments = Math.floor(Math.round(principalBeforeMonth / pp * 100) / 100);
+      const excessPrincipal = principalBeforeMonth - completedInstallments * pp;
 
       for (let i = 1; i <= e.tenure; i++) {
         const instDate = this._getInstallmentDate(e, i);
         if (instDate.getMonth() === targetMonth && instDate.getFullYear() === targetYear) {
+          // Already fully paid early
+          if (completedInstallments >= i) return sum;
+          // This is the next due installment — reduce by any excess already paid
+          if (i === completedInstallments + 1) {
+            const remaining = Math.max(0, pp - excessPrincipal);
+            return sum + remaining;
+          }
           return sum + pp;
         }
       }
@@ -688,7 +727,7 @@ export class P2PComponent implements OnInit, OnDestroy {
           next: (rep) => {
             this.repayments = rep;
             this.investmentService.getP2PEscrow().subscribe({
-              next: (esc) => { this.escrowTransactions = esc; this.applyFilter(); this.loading = false; onComplete?.(); },
+              next: (esc) => { this.escrowTransactions = esc; this.applyFilter(); this.loading = false; this.autoUpdateDefaultedStatuses(); onComplete?.(); },
               error: () => { this.escrowTransactions = []; this.applyFilter(); this.loading = false; onComplete?.(); }
             });
           },

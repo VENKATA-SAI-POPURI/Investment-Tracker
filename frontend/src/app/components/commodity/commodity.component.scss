@@ -1,5 +1,13 @@
 @use '../shared';
 
+.name-neg {
+  color: #f87171;
+}
+
+.name-pos {
+  color: #4ade80;
+}
+
 :host {
   display: flex;
   flex-direction: column;

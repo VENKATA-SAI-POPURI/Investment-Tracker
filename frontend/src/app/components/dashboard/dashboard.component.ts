@@ -547,6 +547,18 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return Math.round((this.totalInvestment - currentInvForPnL) * 100) / 100;
   }
 
+  get saleOnlyPnL(): number {
+    return Math.round((this.totalSaleValue - this.costOfSold) * 100) / 100;
+  }
+
+  get realizedTooltip(): string {
+    const fmt = (n: number) => (n >= 0 ? '+' : '-') + '₹' + Math.round(Math.abs(n)).toLocaleString('en-IN');
+    const parts = [`Sale P&L: ${fmt(this.saleOnlyPnL)}`];
+    if (this.forexImpact !== 0) parts.push(`Forex P&L: ${fmt(this.forexImpact)}`);
+    if (this.totalDividendIncome > 0) parts.push(`Dividend: +₹${Math.round(this.totalDividendIncome).toLocaleString('en-IN')}`);
+    return parts.join('  ·  ');
+  }
+
   get netPnLPct(): number {
     const currentInvForPnL = this.currentInvestment - this.forexWalletBalanceINR;
     const exitedValue = this.totalInvestment - currentInvForPnL;
@@ -1609,6 +1621,197 @@ export class DashboardComponent implements OnInit, OnDestroy {
     });
     const absTotal = [...map.values()].reduce((s, v) => s + Math.abs(v.val), 0);
     return [...map.entries()].filter(([, v]) => v.val !== 0).sort((a, b) => Math.abs(b[1].val) - Math.abs(a[1].val)).map(([name, v]) => ({ name, commodity: v.commodity, value: Math.round(v.val * 100) / 100, pct: absTotal > 0 ? Math.round((Math.abs(v.val) / absTotal) * 100) : 0, color: colors[v.commodity] || '#94a3b8' }));
+  }
+
+  // ── Realized P&L Chart ──
+
+  pnlChartDrillFY: string | null = null;  // null = FY view, 'FY26' = monthly view
+
+  readonly pnlCategories = [
+    { key: 'Equity India', color: '#6366f1', icon: '📈' },
+    { key: 'Equity USA',   color: '#3b82f6', icon: '🌐' },
+    { key: 'Mutual Funds', color: '#10b981', icon: '📊' },
+    { key: 'Commodity',    color: '#f59e0b', icon: '🥇' },
+    { key: 'P2P',          color: '#a855f7', icon: '🤝' },
+    { key: 'Fixed Deposits', color: '#14b8a6', icon: '🏦' },
+    { key: 'Forex',        color: '#f43f5e', icon: '💱' },
+  ];
+
+  /** FIFO realized P&L events: one entry per sell transaction with its date and realized profit/loss */
+  private get realizedPnLEvents(): { date: string; category: string; pnl: number }[] {
+    const r = (v: number) => Math.round(v * 100) / 100;
+    const events: { date: string; category: string; pnl: number }[] = [];
+
+    // Equity: same-day netting + FIFO per stock (mirrors equityFifoHoldings logic)
+    const eqBuysByNameDate = new Map<string, Map<string, { qty: number; value: number }>>();
+    const eqSellsByNameDate = new Map<string, Map<string, { qty: number; value: number }>>();
+    const eqMarket = new Map<string, string>();
+    for (const e of this.equityData) {
+      eqMarket.set(e.name, e.market);
+      if (e.buy_sell === 'Buy') {
+        if (!eqBuysByNameDate.has(e.name)) eqBuysByNameDate.set(e.name, new Map());
+        const dm = eqBuysByNameDate.get(e.name)!;
+        const prev = dm.get(e.date) || { qty: 0, value: 0 };
+        dm.set(e.date, { qty: prev.qty + (e.quantity || 0), value: prev.value + (e.value || 0) });
+      } else if (e.buy_sell === 'Sell') {
+        if (!eqSellsByNameDate.has(e.name)) eqSellsByNameDate.set(e.name, new Map());
+        const dm = eqSellsByNameDate.get(e.name)!;
+        const prev = dm.get(e.date) || { qty: 0, value: 0 };
+        dm.set(e.date, { qty: prev.qty + (e.quantity || 0), value: prev.value + (e.value || 0) });
+      }
+    }
+    for (const [name, buyDateMap] of eqBuysByNameDate) {
+      const cat = eqMarket.get(name) === 'USA' ? 'Equity USA' : 'Equity India';
+      // Mutable copies for same-day netting
+      const buyMap = new Map<string, { qty: number; value: number }>();
+      for (const [d, v] of buyDateMap) buyMap.set(d, { ...v });
+      const sellMap = new Map<string, { qty: number; value: number }>();
+      for (const [d, v] of (eqSellsByNameDate.get(name) || new Map())) sellMap.set(d, { ...v });
+      // Same-day netting: sells cancel out same-day buys first
+      for (const [date, sell] of sellMap) {
+        const bd = buyMap.get(date);
+        if (bd && bd.qty > 0 && sell.qty > 0) {
+          const netted = Math.min(bd.qty, sell.qty);
+          const sellFrac = sell.qty > 0 ? netted / sell.qty : 0;
+          const buyFrac  = bd.qty  > 0 ? netted / bd.qty  : 0;
+          const sameDayPnL = r(sell.value * sellFrac - bd.value * buyFrac);
+          if (sameDayPnL !== 0) events.push({ date, category: cat, pnl: sameDayPnL });
+          buyMap.set(date, { qty: bd.qty - netted, value: bd.value * (1 - buyFrac) });
+          sellMap.set(date, { qty: sell.qty - netted, value: sell.value * (1 - sellFrac) });
+        }
+      }
+      // FIFO on remaining lots (oldest-first) against remaining sells (oldest-first)
+      const lots = [...buyMap.entries()]
+        .filter(([, bd]) => bd.qty > 0)
+        .map(([date, bd]) => ({ date, qty: bd.qty, value: bd.value }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+      const remainingSells = [...sellMap.entries()]
+        .filter(([, sd]) => sd.qty > 0)
+        .map(([date, sd]) => ({ date, qty: sd.qty, value: sd.value }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+      for (const sell of remainingSells) {
+        let remQty = sell.qty;
+        let cost = 0;
+        for (const lot of lots) {
+          if (remQty <= 0 || lot.qty <= 0) continue;
+          const take = Math.min(remQty, lot.qty);
+          const cpu = lot.qty > 0 ? lot.value / lot.qty : 0;
+          cost += take * cpu;
+          lot.qty  -= take;
+          lot.value -= take * cpu;
+          remQty -= take;
+        }
+        events.push({ date: sell.date, category: cat, pnl: r(sell.value - cost) });
+      }
+    }
+
+    // Mutual Funds: FIFO per fund
+    const mfByName = new Map<string, { buys: { date: string; qty: number; value: number }[]; sells: { date: string; qty: number; value: number }[] }>();
+    for (const e of this.mfData) {
+      if (!mfByName.has(e.name)) mfByName.set(e.name, { buys: [], sells: [] });
+      const g = mfByName.get(e.name)!;
+      if ((e.buy_quantity || 0) > 0) g.buys.push({ date: e.date || '', qty: e.buy_quantity || 0, value: e.buy_value || 0 });
+      if ((e.sell_quantity || 0) > 0) g.sells.push({ date: e.date || '', qty: e.sell_quantity || 0, value: e.sell_value || 0 });
+    }
+    for (const [, { buys, sells }] of mfByName) {
+      const lots = [...buys].sort((a, b) => a.date.localeCompare(b.date)).map(b => ({ ...b }));
+      for (const sell of [...sells].sort((a, b) => a.date.localeCompare(b.date))) {
+        let remQty = sell.qty; let cost = 0;
+        for (const lot of lots) {
+          if (remQty <= 0 || lot.qty <= 0) continue;
+          const take = Math.min(remQty, lot.qty); const cpu = lot.qty > 0 ? lot.value / lot.qty : 0;
+          cost += take * cpu; lot.qty -= take; lot.value -= take * cpu; remQty -= take;
+        }
+        events.push({ date: sell.date, category: 'Mutual Funds', pnl: r(sell.value - cost) });
+      }
+    }
+
+    // Commodity: FIFO per commodity
+    const cmdByName = new Map<string, { buys: { date: string; qty: number; value: number }[]; sells: { date: string; qty: number; value: number }[] }>();
+    for (const e of this.commodityData) {
+      if (!cmdByName.has(e.name)) cmdByName.set(e.name, { buys: [], sells: [] });
+      const g = cmdByName.get(e.name)!;
+      if ((e.buy_quantity || 0) > 0) g.buys.push({ date: e.date || '', qty: e.buy_quantity || 0, value: e.buy_value || 0 });
+      if ((e.sell_quantity || 0) > 0) g.sells.push({ date: e.date || '', qty: e.sell_quantity || 0, value: e.sell_value || 0 });
+    }
+    for (const [, { buys, sells }] of cmdByName) {
+      const lots = [...buys].sort((a, b) => a.date.localeCompare(b.date)).map(b => ({ ...b }));
+      for (const sell of [...sells].sort((a, b) => a.date.localeCompare(b.date))) {
+        let remQty = sell.qty; let cost = 0;
+        for (const lot of lots) {
+          if (remQty <= 0 || lot.qty <= 0) continue;
+          const take = Math.min(remQty, lot.qty); const cpu = lot.qty > 0 ? lot.value / lot.qty : 0;
+          cost += take * cpu; lot.qty -= take; lot.value -= take * cpu; remQty -= take;
+        }
+        events.push({ date: sell.date, category: 'Commodity', pnl: r(sell.value - cost) });
+      }
+    }
+
+    // P2P: interest income by repayment date
+    for (const rp of this.p2pRepayments) {
+      if ((rp.interest || 0) !== 0) events.push({ date: rp.date, category: 'P2P', pnl: rp.interest || 0 });
+    }
+
+    // Fixed Deposits: gain at maturity
+    for (const fd of this.fdData) {
+      if ((fd.return_value || 0) > 0) {
+        events.push({ date: fd.maturity_date || fd.date, category: 'Fixed Deposits', pnl: r((fd.return_value || 0) - (fd.fd_value || 0)) });
+      }
+    }
+
+    // Forex: per-withdrawal impact = actual INR received - (USD withdrawn * avg deposit rate)
+    const avgDepRate = (() => {
+      const deps = this.forexData.filter(e => e.type === 'Deposit' && (e.rate || 0) > 0);
+      return deps.length > 0 ? deps.reduce((s, e) => s + (e.rate || 0), 0) / deps.length : 0;
+    })();
+    if (avgDepRate > 0) {
+      for (const fw of this.forexData.filter(e => e.type === 'Withdrawal')) {
+        const impact = r((fw.inr_amount || 0) - (fw.usd_amount || 0) * avgDepRate);
+        if (impact !== 0) events.push({ date: fw.date, category: 'Forex', pnl: impact });
+      }
+    }
+
+    return events;
+  }
+
+  /** Build [{period, segments: [{cat, value, color}], total}] for the chart */
+  get pnlChartData(): { period: string; label: string; segments: { cat: string; value: number; color: string; icon: string }[]; total: number; positiveH: number; negativeH: number }[] {
+    const r = (v: number) => Math.round(v * 100) / 100;
+    const events = this.realizedPnLEvents;
+
+    const catPnL = (dateFilter: (d: string) => boolean): { cat: string; value: number; color: string; icon: string }[] =>
+      this.pnlCategories.map(c => {
+        const val = r(events.filter(ev => ev.category === c.key && dateFilter(ev.date)).reduce((s, ev) => s + ev.pnl, 0));
+        return { cat: c.key, value: val, color: c.color, icon: c.icon };
+      }).filter(s => s.value !== 0);
+
+    if (this.pnlChartDrillFY) {
+      // Monthly view: Apr to Mar for the selected FY
+      const fy = this.pnlChartDrillFY;
+      const fyYear = 2000 + parseInt(fy.replace('FY', ''), 10);
+      const months = ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar'];
+      return months.map((mon, idx) => {
+        const calMonth = (3 + idx) % 12; // 0-indexed: Apr=3, Jan=0
+        const calYear  = idx < 9 ? fyYear - 1 : fyYear;
+        const segs = catPnL(d => { const dt = new Date(d); return !isNaN(dt.getTime()) && dt.getMonth() === calMonth && dt.getFullYear() === calYear; });
+        const pos = segs.filter(s => s.value > 0).reduce((s, x) => s + x.value, 0);
+        const neg = segs.filter(s => s.value < 0).reduce((s, x) => s + x.value, 0);
+        return { period: `${mon} ${calYear}`, label: mon, segments: segs, total: r(pos + neg), positiveH: pos, negativeH: neg };
+      });
+    } else {
+      // Yearly FY view — derive FYs from sell/maturity event dates only
+      const fys = [...new Set(events.map(ev => this.dateToFY(ev.date)).filter(f => f !== 'Unknown'))].sort();
+      return fys.map(fy => {
+        const segs = catPnL(d => this.dateToFY(d) === fy);
+        const pos = segs.filter(s => s.value > 0).reduce((s, x) => s + x.value, 0);
+        const neg = segs.filter(s => s.value < 0).reduce((s, x) => s + x.value, 0);
+        return { period: fy, label: fy, segments: segs, total: r(pos + neg), positiveH: pos, negativeH: neg };
+      });
+    }
+  }
+
+  get pnlChartMaxAbs(): number {
+    return Math.max(...this.pnlChartData.map(d => Math.max(d.positiveH, Math.abs(d.negativeH))), 1);
   }
 
   // ── P2P Analysis ──

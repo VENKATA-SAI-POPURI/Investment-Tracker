@@ -100,8 +100,8 @@
           <div class="kpi-sub" *ngIf="totalSaleValue > 0">
             Cost ₹{{ costOfSold | number:'1.2-2' }}
             &nbsp;&middot;&nbsp;
-            <span [class.pnl-positive]="netPnL >= 0" [class.pnl-negative]="netPnL < 0">
-              {{ netPnL >= 0 ? '+' : '-' }}₹{{ (netPnL >= 0 ? netPnL : -netPnL) | number:'1.2-2' }}
+            <span [class.pnl-positive]="saleOnlyPnL >= 0" [class.pnl-negative]="saleOnlyPnL < 0">
+              {{ saleOnlyPnL >= 0 ? '+' : '-' }}₹{{ (saleOnlyPnL >= 0 ? saleOnlyPnL : -saleOnlyPnL) | number:'1.2-2' }}
             </span>
           </div>
         </div>
@@ -110,7 +110,7 @@
         <div class="kpi-icon">{{ (netPnL + totalUnrealizedPnL) >= 0 ? '📈' : '📉' }}</div>
         <div class="kpi-content">
           <div class="kpi-label">Net P&amp;L</div>
-          <div class="kpi-sub-row">
+          <div class="kpi-sub-row" [title]="realizedTooltip" style="cursor:default">
             <span class="kpi-sub-label">Realized</span>
             <span class="kpi-sub-value" [class.pnl-positive]="netPnL >= 0" [class.pnl-negative]="netPnL < 0">
               {{ netPnL >= 0 ? '+' : '-' }}₹{{ (netPnL >= 0 ? netPnL : -netPnL) | number:'1.0-0' }}
@@ -298,6 +298,63 @@
               r="1.4" fill="#10b981"
               [attr.title]="'₹' + (d.value | number:'1.0-0')"/>
           </svg>
+        </div>
+      </div>
+
+      <!-- Realized P&L by Category Chart (FY / Monthly drill-down) -->
+      <div class="insights-card pnl-chart-card" style="grid-column: 1 / -1;">
+        <div class="insights-header">
+          <div style="display:flex;align-items:center;gap:0.75rem;">
+            <h3>📊 Realized P&amp;L by Category</h3>
+            <span *ngIf="pnlChartDrillFY" class="drill-breadcrumb">
+              <button class="drill-back-btn" (click)="pnlChartDrillFY = null">← All FYs</button>
+              <span>{{ pnlChartDrillFY }} — Monthly</span>
+            </span>
+          </div>
+          <div class="pnl-chart-legend">
+            <span class="legend-item" *ngFor="let c of pnlCategories">
+              <span class="legend-dot" [style.background]="c.color"></span> {{ c.icon }} {{ c.key }}
+            </span>
+          </div>
+        </div>
+        <div class="pnl-chart-body">
+          <div class="pnl-chart-bars">
+            <ng-container *ngFor="let col of pnlChartData">
+              <div class="pnl-bar-col" [class.drillable]="!pnlChartDrillFY" (click)="!pnlChartDrillFY && (pnlChartDrillFY = col.period)">
+                <!-- Data label: always above the column -->
+                <div class="pnl-data-label" [class.pnl-pos]="col.total > 0" [class.pnl-neg]="col.total < 0" *ngIf="col.total !== 0">
+                  {{ (col.total > 0 ? '+' : '') + '₹' + (col.total | number:'1.0-0') }}
+                </div>
+                <!-- Positive stack (above baseline) -->
+                <div class="pnl-stack positive-stack">
+                  <ng-container *ngFor="let seg of col.segments">
+                    <div *ngIf="seg.value > 0" class="pnl-seg"
+                         [style.height.%]="(seg.value / pnlChartMaxAbs) * 100"
+                         [style.background]="seg.color"
+                         [title]="seg.icon + ' ' + seg.cat + ': +₹' + (seg.value | number:'1.0-0')">
+                      <span class="seg-label" *ngIf="(seg.value / pnlChartMaxAbs) > 0.18">+₹{{ seg.value | number:'1.0-0' }}</span>
+                    </div>
+                  </ng-container>
+                </div>
+                <!-- Baseline -->
+                <div class="pnl-baseline"></div>
+                <!-- Negative stack (below baseline) -->
+                <div class="pnl-stack negative-stack">
+                  <ng-container *ngFor="let seg of col.segments">
+                    <div *ngIf="seg.value < 0" class="pnl-seg neg-seg"
+                         [style.height.%]="((-seg.value) / pnlChartMaxAbs) * 100"
+                         [style.background]="seg.color"
+                         [title]="seg.icon + ' ' + seg.cat + ': -₹' + ((-seg.value) | number:'1.0-0')">
+                      <span class="seg-label" *ngIf="((-seg.value) / pnlChartMaxAbs) > 0.18">-₹{{ (-seg.value) | number:'1.0-0' }}</span>
+                    </div>
+                  </ng-container>
+                </div>
+                <!-- Axis label -->
+                <div class="pnl-col-label">{{ col.label }}</div>
+              </div>
+            </ng-container>
+            <div *ngIf="pnlChartData.length === 0" class="pnl-empty">No realized P&amp;L data yet.</div>
+          </div>
         </div>
       </div>
 
