@@ -10,6 +10,7 @@ import { P2PComponent } from '../../components/p2p/p2p.component';
 import { FixedDepositsComponent } from '../../components/fixed-deposits/fixed-deposits.component';
 import { ForexComponent } from '../../components/forex/forex.component';
 import { UserManagementComponent } from '../../components/user-management/user-management.component';
+// Feature components are inside @defer blocks — Angular builds them as separate lazy chunks
 import { UiActionService } from '../../services/ui-action.service';
 import { AuthService } from '../../services/auth.service';
 import { InvestmentService } from '../../services/investment.service';
@@ -30,7 +31,7 @@ const PAGES_WITH_ADD: Page[] = ['equity', 'mutual-funds', 'commodity', 'p2p', 'f
     P2PComponent,
     FixedDepositsComponent,
     ForexComponent,
-    UserManagementComponent
+    UserManagementComponent,
   ],
   templateUrl: './main-layout.component.html',
   styleUrl: './main-layout.component.scss'
@@ -40,6 +41,7 @@ export class MainLayoutComponent implements OnInit, OnDestroy {
   darkMode = false;
   sidebarCollapsed = false;
   showMoreSheet = false;
+  showDesktopMore = false;
   isRefreshing = false;
   isFetchingAllPrices = false;
   lastPriceFetchTime: Date | null = null;
@@ -159,6 +161,7 @@ export class MainLayoutComponent implements OnInit, OnDestroy {
         this.visitedPages.add(page);
         this.currentPage = page;
         this.showMoreSheet = false;
+        this.showDesktopMore = false;
         content.scrollTop = 0;
         content.classList.add('page-entering');
         setTimeout(() => content.classList.remove('page-entering'), 300);
@@ -168,6 +171,7 @@ export class MainLayoutComponent implements OnInit, OnDestroy {
       this.visitedPages.add(page);
       this.currentPage = page;
       this.showMoreSheet = false;
+      this.showDesktopMore = false;
       if (isDashboardTarget) { this.uiActionService.triggerSilentRefresh(); }
     }
   }
@@ -262,6 +266,26 @@ export class MainLayoutComponent implements OnInit, OnDestroy {
 
   get isMorePage(): boolean {
     return ['fixed-deposits', 'forex', 'investment-analysis', 'chatbot', 'user-management'].includes(this.currentPage);
+  }
+
+  get isDesktopMoreActive(): boolean {
+    return ['forex', 'investment-analysis', 'chatbot', 'user-management'].includes(this.currentPage);
+  }
+
+  get desktopMoreLeft(): string {
+    if (this.sidebarCollapsed) return '56px';
+    const vw = window.innerWidth;
+    if (vw <= 992) return '180px';
+    if (vw <= 1200) return `${Math.round(vw / 5)}px`;
+    return `${Math.round(vw / 6)}px`;
+  }
+
+  toggleDesktopMore(): void {
+    this.showDesktopMore = !this.showDesktopMore;
+  }
+
+  closeDesktopMore(): void {
+    this.showDesktopMore = false;
   }
 
   toggleMoreSheet(): void {

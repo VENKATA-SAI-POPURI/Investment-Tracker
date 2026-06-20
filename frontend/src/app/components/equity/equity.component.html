@@ -1,18 +1,18 @@
-<div class="page">
+﻿<div class="page">
   <!-- Market Allocation -->
   <div class="allocation-card" *ngIf="!loading && totalNetINR > 0">
     <div style="display:flex;justify-content:space-between;align-items:baseline;">
       <span class="allocation-title">Market Allocation (Net Invested)</span>
-      <span class="allocation-total">₹{{ totalNetINR | number:'1.0-0' }} &nbsp;·&nbsp; {{ uniqueStocksCount }} stocks</span>
+      <span class="allocation-total">{{ totalNetINR | inr }} &nbsp;·&nbsp; {{ uniqueStocksCount }} stocks</span>
     </div>
     <div class="allocation-bar">
       <div class="bar-segment bar-india" [style.width.%]="indiaPct"
-           [attr.data-tooltip]="'🇮🇳 India  ₹' + (indiaNetINR | number:'1.0-0') + '  (' + (indiaPct | number:'1.0-0') + '%)'"
+           [attr.data-tooltip]="'🇮🇳 India  ' + (indiaNetINR | inr) + '  (' + (indiaPct | number:'1.0-0') + '%)'"
            *ngIf="indiaPct > 0">
         <span class="seg-label" *ngIf="indiaPct > 8">🇮🇳 India - {{ indiaPct | number:'1.0-0' }}%</span>
       </div>
       <div class="bar-segment bar-usa" [style.width.%]="usaPct"
-           [attr.data-tooltip]="'🇺🇸 USA  $' + (usaNetUSD | number:'1.2-2') + '  ·  ₹' + (usaNetINR | number:'1.0-0') + '  (' + (usaPct | number:'1.0-0') + '%)'"
+           [attr.data-tooltip]="'🇺🇸 USA  $' + (usaNetUSD | number:'1.2-2') + '  ·  ' + (usaNetINR | inr) + '  (' + (usaPct | number:'1.0-0') + '%)'"
            *ngIf="usaPct > 0">
         <span class="seg-label" *ngIf="usaPct > 8">🇺🇸 USA - {{ usaPct | number:'1.0-0' }}%</span>
       </div>
@@ -34,7 +34,7 @@
         <span class="tax-dot stcg-dot"></span>
         <div>
           <div class="tax-label">Short Term <span class="tax-thresh">(&lt; 1Y)</span></div>
-          <div class="tax-value">&#8377;{{ taxTermSummary.stcg | number:'1.0-0' }}</div>
+          <div class="tax-value">{{ taxTermSummary.stcg | inr }}</div>
           <div class="tax-pct">{{ taxTermSummary.stcgPct }}% of net invested</div>
         </div>
       </div>
@@ -43,7 +43,7 @@
         <span class="tax-dot ltcg-dot"></span>
         <div>
           <div class="tax-label">Long Term <span class="tax-thresh">(&#8805; 1Y)</span></div>
-          <div class="tax-value">&#8377;{{ taxTermSummary.ltcg | number:'1.0-0' }}</div>
+          <div class="tax-value">{{ taxTermSummary.ltcg | inr }}</div>
           <div class="tax-pct">{{ taxTermSummary.ltcgPct }}% of net invested</div>
         </div>
       </div>
@@ -223,18 +223,18 @@
             <td class="number bucket-cell lt2y-cell">{{ h.lt2y > 0 ? (h.lt2y | number:'1.0-5') : '-' }}</td>
             <td class="number bucket-cell gt2y-cell">{{ h.gt2y > 0 ? (h.gt2y | number:'1.0-5') : '-' }}</td>
             <td class="number">
-              &#8377;{{ h.netValue | number:'1.2-2' }}
+              {{ h.netValue | inr }}
               <span class="sub-text" *ngIf="h.market === 'USA'">${{ h.netValueUsd | number:'1.2-2' }}</span>
             </td>
             <td class="number">
               <span *ngIf="h.market === 'USA'">${{ h.costPerUnitUsd | number:'1.2-2' }}</span>
-              <span *ngIf="h.market !== 'USA'">&#8377;{{ h.costPerUnit | number:'1.2-2' }}</span>
+              <span *ngIf="h.market !== 'USA'">{{ h.costPerUnit | inr }}</span>
             </td>
             <td class="number dividend-cell">
               <ng-container *ngIf="getDividendTotalForStock(h.name) > 0; else noDividend">
                 <span class="pill-pos">
                   +{{ getDividendPctForStock(h) | number:'1.2-2' }}%
-                  <span class="sub-text">&#8377;{{ getDividendTotalForStock(h.name) | number:'1.0-0' }}</span>
+                  <span class="sub-text">{{ getDividendTotalForStock(h.name) | inr }}</span>
                 </span>
               </ng-container>
               <ng-template #noDividend><span class="pnl-neutral">—</span></ng-template>
@@ -249,7 +249,7 @@
               <ng-container *ngIf="getUnrealizedPnL(h) as upnl">
                 <span [class.pill-pos]="upnl.pnl > 0" [class.pill-neg]="upnl.pnl < 0">
                   {{ upnl.pnl >= 0 ? '+' : '' }}{{ upnl.pct | number:'1.2-2' }}%
-                  <span class="sub-text">₹{{ upnl.pnl | number:'1.0-0' }}</span>
+                  <span class="sub-text">{{ upnl.pnl | inr }}</span>
                 </span>
               </ng-container>
               <span *ngIf="getUnrealizedPnL(h) == null">—</span>
@@ -278,7 +278,7 @@
                       <td>{{ t.date }}</td>
                       <td><span class="badge" [class.badge-buy]="t.buy_sell === 'Buy'" [class.badge-sell]="t.buy_sell === 'Sell'">{{ t.buy_sell }}</span></td>
                       <td class="number">{{ t.quantity }}</td>
-                      <td class="number">{{ t.market === 'USA' ? ('$' + ((t.value_usd || 0) | number:'1.2-2') + ' / ₹' + ((t.value || 0) | number:'1.2-2')) : ('₹' + ((t.value || 0) | number:'1.2-2')) }}</td>
+                      <td class="number">{{ t.market === 'USA' ? ('$' + ((t.value_usd || 0) | number:'1.2-2') + ' / ' + ((t.value || 0) | inr)) : ((t.value || 0) | inr) }}</td>
                       <td class="number">{{ costPerUnit(t) }}</td>
                       <td class="remarks">{{ t.remarks }}</td>
                       <td class="actions">
@@ -327,7 +327,7 @@
           <td><span class="badge" [class.badge-buy]="entry.buy_sell === 'Buy'" [class.badge-sell]="entry.buy_sell === 'Sell'">{{ entry.buy_sell }}</span></td>
           <td class="number">{{ entry.quantity ?? '-' }}</td>
           <td class="number">
-            {{ entry.market === 'USA' ? ('$' + ((entry.value_usd || 0) | number:'1.2-2') + ' / ₹' + ((entry.value || 0) | number:'1.2-2')) : ('₹' + ((entry.value || 0) | number:'1.2-2')) }}
+            {{ entry.market === 'USA' ? ('$' + ((entry.value_usd || 0) | number:'1.2-2') + ' / ' + ((entry.value || 0) | inr)) : ((entry.value || 0) | inr) }}
           </td>
           <td class="number">{{ costPerUnit(entry) }}</td>
           <td class="remarks">{{ entry.remarks }}</td>
@@ -352,7 +352,7 @@
           <div class="card-row"><span>Sector:</span><span>{{ entry.sector }}</span></div>
           <div class="card-row"><span>Date:</span><span>{{ entry.date }}</span></div>
           <div class="card-row"><span>Qty:</span><span>{{ entry.quantity }}</span></div>
-          <div class="card-row"><span>Value:</span><span>{{ entry.market === 'USA' ? ('$' + ((entry.value_usd || 0) | number:'1.2-2') + ' / ₹' + ((entry.value || 0) | number:'1.2-2')) : ('₹' + ((entry.value || 0) | number:'1.2-2')) }}</span></div>
+          <div class="card-row"><span>Value:</span><span>{{ entry.market === 'USA' ? ('$' + ((entry.value_usd || 0) | number:'1.2-2') + ' / ' + ((entry.value || 0) | inr)) : ((entry.value || 0) | inr) }}</span></div>
         </div>
         <div class="card-actions" *ngIf="canWrite">
           <button class="btn-icon edit" (click)="openEditForm(entry)" title="Edit">✏️</button>
@@ -394,7 +394,7 @@
 
       <!-- Previous Entries Table -->
       <div class="dividend-history" *ngIf="getDividendsForStock(dividendStockName).length > 0">
-        <h4>History ({{ getDividendsForStock(dividendStockName).length }} entries · Total: ₹{{ getDividendTotalForStock(dividendStockName) | number:'1.2-2' }} / {{ getDividendPctByValue(dividendStockName, dividendStockBuyValue) | number:'1.2-2' }}% of buy value)</h4>
+        <h4>History ({{ getDividendsForStock(dividendStockName).length }} entries · Total: {{ getDividendTotalForStock(dividendStockName) | inr }} / {{ getDividendPctByValue(dividendStockName, dividendStockBuyValue) | number:'1.2-2' }}% of buy value)</h4>
         <table class="txn-table">
           <thead>
             <tr><th>Date</th><th>Amount</th><th>Remarks</th><th>Actions</th></tr>
@@ -402,7 +402,7 @@
           <tbody>
             <tr *ngFor="let d of getDividendsForStock(dividendStockName)">
               <td>{{ d.date }}</td>
-              <td class="number pill-pos">₹{{ d.amount | number:'1.2-2' }}</td>
+              <td class="number pill-pos">{{ d.amount | inr }}</td>
               <td>{{ d.remarks || '—' }}</td>
               <td class="actions">
                 <button class="btn-icon edit" (click)="editDividend(d)" title="Edit">✏️</button>

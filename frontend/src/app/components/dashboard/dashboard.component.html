@@ -1,4 +1,4 @@
-<div class="dashboard" *ngIf="!loading" [class.home-view]="view === 'home'" [class.analysis-view]="view === 'analysis'">
+﻿<div class="dashboard" *ngIf="!loading" [class.home-view]="view === 'home'" [class.analysis-view]="view === 'analysis'">
 
   <!-- Target Allocation Editor Popup -->
   <div class="form-overlay" *ngIf="showTargetEditor" (click)="showTargetEditor = false">
@@ -37,25 +37,25 @@
         </div>
         <div class="forex-row">
           <span class="forex-label">Current Holdings</span>
-          <span class="forex-value">${{ forexCurrentHoldingsUSD | number:'1.2-2' }} (≈ ₹{{ forexCurrentHoldingsINR | number:'1.2-2' }})</span>
+          <span class="forex-value">${{ forexCurrentHoldingsUSD | number:'1.2-2' }} (≈ {{ forexCurrentHoldingsINR | inr }})</span>
         </div>
         <hr>
         <div class="forex-row">
           <span class="forex-label">Net P&L Before Forex</span>
           <span class="forex-value" [class.positive]="forexPnLBeforeForex >= 0" [class.negative]="forexPnLBeforeForex < 0">
-            {{ forexPnLBeforeForex >= 0 ? '' : '-' }}₹{{ abs(forexPnLBeforeForex) | number:'1.2-2' }}
+            {{ forexPnLBeforeForex >= 0 ? '' : '-' }}{{ abs(forexPnLBeforeForex) | inr }}
           </span>
         </div>
         <div class="forex-row">
           <span class="forex-label">Impact of Forex</span>
           <span class="forex-value" [class.positive]="forexImpact >= 0" [class.negative]="forexImpact < 0">
-            {{ forexImpact >= 0 ? '+' : '-' }}₹{{ abs(forexImpact) | number:'1.2-2' }}
+            {{ forexImpact >= 0 ? '+' : '-' }}{{ abs(forexImpact) | inr }}
           </span>
         </div>
         <div class="forex-row total">
           <span class="forex-label">Net P&L After Forex</span>
           <span class="forex-value" [class.positive]="forexPnLAfterForex >= 0" [class.negative]="forexPnLAfterForex < 0">
-            {{ forexPnLAfterForex >= 0 ? '' : '-' }}₹{{ abs(forexPnLAfterForex) | number:'1.2-2' }}
+            {{ forexPnLAfterForex >= 0 ? '' : '-' }}{{ abs(forexPnLAfterForex) | inr }}
           </span>
         </div>
         <hr>
@@ -65,7 +65,7 @@
         </div>
         <div class="forex-row">
           <span class="forex-label">Wallet Balance</span>
-          <span class="forex-value">${{ forexWalletBalanceUSD | number:'1.2-2' }} (≈ ₹{{ forexWalletBalanceINR | number:'1.2-2' }})</span>
+          <span class="forex-value">${{ forexWalletBalanceUSD | number:'1.2-2' }} (≈ {{ forexWalletBalanceINR | inr }})</span>
         </div>
       </div>
     </div>
@@ -80,15 +80,15 @@
         <div class="kpi-icon">💼</div>
         <div class="kpi-content">
           <div class="kpi-label">Total Investment</div>
-          <div class="kpi-value" [countUp]="totalInvestment" countUpPrefix="₹" [countUpDecimals]="2"></div>
+          <div class="kpi-value" [countUp]="totalInvestment" countUpPrefix="₹" [countUpDecimals]="2" [countUpCompact]="true"></div>
         </div>
       </div>
       <div class="kpi-card invested">
         <div class="kpi-icon">🎯</div>
         <div class="kpi-content">
           <div class="kpi-label">Current Investment</div>
-          <div class="kpi-value" [countUp]="currentInvestment" countUpPrefix="₹" [countUpDecimals]="2"></div>
-          <div class="kpi-sub" *ngIf="forexWalletBalanceUSD > 0">Wallet: ${{ forexWalletBalanceUSD | number:'1.2-2' }} · &#8377;{{ forexWalletBalanceINR | number:'1.2-2' }}</div>
+          <div class="kpi-value" [countUp]="currentInvestment" countUpPrefix="₹" [countUpDecimals]="2" [countUpCompact]="true"></div>
+          <div class="kpi-sub" *ngIf="forexWalletBalanceUSD > 0">Wallet: ${{ forexWalletBalanceUSD | number:'1.2-2' }} · {{ forexWalletBalanceINR | inr }}</div>
         </div>
         <button class="kpi-forex-btn" (click)="toggleForexPopup()" title="Forex Analysis">💱</button>
       </div>
@@ -96,12 +96,12 @@
         <div class="kpi-icon">💸</div>
         <div class="kpi-content">
           <div class="kpi-label">Total Sale Value</div>
-          <div class="kpi-value" [countUp]="totalSaleValue" countUpPrefix="₹" [countUpDecimals]="2"></div>
+          <div class="kpi-value" [countUp]="totalSaleValue" countUpPrefix="₹" [countUpDecimals]="2" [countUpCompact]="true"></div>
           <div class="kpi-sub" *ngIf="totalSaleValue > 0">
-            Cost ₹{{ costOfSold | number:'1.2-2' }}
+            Cost {{ costOfSold | inr }}
             &nbsp;&middot;&nbsp;
             <span [class.pnl-positive]="saleOnlyPnL >= 0" [class.pnl-negative]="saleOnlyPnL < 0">
-              {{ saleOnlyPnL >= 0 ? '+' : '-' }}₹{{ (saleOnlyPnL >= 0 ? saleOnlyPnL : -saleOnlyPnL) | number:'1.2-2' }}
+              {{ saleOnlyPnL | inr:true }}
             </span>
           </div>
         </div>
@@ -113,14 +113,14 @@
           <div class="kpi-sub-row" [title]="realizedTooltip" style="cursor:default">
             <span class="kpi-sub-label">Realized</span>
             <span class="kpi-sub-value" [class.pnl-positive]="netPnL >= 0" [class.pnl-negative]="netPnL < 0">
-              {{ netPnL >= 0 ? '+' : '-' }}₹{{ (netPnL >= 0 ? netPnL : -netPnL) | number:'1.0-0' }}
+              {{ netPnL | inr:true }}
               <span class="pnl-pct">({{ netPnLPct >= 0 ? '+' : '' }}{{ netPnLPct | number:'1.2-2' }}%)</span>
             </span>
           </div>
           <div class="kpi-sub-row" *ngIf="hasUnrealizedPrices">
             <span class="kpi-sub-label">Unrealized</span>
             <span class="kpi-sub-value" [class.pnl-positive]="totalUnrealizedPnL >= 0" [class.pnl-negative]="totalUnrealizedPnL < 0">
-              {{ totalUnrealizedPnL >= 0 ? '+' : '-' }}₹{{ (totalUnrealizedPnL >= 0 ? totalUnrealizedPnL : -totalUnrealizedPnL) | number:'1.0-0' }}
+              {{ totalUnrealizedPnL | inr:true }}
               <span class="pnl-pct">({{ totalUnrealizedPnLPct >= 0 ? '+' : '' }}{{ totalUnrealizedPnLPct | number:'1.2-2' }}%)</span>
             </span>
           </div>
@@ -133,7 +133,7 @@
         <div class="kpi-icon">💳</div>
         <div class="kpi-content">
           <div class="kpi-label">Actual Investment</div>
-          <div class="kpi-value" [countUp]="actualInvestment" countUpPrefix="₹" [countUpDecimals]="2"></div>
+          <div class="kpi-value" [countUp]="actualInvestment" countUpPrefix="₹" [countUpDecimals]="2" [countUpCompact]="true"></div>
           <div class="kpi-sub">Net capital deployed</div>
         </div>
         <button class="kpi-add-btn" (click)="toggleCapitalFlowsForm()" title="Add Capital Flow">+</button>
@@ -143,7 +143,7 @@
         <div class="kpi-content">
           <div class="kpi-label">Reinvested Profit</div>
           <div class="kpi-value" [class.pnl-positive]="reinvestedProfit >= 0" [class.pnl-negative]="reinvestedProfit < 0">
-            {{ reinvestedProfit >= 0 ? '' : '-' }}₹{{ (reinvestedProfit >= 0 ? reinvestedProfit : -reinvestedProfit) | number:'1.2-2' }}
+            {{ reinvestedProfit | inr }}
           </div>
           <div class="kpi-sub">Current - Actual Investment</div>
         </div>
@@ -168,7 +168,7 @@
               <span class="legend-pct">{{ slice.pct }}%</span>
               <span class="legend-target" *ngIf="getTargetAllocation(slice.label) != null">({{ getTargetAllocation(slice.label) }}%)</span>
               <span class="legend-flag" [style.color]="getAllocationFlagColor(slice)">{{ getAllocationFlag(slice) }}</span>
-              <span class="legend-value">₹{{ slice.value | number:'1.2-2' }}</span>
+              <span class="legend-value">{{ slice.value | inr }}</span>
             </div>
             <div class="legend-item legend-total" *ngIf="categoryAllocationPie.slices.length > 0">
               <span class="legend-color" style="background: transparent;"></span>
@@ -176,7 +176,7 @@
               <span class="legend-pct"></span>
               <span class="legend-target"></span>
               <span class="legend-flag"></span>
-              <span class="legend-value"><strong>₹{{ categoryAllocationPie.total | number:'1.2-2' }}</strong></span>
+              <span class="legend-value"><strong>{{ categoryAllocationPie.total | inr }}</strong></span>
             </div>
           </div>
         </div>
@@ -192,7 +192,7 @@
             <div class="bar-label">{{ bar.label }}</div>
             <div class="bar-track">
               <div class="bar-fill" [style.width]="(bar.pct / maxActualPct * 100) + '%'" [style.background]="bar.color"></div>
-              <span class="bar-label-inside" [style.color]="darkMode ? 'white' : 'black'">{{ bar.pct }}% • ₹{{ bar.value | number:'1.2-2' }}</span>
+              <span class="bar-label-inside" [style.color]="darkMode ? 'white' : 'black'">{{ bar.pct }}% • {{ bar.value | inr }}</span>
             </div>
           </div>
         </div>
@@ -223,12 +223,12 @@
             <tbody>
               <tr *ngFor="let row of categorySummaryRows">
                 <td class="cat-name-cell">{{ row.icon }} {{ row.category }}</td>
-                <td class="num-col">₹{{ row.totalInvested | number:'1.0-0' }}</td>
-                <td class="num-col">₹{{ row.currentHoldings | number:'1.0-0' }}</td>
-                <td class="num-col">{{ row.totalSales > 0 ? ('₹' + (row.totalSales | number:'1.0-0')) : '—' }}</td>
+                <td class="num-col">{{ row.totalInvested | inr }}</td>
+                <td class="num-col">{{ row.currentHoldings | inr }}</td>
+                <td class="num-col">{{ row.totalSales > 0 ? (row.totalSales | inr) : '—' }}</td>
                 <td class="num-col" [class.pnl-pos]="row.netPnL > 0" [class.pnl-neg]="row.netPnL < 0">
                   <span [class.pill-pos]="row.netPnL > 0" [class.pill-neg]="row.netPnL < 0">
-                    {{ row.netPnL === 0 ? '—' : ((row.netPnL > 0 ? '+' : '') + '₹' + (row.netPnL | number:'1.0-0')) }}
+                    {{ row.netPnL === 0 ? '—' : (row.netPnL | inr:true) }}
                   </span>
                 </td>
                 <td class="num-col" [class.pnl-pos]="row.returnPct > 0" [class.pnl-neg]="row.returnPct < 0">
@@ -240,7 +240,7 @@
                   <ng-container *ngIf="row.hasUnrealizedPrice; else noUnrealized">
                     <span [class.pill-pos]="row.unrealizedPct > 0" [class.pill-neg]="row.unrealizedPct < 0">
                       {{ row.unrealizedPct >= 0 ? '+' : '' }}{{ row.unrealizedPct | number:'1.1-1' }}%
-                      <span class="cat-sub-val">₹{{ row.unrealizedPnL | number:'1.0-0' }}</span>
+                      <span class="cat-sub-val">{{ row.unrealizedPnL | inr }}</span>
                     </span>
                   </ng-container>
                   <ng-template #noUnrealized>—</ng-template>
@@ -274,14 +274,14 @@
             </div>
             <div class="monthly-label">{{ bar.month }}</div>
             <div class="monthly-net" [class.pnl-pos]="bar.net >= 0" [class.pnl-neg]="bar.net < 0">
-              ₹{{ bar.net | number:'1.0-0' }}
+              {{ bar.net | inr }}
             </div>
           </div>
         </div>
         <div class="cumulative-section" *ngIf="cumulativeDeploymentData.length > 1">
           <div class="cumulative-header">
             <span class="cumulative-label">Cumulative Capital Deployed</span>
-            <span class="cumulative-total">₹{{ cumulativeDeploymentData[cumulativeDeploymentData.length - 1].value | number:'1.0-0' }}</span>
+            <span class="cumulative-total">{{ cumulativeDeploymentData[cumulativeDeploymentData.length - 1].value | inr }}</span>
           </div>
           <svg class="cumulative-svg" viewBox="0 0 100 28" preserveAspectRatio="none">
             <defs>
@@ -296,7 +296,7 @@
               [attr.cx]="((2*i+1)/(2*cumulativeDeploymentData.length))*100"
               [attr.cy]="28 - d.pct * 0.26"
               r="1.4" fill="#10b981"
-              [attr.title]="'₹' + (d.value | number:'1.0-0')"/>
+              [attr.title]="d.value | inr"/>
           </svg>
         </div>
       </div>
@@ -315,15 +315,19 @@
             <span class="legend-item" *ngFor="let c of pnlCategories">
               <span class="legend-dot" [style.background]="c.color"></span> {{ c.icon }} {{ c.key }}
             </span>
+            <span class="legend-item legend-trend" *ngIf="pnlChartData.length >= 2">
+              <span class="legend-trend-dash"></span> Net Trend
+            </span>
           </div>
         </div>
         <div class="pnl-chart-body">
-          <div class="pnl-chart-bars">
+          <div class="pnl-chart-bars"
+               [style.grid-template-columns]="'repeat(' + (pnlChartData.length || 1) + ', 1fr)'">
             <ng-container *ngFor="let col of pnlChartData">
               <div class="pnl-bar-col" [class.drillable]="!pnlChartDrillFY" (click)="!pnlChartDrillFY && (pnlChartDrillFY = col.period)">
                 <!-- Data label: always above the column -->
                 <div class="pnl-data-label" [class.pnl-pos]="col.total > 0" [class.pnl-neg]="col.total < 0" *ngIf="col.total !== 0">
-                  {{ (col.total > 0 ? '+' : '') + '₹' + (col.total | number:'1.0-0') }}
+                  {{ col.total | inr:true }}
                 </div>
                 <!-- Positive stack (above baseline) -->
                 <div class="pnl-stack positive-stack">
@@ -332,7 +336,7 @@
                          [style.height.%]="(seg.value / pnlChartMaxAbs) * 100"
                          [style.background]="seg.color"
                          [title]="seg.icon + ' ' + seg.cat + ': +₹' + (seg.value | number:'1.0-0')">
-                      <span class="seg-label" *ngIf="(seg.value / pnlChartMaxAbs) > 0.18">+₹{{ seg.value | number:'1.0-0' }}</span>
+                      <span class="seg-label" *ngIf="(seg.value / pnlChartMaxAbs) > 0.18">+{{ seg.value | inr }}</span>
                     </div>
                   </ng-container>
                 </div>
@@ -344,16 +348,43 @@
                     <div *ngIf="seg.value < 0" class="pnl-seg neg-seg"
                          [style.height.%]="((-seg.value) / pnlChartMaxAbs) * 100"
                          [style.background]="seg.color"
-                         [title]="seg.icon + ' ' + seg.cat + ': -₹' + ((-seg.value) | number:'1.0-0')">
-                      <span class="seg-label" *ngIf="((-seg.value) / pnlChartMaxAbs) > 0.18">-₹{{ (-seg.value) | number:'1.0-0' }}</span>
+                         [title]="seg.icon + ' ' + seg.cat + ': ' + (seg.value | inr)">
+                      <span class="seg-label" *ngIf="((-seg.value) / pnlChartMaxAbs) > 0.18">{{ seg.value | inr }}</span>
                     </div>
                   </ng-container>
                 </div>
-                <!-- Axis label -->
-                <div class="pnl-col-label">{{ col.label }}</div>
               </div>
             </ng-container>
             <div *ngIf="pnlChartData.length === 0" class="pnl-empty">No realized P&amp;L data yet.</div>
+
+            <!-- Net P&L trend line — positioned absolutely over the bars -->
+            <svg *ngIf="pnlChartData.length >= 2" class="pnl-trend-svg"
+                 viewBox="0 0 100 100" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="pnlAreaGrad" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="50">
+                  <stop offset="0%"   stop-color="#a3e635" stop-opacity="0.45"/>
+                  <stop offset="100%" stop-color="#4ade80" stop-opacity="0.03"/>
+                </linearGradient>
+              </defs>
+              <path class="pnl-trend-area" [attr.d]="pnlTrendAreaPath"/>
+              <path class="pnl-trend-polyline" [attr.d]="pnlTrendLinePath"/>
+            </svg>
+            <ng-container *ngIf="pnlChartData.length >= 2">
+              <div *ngFor="let col of pnlChartData; let i = index"
+                   class="pnl-trend-dot"
+                   [class.pos]="col.total > 0"
+                   [class.neg]="col.total < 0"
+                   [class.zero]="col.total === 0"
+                   [style.left.%]="(i + 0.5) / pnlChartData.length * 100"
+                   [style.top.%]="50 - (col.total / pnlChartMaxAbs) * 50"
+                   [title]="col.label + ': ' + (col.total | inr:true)">
+              </div>
+            </ng-container>
+          </div><!-- /.pnl-chart-bars -->
+          <!-- Axis labels row — outside the bar grid so stacks take exactly 50% each -->
+          <div class="pnl-chart-labels"
+               [style.grid-template-columns]="'repeat(' + (pnlChartData.length || 1) + ', 1fr)'">
+            <div *ngFor="let col of pnlChartData" class="pnl-col-label">{{ col.label }}</div>
           </div>
         </div>
       </div>
@@ -367,7 +398,7 @@
         <div class="performer-name">{{ bestPerformer.name }}</div>
         <div class="performer-cat">{{ bestPerformer.category }}</div>
         <div class="performer-pct pnl-pos">{{ bestPerformer.pct >= 0 ? '+' : '' }}{{ bestPerformer.pct | number:'1.2-2' }}%</div>
-        <div class="performer-pnl pnl-pos">{{ bestPerformer.pnl >= 0 ? '+' : '' }}₹{{ (bestPerformer.pnl >= 0 ? bestPerformer.pnl : -bestPerformer.pnl) | number:'1.0-0' }}</div>
+        <div class="performer-pnl pnl-pos">{{ bestPerformer.pnl | inr:true }}</div>
       </div>
       <div class="performer-divider"></div>
       <div class="performer-card worst" *ngIf="worstPerformer">
@@ -375,7 +406,7 @@
         <div class="performer-name">{{ worstPerformer.name }}</div>
         <div class="performer-cat">{{ worstPerformer.category }}</div>
         <div class="performer-pct" [class.pnl-pos]="worstPerformer.pct >= 0" [class.pnl-neg]="worstPerformer.pct < 0">{{ worstPerformer.pct >= 0 ? '+' : '' }}{{ worstPerformer.pct | number:'1.2-2' }}%</div>
-        <div class="performer-pnl" [class.pnl-pos]="worstPerformer.pnl >= 0" [class.pnl-neg]="worstPerformer.pnl < 0">{{ worstPerformer.pnl >= 0 ? '+' : '-' }}₹{{ (worstPerformer.pnl >= 0 ? worstPerformer.pnl : -worstPerformer.pnl) | number:'1.0-0' }}</div>
+        <div class="performer-pnl" [class.pnl-pos]="worstPerformer.pnl >= 0" [class.pnl-neg]="worstPerformer.pnl < 0">{{ worstPerformer.pnl | inr:true }}</div>
       </div>
     </div>
 
@@ -388,62 +419,71 @@
         <h2>💰 Track Capital Flow</h2>
         <button class="close-btn" (click)="toggleCapitalFlowsForm()">✕</button>
       </div>
-      <div class="modal-body">
-        <div class="form-group">
-          <label>Date</label>
-          <input type="date" [(ngModel)]="capitalFlowForm.date" class="form-input">
+      <div class="modal-content">
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Date</label>
+            <input type="date" [(ngModel)]="capitalFlowForm.date" class="form-input">
+          </div>
+          <div class="form-group">
+            <label>Amount</label>
+            <input type="number" [(ngModel)]="capitalFlowForm.amount" placeholder="e.g., 30000" class="form-input">
+          </div>
+          <div class="form-group">
+            <label>Type</label>
+            <select [(ngModel)]="capitalFlowForm.type" class="form-input">
+              <option *ngFor="let t of capitalFlowTypes" [value]="t">{{ t }}</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Category</label>
+            <select [(ngModel)]="capitalFlowForm.category" class="form-input">
+              <option *ngFor="let c of capitalFlowCategories" [value]="c">{{ c }}</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Remarks (Optional)</label>
+            <input type="text" [(ngModel)]="capitalFlowForm.remarks" placeholder="e.g., Initial investment" class="form-input">
+          </div>
+          <div class="form-actions">
+            <button (click)="submitCapitalFlow()" class="btn-primary" [disabled]="submittingCapitalFlow">{{ submittingCapitalFlow ? 'Saving...' : 'Add Entry' }}</button>
+            <button (click)="toggleCapitalFlowsForm()" class="btn-secondary">Cancel</button>
+          </div>
         </div>
-        <div class="form-group">
-          <label>Amount</label>
-          <input type="number" [(ngModel)]="capitalFlowForm.amount" placeholder="e.g., 30000" class="form-input">
+
+        <!-- Capital Flows List -->
+        <div class="modal-list" *ngIf="capitalFlows.length > 0">
+          <h3>Recent Entries</h3>
+          <table class="capital-flows-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Type</th>
+                <th>Amount</th>
+                <th>Category</th>
+                <th>Remarks</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let flow of capitalFlows" [class.aggregated-row]="flow.remarks?.startsWith('[Aggregated')">
+                <td>{{ flow.date }}</td>
+                <td><span class="badge" [class.deposit]="flow.type === 'Deposit'" [class.withdrawal]="flow.type === 'Withdrawal'">{{ flow.type }}</span></td>
+                <td class="amount">{{ flow.amount | inr }}</td>
+                <td>{{ flow.category }}</td>
+                <td class="remarks">{{ flow.remarks || '-' }}</td>
+                <td>
+                  <button
+                    class="delete-btn"
+                    (click)="deleteCapitalFlow(flow.id)"
+                    [disabled]="flow.remarks?.startsWith('[Aggregated')"
+                    [title]="flow.remarks?.startsWith('[Aggregated') ? 'Aggregated row \u2014 cannot delete individual entries' : 'Delete'"
+                  >🗑️</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
-        <div class="form-group">
-          <label>Type</label>
-          <select [(ngModel)]="capitalFlowForm.type" class="form-input">
-            <option *ngFor="let t of capitalFlowTypes" [value]="t">{{ t }}</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Category</label>
-          <select [(ngModel)]="capitalFlowForm.category" class="form-input">
-            <option *ngFor="let c of capitalFlowCategories" [value]="c">{{ c }}</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Remarks (Optional)</label>
-          <input type="text" [(ngModel)]="capitalFlowForm.remarks" placeholder="e.g., Initial investment" class="form-input">
-        </div>
-        <div class="form-actions">
-          <button (click)="submitCapitalFlow()" class="btn-primary" [disabled]="submittingCapitalFlow">{{ submittingCapitalFlow ? 'Saving...' : 'Add Entry' }}</button>
-          <button (click)="toggleCapitalFlowsForm()" class="btn-secondary">Cancel</button>
-        </div>
-      </div>
-      
-      <!-- Capital Flows List -->
-      <div class="modal-list" *ngIf="capitalFlows.length > 0">
-        <h3>Recent Entries</h3>
-        <table class="capital-flows-table">
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Type</th>
-              <th>Amount</th>
-              <th>Category</th>
-              <th>Remarks</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr *ngFor="let flow of capitalFlows">
-              <td>{{ flow.date }}</td>
-              <td><span class="badge" [class.deposit]="flow.type === 'Deposit'" [class.withdrawal]="flow.type === 'Withdrawal'">{{ flow.type }}</span></td>
-              <td class="amount">₹{{ flow.amount | number:'1.2-2' }}</td>
-              <td>{{ flow.category }}</td>
-              <td class="remarks">{{ flow.remarks || '-' }}</td>
-              <td><button class="delete-btn" (click)="deleteCapitalFlow(flow.id)">🗑️</button></td>
-            </tr>
-          </tbody>
-        </table>
       </div>
     </div>
   </div>
@@ -514,25 +554,25 @@
           <div class="kpi-icon">💼</div>
           <div class="kpi-content">
             <div class="kpi-label">Total Investment</div>
-            <div class="kpi-value">₹{{ catTotalInvested | number:'1.2-2' }}</div>
+            <div class="kpi-value">{{ catTotalInvested | inr }}</div>
           </div>
         </div>
         <div class="kpi-card invested">
           <div class="kpi-icon">🎯</div>
           <div class="kpi-content">
             <div class="kpi-label">Current Holdings</div>
-            <div class="kpi-value">₹{{ catCurrentInvestment | number:'1.2-2' }}</div>
+            <div class="kpi-value">{{ catCurrentInvestment | inr }}</div>
           </div>
         </div>
         <div class="kpi-card returns">
           <div class="kpi-icon">💸</div>
           <div class="kpi-content">
             <div class="kpi-label">Total Sale Value</div>
-            <div class="kpi-value">₹{{ catTotalSales | number:'1.2-2' }}</div>
+            <div class="kpi-value">{{ catTotalSales | inr }}</div>
             <div class="kpi-sub" *ngIf="catTotalSales > 0">
-              Cost ₹{{ catCostOfSold | number:'1.2-2' }}&nbsp;&middot;&nbsp;
+              Cost {{ catCostOfSold | inr }}&nbsp;&middot;&nbsp;
               <span [style.color]="catNetPnL >= 0 ? '#10b981' : '#ef4444'">
-                {{ catNetPnL >= 0 ? '+' : '-' }}₹{{ abs(catNetPnL) | number:'1.2-2' }}
+                {{ catNetPnL >= 0 ? '+' : '-' }}{{ abs(catNetPnL) | inr }}
               </span>
             </div>
           </div>
@@ -542,7 +582,7 @@
           <div class="kpi-content">
             <div class="kpi-label">Net P&amp;L</div>
             <div class="kpi-value" [class.pnl-positive]="catNetPnL >= 0" [class.pnl-negative]="catNetPnL < 0">
-              {{ catNetPnL >= 0 ? '' : '-' }}₹{{ abs(catNetPnL) | number:'1.2-2' }}
+              {{ catNetPnL >= 0 ? '' : '-' }}{{ abs(catNetPnL) | inr }}
               <span class="pnl-pct">({{ catNetPnLPct >= 0 ? '+' : '' }}{{ catNetPnLPct | number:'1.2-2' }}%)</span>
             </div>
           </div>
@@ -551,7 +591,7 @@
           <div class="kpi-icon">💳</div>
           <div class="kpi-content">
             <div class="kpi-label">Net Deployed</div>
-            <div class="kpi-value">₹{{ catNetDeployed | number:'1.2-2' }}</div>
+            <div class="kpi-value">{{ catNetDeployed | inr }}</div>
             <div class="kpi-sub">Invested − recovered</div>
           </div>
         </div>
@@ -604,13 +644,13 @@
             <div class="eq-legend-item">
               <span class="eq-legend-dot" style="background:#f59e0b"></span>
               <span>India</span>
-              <span class="eq-legend-val">&#8377;{{ equityMarketSplit.india | number:'1.0-0' }}</span>
+              <span class="eq-legend-val">{{ equityMarketSplit.india | inr }}</span>
               <span class="eq-legend-pct">{{ equityMarketSplit.indiaPct }}%</span>
             </div>
             <div class="eq-legend-item">
               <span class="eq-legend-dot" style="background:#3b82f6"></span>
               <span>USA</span>
-              <span class="eq-legend-val">&#8377;{{ equityMarketSplit.usa | number:'1.0-0' }}</span>
+              <span class="eq-legend-val">{{ equityMarketSplit.usa | inr }}</span>
               <span class="eq-legend-pct">{{ equityMarketSplit.usaPct }}%</span>
             </div>
           </div>
@@ -634,7 +674,7 @@
             <div class="eq-legend-item" *ngFor="let cap of equityMarketCapSplit">
               <span class="eq-legend-dot" [style.background]="cap.color"></span>
               <span>{{ cap.cap }}</span>
-              <span class="eq-legend-val">&#8377;{{ cap.value | number:'1.0-0' }}</span>
+              <span class="eq-legend-val">{{ cap.value | inr }}</span>
               <span class="eq-legend-pct">{{ cap.pct }}%</span>
             </div>
           </div>
@@ -666,7 +706,7 @@
                   </div>
                 </div>
               </div>
-              <span class="eq-year-total">&#8377;{{ y.total | number:'1.0-0' }}</span>
+              <span class="eq-year-total">{{ y.total | inr }}</span>
             </div>
           </div>
         </div>
@@ -712,7 +752,7 @@
                 </div>
               </div>
               <span class="div-val" [class.div-pos]="item.pnl >= 0" [class.div-neg]="item.pnl < 0">
-                {{ item.pnl >= 0 ? '+' : '-' }}&#8377;{{ abs(item.pnl) | number:'1.0-0' }}
+                {{ item.pnl >= 0 ? '+' : '-' }}{{ abs(item.pnl) | inr }}
                 <span class="div-pct">{{ item.pnlPct >= 0 ? '+' : '' }}{{ item.pnlPct | number:'1.1-1' }}%</span>
               </span>
             </div>
@@ -743,7 +783,7 @@
             <div class="eq-legend-item" *ngFor="let c of mfCategorySplit">
               <span class="eq-legend-dot" [style.background]="c.color"></span>
               <span>{{ c.cat }}</span>
-              <span class="eq-legend-val">&#8377;{{ c.value | number:'1.0-0' }}</span>
+              <span class="eq-legend-val">{{ c.value | inr }}</span>
               <span class="eq-legend-pct">{{ c.pct }}%</span>
             </div>
           </div>
@@ -759,7 +799,7 @@
             <div class="eq-legend-item" *ngFor="let t of mfFundTypeSplit">
               <span class="eq-legend-dot" [style.background]="t.color"></span>
               <span>{{ t.type }}</span>
-              <span class="eq-legend-val">&#8377;{{ t.value | number:'1.0-0' }}</span>
+              <span class="eq-legend-val">{{ t.value | inr }}</span>
               <span class="eq-legend-pct">{{ t.pct }}%</span>
             </div>
           </div>
@@ -783,7 +823,7 @@
                   </div>
                 </div>
               </div>
-              <span class="eq-year-total">&#8377;{{ y.total | number:'1.0-0' }}</span>
+              <span class="eq-year-total">{{ y.total | inr }}</span>
             </div>
           </div>
         </div>
@@ -825,7 +865,7 @@
             <div class="eq-legend-item" *ngFor="let c of commCommoditySplit">
               <span class="eq-legend-dot" [style.background]="c.color"></span>
               <span>{{ c.commodity }}</span>
-              <span class="eq-legend-val">&#8377;{{ c.value | number:'1.0-0' }}</span>
+              <span class="eq-legend-val">{{ c.value | inr }}</span>
               <span class="eq-legend-pct">{{ c.pct }}%</span>
             </div>
           </div>
@@ -849,7 +889,7 @@
                   </div>
                 </div>
               </div>
-              <span class="eq-year-total">&#8377;{{ y.total | number:'1.0-0' }}</span>
+              <span class="eq-year-total">{{ y.total | inr }}</span>
             </div>
           </div>
         </div>
@@ -892,7 +932,7 @@
             <div class="eq-legend-item" *ngFor="let p of p2pPlatformSplit">
               <span class="eq-legend-dot" [style.background]="p.color"></span>
               <span>{{ p.platform }}</span>
-              <span class="eq-legend-val">&#8377;{{ p.value | number:'1.0-0' }}</span>
+              <span class="eq-legend-val">{{ p.value | inr }}</span>
               <span class="eq-legend-pct">{{ p.pct }}%</span>
             </div>
           </div>
@@ -911,13 +951,13 @@
             <div class="eq-legend-item">
               <span class="eq-legend-dot" style="background:#10b981"></span>
               <span>Repaid</span>
-              <span class="eq-legend-val">&#8377;{{ p2pRepaidVsOutstanding.repaid | number:'1.0-0' }}</span>
+              <span class="eq-legend-val">{{ p2pRepaidVsOutstanding.repaid | inr }}</span>
               <span class="eq-legend-pct">{{ p2pRepaidVsOutstanding.repaidPct }}%</span>
             </div>
             <div class="eq-legend-item">
               <span class="eq-legend-dot" style="background:#6366f1"></span>
               <span>Outstanding</span>
-              <span class="eq-legend-val">&#8377;{{ p2pRepaidVsOutstanding.outstanding | number:'1.0-0' }}</span>
+              <span class="eq-legend-val">{{ p2pRepaidVsOutstanding.outstanding | inr }}</span>
               <span class="eq-legend-pct">{{ p2pRepaidVsOutstanding.outstandingPct }}%</span>
             </div>
           </div>
@@ -935,7 +975,7 @@
             <div class="eq-legend-item" *ngFor="let s of p2pStatusSplit">
               <span class="eq-legend-dot" [style.background]="s.color"></span>
               <span>{{ s.status }}</span>
-              <span class="eq-legend-val">&#8377;{{ s.value | number:'1.0-0' }}</span>
+              <span class="eq-legend-val">{{ s.value | inr }}</span>
               <span class="eq-legend-pct">{{ s.pct }}%</span>
             </div>
           </div>
@@ -948,7 +988,7 @@
               <div class="eq-year-track-outer">
                 <div class="eq-year-track" [style.width]="y.barPct + '%'" style="background:#6366f1"></div>
               </div>
-              <span class="eq-year-total">&#8377;{{ y.total | number:'1.0-0' }}</span>
+              <span class="eq-year-total">{{ y.total | inr }}</span>
             </div>
           </div>
         </div>
@@ -966,13 +1006,13 @@
               <span class="legend-color" [style.background-color]="slice.color"></span>
               <span class="legend-label">{{ slice.label }}</span>
               <span class="legend-pct">{{ slice.pct }}%</span>
-              <span class="legend-value">₹{{ abs(slice.value) | number:'1.2-2' }}</span>
+              <span class="legend-value">{{ abs(slice.value) | inr }}</span>
             </div>
             <div class="legend-item legend-total" *ngIf="chart.slices.length > 0">
               <span class="legend-color" style="background: transparent;"></span>
               <span class="legend-label"><strong>Total</strong></span>
               <span class="legend-pct"></span>
-              <span class="legend-value"><strong>₹{{ chart.total | number:'1.2-2' }}</strong></span>
+              <span class="legend-value"><strong>{{ chart.total | inr }}</strong></span>
             </div>
           </div>
         </div>
@@ -995,16 +1035,16 @@
               </div>
             </div>
             <span class="bar-value" [class.positive]="item.isPositive" [class.negative]="!item.isPositive">
-              {{ item.isPositive ? '+' : '-' }}₹{{ abs(item.value) | number:'1.2-2' }}
+              {{ item.isPositive ? '+' : '-' }}{{ abs(item.value) | inr }}
               <span class="pnl-pct">({{ item.pnlPct >= 0 ? '+' : '' }}{{ item.pnlPct | number:'1.2-2' }}%)</span>
             </span>
           </div>
         </div>
         <div class="bar-totals" *ngIf="chart.items.length > 0">
-          <span class="bar-total-item positive">Profit: +₹{{ chart.totalProfit | number:'1.2-2' }}</span>
-          <span class="bar-total-item negative">Loss: -₹{{ abs(chart.totalLoss) | number:'1.2-2' }}</span>
+          <span class="bar-total-item positive">Profit: +{{ chart.totalProfit | inr }}</span>
+          <span class="bar-total-item negative">Loss: -{{ abs(chart.totalLoss) | inr }}</span>
           <span class="bar-total-item" [class.positive]="chart.netTotal >= 0" [class.negative]="chart.netTotal < 0">
-            Net: {{ chart.netTotal >= 0 ? '+' : '-' }}₹{{ abs(chart.netTotal) | number:'1.2-2' }}
+            Net: {{ chart.netTotal >= 0 ? '+' : '-' }}{{ abs(chart.netTotal) | inr }}
             <span class="pnl-pct">({{ chart.netPnLPct >= 0 ? '+' : '' }}{{ chart.netPnLPct | number:'1.2-2' }}%)</span>
           </span>
         </div>
@@ -1084,9 +1124,16 @@
 <!-- Skeleton Loading -->
 <div class="dashboard-skeleton" *ngIf="loading">
   <div class="skeleton-kpi-row">
-    <div class="skeleton-kpi" *ngFor="let i of [1,2,3,4]"></div>
+    <div class="skeleton-kpi" *ngFor="let i of [1,2,3,4,5,6]"></div>
   </div>
-  <div class="skeleton-chart"></div>
-  <div class="skeleton-chart"></div>
+  <div class="skeleton-chart-row">
+    <div class="skeleton-chart skeleton-chart--half"></div>
+    <div class="skeleton-chart skeleton-chart--half"></div>
+  </div>
+  <div class="skeleton-chart skeleton-chart--wide"></div>
+  <div class="skeleton-chart-row">
+    <div class="skeleton-chart skeleton-chart--half"></div>
+    <div class="skeleton-chart skeleton-chart--half"></div>
+  </div>
 </div>
 

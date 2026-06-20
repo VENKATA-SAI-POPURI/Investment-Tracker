@@ -8,6 +8,7 @@ import { AuthService, AuthUser } from '../../services/auth.service';
 import { UiActionService } from '../../services/ui-action.service';
 import { Summary, EquityEntry, CommodityEntry, MutualFundEntry, P2PEntry, P2PRepayment, FixedDepositEntry, ForexEntry, EquityDividend } from '../../models/investment.model';
 import { CountUpDirective } from '../../directives/count-up.directive';
+import { InrPipe } from '../../pipes/inr.pipe';
 
 interface PieSlice {
   label: string;
@@ -60,7 +61,7 @@ const DEFAULT_TARGET_ALLOCATION: Record<string, number> = {
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, RouterLink, FormsModule, CountUpDirective],
+  imports: [CommonModule, RouterLink, FormsModule, CountUpDirective, InrPipe],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',
   encapsulation: ViewEncapsulation.None
@@ -231,6 +232,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   refreshData(): void {
     if (this.refreshing) return;
     this.investmentService.clearAllCache();
+    try { localStorage.removeItem(this._dashboardCacheKey); } catch { /* ignore */ }
     this.refreshing = true;
     forkJoin({
       summary: this.investmentService.getSummary(),
@@ -269,26 +271,47 @@ export class DashboardComponent implements OnInit, OnDestroy {
     });
   }
 
+  private get _dashboardCacheKey(): string {
+    const email = this.authService.getUser()?.email ?? 'guest';
+    return `dashboard_cache_v1:${email}`;
+  }
+
+  private _applyBulkData(data: any): void {
+    this.summary = data.summary ?? {};
+    this.equityData = data.equity ?? [];
+    this.commodityData = data.commodity ?? [];
+    this.mfData = data.mutual_funds ?? [];
+    this.p2pData = data.p2p ?? [];
+    this.p2pRepayments = data.p2p_repayments ?? [];
+    this.fdData = data.fixed_deposits ?? [];
+    this.forexData = data.forex ?? [];
+    this.capitalFlowsSummary = data.capital_flows_summary ?? null;
+    this.capitalFlows = (data.capital_flows ?? []).sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    this.unrealizedPnLData = data.unrealized_pnl ?? null;
+    this.equityTickerMap = data.equity_tickers ?? {};
+    this.mfTickerMap = data.mf_tickers ?? {};
+    this.commodityTickerMap = data.commodity_tickers ?? {};
+    this.equityDividends = data.equity_dividends ?? [];
+  }
+
   loadAll(onComplete?: () => void): void {
-    if (this.equityData.length === 0) this.loading = true;
+    // Show cached data immediately so the skeleton disappears without waiting for the network
+    const cached = localStorage.getItem(this._dashboardCacheKey);
+    if (cached) {
+      try {
+        this._applyBulkData(JSON.parse(cached));
+        this.loading = false;
+        this.cdr.markForCheck();
+      } catch { /* ignore corrupt cache */ }
+    } else {
+      this.loading = true;
+    }
+
     this.investmentService.getBulkLoad().subscribe({
       next: (data) => {
-        this.summary = data.summary ?? {};
-        this.equityData = data.equity ?? [];
-        this.commodityData = data.commodity ?? [];
-        this.mfData = data.mutual_funds ?? [];
-        this.p2pData = data.p2p ?? [];
-        this.p2pRepayments = data.p2p_repayments ?? [];
-        this.fdData = data.fixed_deposits ?? [];
-        this.forexData = data.forex ?? [];
-        this.capitalFlowsSummary = data.capital_flows_summary ?? null;
-        this.capitalFlows = (data.capital_flows ?? []).sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
-        this.unrealizedPnLData = data.unrealized_pnl ?? null;
-        this.equityTickerMap = data.equity_tickers ?? {};
-        this.mfTickerMap = data.mf_tickers ?? {};
-        this.commodityTickerMap = data.commodity_tickers ?? {};
-        this.equityDividends = data.equity_dividends ?? [];
+        this._applyBulkData(data);
         this.loading = false;
+        try { localStorage.setItem(this._dashboardCacheKey, JSON.stringify(data)); } catch { /* quota exceeded */ }
         onComplete?.();
       },
       error: () => { this.loading = false; onComplete?.(); }
@@ -346,6 +369,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
   // kept for any remaining template refs
   selectYear(year: string): void { this.toggleYear(year); }
 
+  @HostListener('document:keydown.escape')
+  onEscape(): void {
+    if (this.showCapitalFlowsForm) { this.showCapitalFlowsForm = false; this.resetCapitalFlowForm(); }
+    if (this.showForexPopup) { this.showForexPopup = false; }
+    if (this.showTargetEditor) { this.showTargetEditor = false; }
+  }
+
   @HostListener('document:click', ['$event'])
   onDocumentClick(event: MouseEvent): void {
     const target = event.target as HTMLElement;
@@ -395,7 +425,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   fmtINR(val: number): string {
-    return '\u20B9' + Math.abs(Math.round(val)).toLocaleString('en-IN');
+    const abs = Math.abs(val);
+    const sign = val < 0 ? '-' : '';
+    let body: string;
+    if (abs >= 1e7)      body = `\u20B9${(abs / 1e7).toFixed(2)}Cr`;
+    else if (abs >= 1e5) body = `\u20B9${(abs / 1e5).toFixed(2)}L`;
+    else if (abs >= 1e4) body = `\u20B9${(abs / 1e3).toFixed(2)}K`;
+    else                 body = `\u20B9${Math.round(abs).toLocaleString('en-IN')}`;
+    return sign + body;
   }
 
   selectMFCategory(cat: string): void {
@@ -1812,6 +1849,53 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   get pnlChartMaxAbs(): number {
     return Math.max(...this.pnlChartData.map(d => Math.max(d.positiveH, Math.abs(d.negativeH))), 1);
+  }
+
+  /** Catmull-Rom cubic-bezier segments (tension 0.25) — returns the C ... portion without the M.
+   *  Control-point y values are clamped to [min(p1.y, p2.y), max(p1.y, p2.y)] so the curve
+   *  never overshoots the baseline when adjacent segments are flat (e.g. zero months). */
+  private smoothSegments(pts: { x: number; y: number }[]): string {
+    const t = 0.25;
+    const clampY = (v: number, a: number, b: number) => Math.min(Math.max(v, Math.min(a, b)), Math.max(a, b));
+    let s = '';
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = pts[Math.max(0, i - 1)];
+      const p1 = pts[i];
+      const p2 = pts[i + 1];
+      const p3 = pts[Math.min(pts.length - 1, i + 2)];
+      const cp1x = (p1.x + (p2.x - p0.x) * t).toFixed(2);
+      const cp1y = clampY(p1.y + (p2.y - p0.y) * t, p1.y, p2.y).toFixed(2);
+      const cp2x = (p2.x - (p3.x - p1.x) * t).toFixed(2);
+      const cp2y = clampY(p2.y - (p3.y - p1.y) * t, p1.y, p2.y).toFixed(2);
+      s += ` C ${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x.toFixed(2)},${p2.y.toFixed(2)}`;
+    }
+    return s;
+  }
+
+  private trendPoints(): { x: number; y: number }[] {
+    const data = this.pnlChartData;
+    const maxAbs = this.pnlChartMaxAbs;
+    const N = data.length;
+    return data.map((col, i) => ({
+      x: +((i + 0.5) / N * 100).toFixed(2),
+      y: +(50 - (col.total / maxAbs) * 50).toFixed(2),
+    }));
+  }
+
+  /** Smooth SVG path `d` for the dashed trend line. */
+  get pnlTrendLinePath(): string {
+    const pts = this.trendPoints();
+    if (pts.length < 2) return '';
+    return `M ${pts[0].x},${pts[0].y}${this.smoothSegments(pts)}`;
+  }
+
+  /** Smooth closed SVG path `d` for the gradient area fill (line → baseline → close). */
+  get pnlTrendAreaPath(): string {
+    const pts = this.trendPoints();
+    if (pts.length < 2) return '';
+    const first = pts[0];
+    const last  = pts[pts.length - 1];
+    return `M ${first.x},50 L ${first.x},${first.y}${this.smoothSegments(pts)} L ${last.x},50 Z`;
   }
 
   // ── P2P Analysis ──

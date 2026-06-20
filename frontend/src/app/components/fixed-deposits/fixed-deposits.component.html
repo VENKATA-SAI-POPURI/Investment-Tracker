@@ -1,4 +1,4 @@
-<div class="page">
+﻿<div class="page">
   <div class="filter-bar">
     <input type="text" class="search-input" placeholder="Search by bank, platform, year..." [(ngModel)]="searchQuery" (input)="onSearch()">
     <span class="entry-count">{{ entries.length }} entries</span>
@@ -91,10 +91,10 @@
           <td><span class="badge platform">{{ entry.platform }}</span></td>
           <td class="name-cell">{{ entry.bank_name }}</td>
           <td>{{ entry.date }}</td>
-          <td class="number">{{ entry.fd_value !== null ? '₹' + (entry.fd_value | number:'1.2-2') : '-' }}</td>
+          <td class="number">{{ entry.fd_value !== null ? (entry.fd_value | inr) : '-' }}</td>
           <td class="number">{{ entry.interest !== null ? (entry.interest | number:'1.2-2') + '%' : '-' }}</td>
           <td>{{ entry.maturity_date || '-' }}</td>
-          <td class="number">{{ entry.return_value !== null ? '₹' + (entry.return_value | number:'1.2-2') : '-' }}</td>
+          <td class="number">{{ entry.return_value !== null ? (entry.return_value | inr) : '-' }}</td>
           <td class="remarks">{{ entry.remarks }}</td>
           <td class="actions">
             <ng-container *ngIf="canWrite">
@@ -110,7 +110,7 @@
         <div class="card-header"><span class="badge year-badge">{{ entry.year }}</span><strong>{{ entry.bank_name }}</strong><span class="badge platform">{{ entry.platform }}</span></div>
         <div class="card-body">
           <div class="card-row"><span>Date:</span><span>{{ entry.date }}</span></div>
-          <div class="card-row" *ngIf="entry.fd_value"><span>FD Value:</span><span>₹{{ entry.fd_value | number:'1.2-2' }}</span></div>
+          <div class="card-row" *ngIf="entry.fd_value"><span>FD Value:</span><span>{{ entry.fd_value | inr }}</span></div>
           <div class="card-row" *ngIf="entry.interest"><span>Interest:</span><span>{{ entry.interest }}%</span></div>
           <div class="card-row" *ngIf="entry.maturity_date"><span>Maturity:</span><span>{{ entry.maturity_date }}</span></div>
         </div>

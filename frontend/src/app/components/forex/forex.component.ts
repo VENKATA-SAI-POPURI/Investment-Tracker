@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, HostListener, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
@@ -6,12 +6,13 @@ import { InvestmentService } from '../../services/investment.service';
 import { AuthService } from '../../services/auth.service';
 import { UiActionService } from '../../services/ui-action.service';
 import { CsvExportService } from '../../services/csv-export.service';
+import { InrPipe } from '../../pipes/inr.pipe';
 import { ForexEntry, EquityEntry } from '../../models/investment.model';
 
 @Component({
   selector: 'app-forex',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, InrPipe],
   templateUrl: './forex.component.html',
   styleUrl: './forex.component.scss'
 })
@@ -48,6 +49,11 @@ export class ForexComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void { this.addSub?.unsubscribe(); }
+
+  @HostListener('document:keydown.escape')
+  onEscape(): void {
+    if (this.showForm) { this.showForm = false; this.editingId = null; }
+  }
 
   emptyForm(): ForexEntry {
     return {

@@ -11,6 +11,8 @@ export class CountUpDirective implements OnChanges {
   @Input() countUpDecimals = 2;
   /** String prepended to the formatted number (e.g. '₹'). */
   @Input() countUpPrefix = '';
+  /** When true, formats large numbers as Lakh (L) / Crore (Cr) for Indian context. */
+  @Input() countUpCompact = true;
   /** Animation duration in milliseconds. Default 1000. */
   @Input() countUpDuration = 1000;
 
@@ -32,16 +34,29 @@ export class CountUpDirective implements OnChanges {
       // ease-out cubic
       const eased = 1 - Math.pow(1 - t, 3);
       const current = target * eased;
-      this.el.nativeElement.textContent =
-        this.countUpPrefix +
-        current.toLocaleString('en-US', {
-          minimumFractionDigits: this.countUpDecimals,
-          maximumFractionDigits: this.countUpDecimals,
-        });
+      this.el.nativeElement.textContent = this.format(current);
       if (t < 1) {
         this.animId = requestAnimationFrame(step);
       }
     };
     this.animId = requestAnimationFrame(step);
+  }
+
+  private format(value: number): string {
+    if (this.countUpCompact) {
+      const abs = Math.abs(value);
+      const sign = value < 0 ? '-' : '';
+      if (abs >= 1e7) return `${sign}${this.countUpPrefix}${(abs / 1e7).toFixed(2)}Cr`;
+      if (abs >= 1e5) return `${sign}${this.countUpPrefix}${(abs / 1e5).toFixed(2)}L`;
+      if (abs >= 1e4) return `${sign}${this.countUpPrefix}${(abs / 1e3).toFixed(2)}K`;
+      return `${sign}${this.countUpPrefix}${Math.round(abs).toLocaleString('en-IN')}`;
+    }
+    return (
+      this.countUpPrefix +
+      value.toLocaleString('en-US', {
+        minimumFractionDigits: this.countUpDecimals,
+        maximumFractionDigits: this.countUpDecimals,
+      })
+    );
   }
 }

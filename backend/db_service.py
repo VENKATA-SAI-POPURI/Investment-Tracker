@@ -395,22 +395,6 @@ class DbService:
             import traceback
             traceback.print_exc()
 
-    def _migrate_equity_tickers_price(self, conn):
-        """Add price column to equity_tickers if missing."""
-        try:
-            conn.execute("SELECT price FROM equity_tickers LIMIT 0")
-            return  # Already has price column
-        except Exception as e:
-            if "no such table" in str(e).lower():
-                return  # Table not yet created; will be created with correct schema
-        try:
-            conn.execute("ALTER TABLE equity_tickers ADD COLUMN price REAL")
-            conn.commit()
-            print("[db_service] equity_tickers migrated: added price column.")
-        except Exception:
-            import traceback
-            traceback.print_exc()
-
     def _migrate_rbac(self, conn):
         """Add role column to allowlist and created_by to all data tables."""
         # allowlist: add role column
@@ -438,6 +422,302 @@ class DbService:
                 except Exception:
                     pass
 
+    def _migrate_updated_at(self, conn):
+        """Add updated_at column to all data tables if missing."""
+        data_tables = ["equity", "commodity", "mutual_funds", "p2p", "p2p_repayments",
+                       "p2p_escrow", "fixed_deposits", "forex", "capital_flows", "equity_dividends"]
+        for tbl in data_tables:
+            try:
+                conn.execute(f"SELECT updated_at FROM {tbl} LIMIT 0")
+            except Exception:
+                try:
+                    conn.execute(
+                        f"ALTER TABLE {tbl} ADD COLUMN updated_at TEXT "
+                        f"DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))"
+                    )
+                    conn.commit()
+                    print(f"[db_service] {tbl} migrated: added updated_at column.")
+                except Exception:
+                    pass
+
+    def _migrate_tickers_unified(self, conn):
+        """Copy any remaining data from old separate ticker tables into the unified tickers table.
+        Safe to run repeatedly — uses INSERT OR IGNORE. Old tables dropped from Turso on 2026-06-20."""
+        for asset_type, old_table in [("equity", "equity_tickers"), ("mf", "mf_tickers"), ("commodity", "commodity_tickers")]:
+            try:
+                conn.execute(f"SELECT name FROM {old_table} LIMIT 0")
+            except Exception:
+                continue  # Old table doesn't exist
+            try:
+                rows = conn.execute(f"SELECT name, ticker, price FROM {old_table}").fetchall()
+                for row in rows:
+                    conn.execute(
+                        "INSERT OR IGNORE INTO tickers (name, asset_type, ticker, price) VALUES (?, ?, ?, ?)",
+                        (row["name"], asset_type, row["ticker"], row["price"])
+                    )
+                conn.commit()
+            except Exception as e:
+                print(f"[db_service] Ticker migration for {old_table}: {e}")
+
+    def _migrate_ticker_symbol_column(self, conn):
+        """Save any ticker symbols stored inline on data rows into the unified tickers table,
+        before the orphan 'Ticker Symbol' column is dropped."""
+        mappings = [
+            ("equity",       "equity"),
+            ("commodity",    "commodity"),
+            ("mutual_funds", "mf"),
+        ]
+        for tbl, asset_type in mappings:
+            # Check column exists first
+            col_exists = False
+            try:
+                conn.execute(f'SELECT "Ticker Symbol" FROM {tbl} LIMIT 0')
+                col_exists = True
+            except Exception:
+                pass
+            if not col_exists:
+                continue
+            try:
+                rows = conn.execute(
+                    f'SELECT DISTINCT name, "Ticker Symbol" FROM {tbl} '
+                    f'WHERE "Ticker Symbol" IS NOT NULL AND "Ticker Symbol" != \'\''
+                ).fetchall()
+                saved = 0
+                for row in rows:
+                    conn.execute(
+                        "INSERT OR IGNORE INTO tickers (name, asset_type, ticker) VALUES (?, ?, ?)",
+                        (row["name"], asset_type, row["Ticker Symbol"])
+                    )
+                    saved += 1
+                if saved:
+                    conn.commit()
+                    print(f"[db_service] Saved {saved} ticker symbols from {tbl}.\"Ticker Symbol\" → tickers")
+            except Exception as e:
+                print(f"[db_service] _migrate_ticker_symbol_column {tbl}: {e}")
+
+    def _migrate_drop_orphan_columns(self, conn):
+        """Drop legacy columns that are no longer used by the application.
+        Ticker symbols are now in the unified tickers table; Loan ID is a duplicate of loan_id."""
+        orphans = [
+            ("equity",       "Ticker Symbol"),
+            ("commodity",    "Ticker Symbol"),
+            ("mutual_funds", "Ticker Symbol"),
+            ("p2p",          "Loan ID"),
+        ]
+        for tbl, col in orphans:
+            try:
+                conn.execute(f'SELECT "{col}" FROM {tbl} LIMIT 0')
+            except Exception:
+                continue  # Column already gone
+            try:
+                conn.execute(f'ALTER TABLE {tbl} DROP COLUMN "{col}"')
+                conn.commit()
+                print(f"[db_service] {tbl}: dropped orphan column '{col}'")
+            except Exception as e:
+                print(f"[db_service] Could not drop '{col}' from {tbl}: {e}")
+
+    def _archive_exited_equity(self, conn):
+        """Compress fully-exited equity positions (net qty ≈ 0, more than 2 rows) into
+        2 aggregate rows (1 Buy + 1 Sell) to reduce row count while preserving P&L accuracy.
+        Uses COUNT > 2 guard so already-archived or simple 1-trade positions are never touched."""
+        try:
+            exited = conn.execute("""
+                SELECT name,
+                    SUM(CASE WHEN buy_sell='Buy'  THEN quantity ELSE 0 END) as buy_qty,
+                    SUM(CASE WHEN buy_sell='Sell' THEN quantity ELSE 0 END) as sell_qty,
+                    COUNT(*) as txn_count
+                FROM equity
+                GROUP BY name
+                HAVING buy_qty > 0
+                   AND ABS(buy_qty - sell_qty) < 0.001
+                   AND txn_count > 2
+            """).fetchall()
+        except Exception as e:
+            print(f"[db_service] _archive_exited_equity query failed: {e}")
+            return
+
+        for row in exited:
+            name = row["name"]
+            try:
+                txns = conn.execute(
+                    "SELECT * FROM equity WHERE name = ? ORDER BY date", (name,)
+                ).fetchall()
+                if not txns:
+                    continue
+
+                buys  = [t for t in txns if t["buy_sell"] == "Buy"]
+                sells = [t for t in txns if t["buy_sell"] == "Sell"]
+                if not buys or not sells:
+                    continue
+
+                ref = buys[-1]  # metadata from most recent buy row
+
+                # Aggregate totals
+                tot_bq = sum(float(t["quantity"] or 0) for t in buys)
+                tot_bv = sum(float(t["value"]    or 0) for t in buys)
+                tot_bv_usd = sum(float(t["value_usd"] or 0) for t in buys)
+                earliest_buy = min((t["date"] or "") for t in buys)
+
+                tot_sq = sum(float(t["quantity"] or 0) for t in sells)
+                tot_sv = sum(float(t["value"]    or 0) for t in sells)
+                tot_sv_usd = sum(float(t["value_usd"] or 0) for t in sells)
+                latest_sell = max((t["date"] or "") for t in sells)
+
+                # Delete all individual rows for this stock
+                ids = [t["id"] for t in txns]
+                placeholders = ",".join("?" for _ in ids)
+                conn.execute(f"DELETE FROM equity WHERE id IN ({placeholders})", ids)
+
+                # Insert 2 aggregate rows
+                for bs, qty, val, val_usd, date in [
+                    ("Buy",  tot_bq, tot_bv, tot_bv_usd, earliest_buy),
+                    ("Sell", tot_sq, tot_sv, tot_sv_usd, latest_sell),
+                ]:
+                    conn.execute(
+                        "INSERT INTO equity (market, market_cap, date, sector, name, "
+                        "quantity, value, value_usd, buy_sell, remarks, created_by) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '[Archived aggregate]', ?)",
+                        (ref["market"], ref["market_cap"], date, ref["sector"],
+                         name, qty, val, val_usd, bs, ref["created_by"])
+                    )
+                conn.commit()
+                print(f"[db_service] Archived '{name}': {len(ids)} txns → 2 aggregate rows")
+            except Exception as e:
+                print(f"[db_service] Failed to archive '{name}': {e}")
+
+    def _aggregate_old_capital_flows(self, conn):
+        """Collapse all capital_flows rows older than the current month into one
+        aggregate row per (year-month, type, category) group.
+        Rows already aggregated (remarks starts with '[Aggregated') are skipped.
+        Idempotent — safe to call on every startup."""
+        from datetime import date as _date
+        cutoff = _date.today().replace(day=1).isoformat()  # e.g. '2026-06-01'
+
+        try:
+            # Find groups that have at least one non-aggregated row before the cutoff
+            groups = conn.execute(
+                "SELECT strftime('%Y-%m', date) as ym, type, category, "
+                "    SUM(amount) as total, COUNT(*) as cnt, MAX(created_by) as cb "
+                "FROM capital_flows "
+                "WHERE date < ? AND (remarks IS NULL OR remarks NOT LIKE '[Aggregated%') "
+                "GROUP BY ym, type, category "
+                "HAVING cnt > 0",
+                (cutoff,)
+            ).fetchall()
+        except Exception as e:
+            print(f"[db_service] _aggregate_old_capital_flows query failed: {e}")
+            return
+
+        if not groups:
+            return
+
+        total_before = sum(g["cnt"] for g in groups)
+        for g in groups:
+            ym = g["ym"]          # e.g. '2026-05'
+            agg_date = ym + "-01" # first of the month
+            try:
+                # Delete all non-aggregated rows for this group in that month,
+                # but preserve any rows referenced by equity_dividends.capital_flow_id
+                conn.execute(
+                    "DELETE FROM capital_flows "
+                    "WHERE strftime('%Y-%m', date) = ? "
+                    "  AND type = ? AND category = ? "
+                    "  AND (remarks IS NULL OR remarks NOT LIKE '[Aggregated%') "
+                    "  AND id NOT IN ("
+                    "    SELECT capital_flow_id FROM equity_dividends "
+                    "    WHERE capital_flow_id IS NOT NULL)",
+                    (ym, g["type"], g["category"])
+                )
+                # Insert one aggregate row
+                conn.execute(
+                    "INSERT INTO capital_flows (date, type, category, amount, remarks, created_by) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (agg_date, g["type"], g["category"],
+                     round(float(g["total"] or 0), 4),
+                     f"[Aggregated: {g['cnt']} entries]",
+                     g["cb"])
+                )
+                conn.commit()
+            except Exception as e:
+                print(f"[db_service] Failed to aggregate capital_flows {ym}/{g['type']}/{g['category']}: {e}")
+
+        print(f"[db_service] capital_flows: {total_before} old rows → {len(groups)} aggregate rows")
+
+    def _aggregate_closed_p2p_repayments(self, conn):
+        """For each closed P2P loan that has more than 1 repayment row, collapse all
+        rows into a single aggregate (sum of amount, principal, interest, platform_fee).
+        Idempotent — skips loans that already have exactly 1 row or are not closed."""
+        try:
+            closed = conn.execute(
+                "SELECT pr.lending_id, COUNT(*) as cnt "
+                "FROM p2p_repayments pr "
+                "JOIN p2p ON p2p.lending_id = pr.lending_id "
+                "WHERE p2p.status = 'Closed' "
+                "GROUP BY pr.lending_id HAVING cnt > 1"
+            ).fetchall()
+        except Exception as e:
+            print(f"[db_service] _aggregate_closed_p2p_repayments query failed: {e}")
+            return
+
+        for row in closed:
+            lid = row["lending_id"]
+            try:
+                rows = conn.execute(
+                    "SELECT * FROM p2p_repayments WHERE lending_id = ?", (lid,)
+                ).fetchall()
+                if not rows:
+                    continue
+
+                total_amt   = round(sum(float(r["amount"]       or 0) for r in rows), 4)
+                total_prin  = round(sum(float(r["principal"]    or 0) for r in rows), 4)
+                total_int   = round(sum(float(r["interest"]     or 0) for r in rows), 4)
+                total_fee   = round(sum(float(r["platform_fee"] or 0) for r in rows), 4)
+                latest_date = max((r["date"] or "") for r in rows)
+                cb          = rows[-1]["created_by"]
+
+                ids = [r["id"] for r in rows]
+                placeholders = ",".join("?" for _ in ids)
+                conn.execute(
+                    f"DELETE FROM p2p_repayments WHERE id IN ({placeholders})", ids
+                )
+                conn.execute(
+                    "INSERT INTO p2p_repayments "
+                    "(lending_id, date, amount, principal, interest, platform_fee, remarks, created_by, source) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'aggregated')",
+                    (lid, latest_date, total_amt, total_prin, total_int, total_fee,
+                     f"[Aggregated: {len(ids)} repayments]", cb)
+                )
+                conn.commit()
+                print(f"[db_service] p2p_repayments: {lid} — {len(ids)} rows → 1 aggregate")
+            except Exception as e:
+                print(f"[db_service] Failed to aggregate repayments for {lid}: {e}")
+
+    def _create_indexes(self, conn):
+        """Create performance indexes on frequently filtered columns."""
+        indexes = [
+            "CREATE INDEX IF NOT EXISTS idx_equity_created_by ON equity(created_by)",
+            "CREATE INDEX IF NOT EXISTS idx_equity_name ON equity(name)",
+            "CREATE INDEX IF NOT EXISTS idx_commodity_created_by ON commodity(created_by)",
+            "CREATE INDEX IF NOT EXISTS idx_commodity_name ON commodity(name)",
+            "CREATE INDEX IF NOT EXISTS idx_mutual_funds_created_by ON mutual_funds(created_by)",
+            "CREATE INDEX IF NOT EXISTS idx_mutual_funds_name ON mutual_funds(name)",
+            "CREATE INDEX IF NOT EXISTS idx_p2p_created_by ON p2p(created_by)",
+            "CREATE INDEX IF NOT EXISTS idx_p2p_repayments_lending_id ON p2p_repayments(lending_id)",
+            "CREATE INDEX IF NOT EXISTS idx_p2p_repayments_created_by ON p2p_repayments(created_by)",
+            "CREATE INDEX IF NOT EXISTS idx_fixed_deposits_created_by ON fixed_deposits(created_by)",
+            "CREATE INDEX IF NOT EXISTS idx_forex_created_by ON forex(created_by)",
+            "CREATE INDEX IF NOT EXISTS idx_capital_flows_created_by ON capital_flows(created_by)",
+            "CREATE INDEX IF NOT EXISTS idx_capital_flows_type ON capital_flows(type)",
+            "CREATE INDEX IF NOT EXISTS idx_equity_dividends_created_by ON equity_dividends(created_by)",
+            "CREATE INDEX IF NOT EXISTS idx_tickers_asset_type ON tickers(asset_type)",
+        ]
+        for sql in indexes:
+            try:
+                conn.execute(sql)
+            except Exception:
+                pass
+        conn.commit()
+
     def _init_db(self):
         with self._lock:
             conn = self._connect()
@@ -455,18 +735,33 @@ class DbService:
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
             )
-            # Ticker symbols: one row per stock name → ticker mapping
-            conn.execute(
-                "CREATE TABLE IF NOT EXISTS equity_tickers (name TEXT PRIMARY KEY, ticker TEXT NOT NULL, price REAL)"
-            )
-            self._migrate_equity_tickers_price(conn)
             self._migrate_rbac(conn)
-            conn.execute(
-                "CREATE TABLE IF NOT EXISTS mf_tickers (name TEXT PRIMARY KEY, ticker TEXT NOT NULL, price REAL)"
-            )
-            conn.execute(
-                "CREATE TABLE IF NOT EXISTS commodity_tickers (name TEXT PRIMARY KEY, ticker TEXT NOT NULL, price REAL)"
-            )
+            # Unified tickers table (replaces the old equity_tickers / mf_tickers / commodity_tickers)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS tickers (
+                    name       TEXT NOT NULL,
+                    asset_type TEXT NOT NULL,
+                    ticker     TEXT NOT NULL,
+                    price      REAL,
+                    PRIMARY KEY (name, asset_type)
+                )
+            """)
+            # Persistent portfolio snapshot for near-instant cold-start loads
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS portfolio_snapshot (
+                    user_scope    TEXT PRIMARY KEY,
+                    snapshot_json TEXT NOT NULL,
+                    updated_at    TEXT NOT NULL
+                )
+            """)
+            self._migrate_tickers_unified(conn)
+            self._migrate_ticker_symbol_column(conn)
+            self._migrate_drop_orphan_columns(conn)
+            self._archive_exited_equity(conn)
+            self._aggregate_old_capital_flows(conn)
+            self._aggregate_closed_p2p_repayments(conn)
+            self._migrate_updated_at(conn)
+            self._create_indexes(conn)
             conn.commit()
             conn.close()
 
@@ -562,6 +857,7 @@ class DbService:
                         else:
                             updates.append(f"{col} = ?")
                             params.append(val)
+                updates.append("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')")
                 if updates:
                     params.append(existing_id)
                     conn.execute(
@@ -599,13 +895,16 @@ class DbService:
                 conn.close()
                 result = {"id": new_id, "upserted": False}
 
-        self._cache.invalidate(f"rows:{sheet_name}", "summary", "capital_flows_summary")
+        self._cache.invalidate(f"rows:{sheet_name}", "summary", "capital_flows_summary",
+                               "bulk_data:__all__")
         if created_by:
             self._cache.invalidate(
                 f"rows:{sheet_name}:user:{created_by}",
                 f"summary:user:{created_by}",
                 f"capital_flows_summary:user:{created_by}",
+                f"bulk_data:{created_by}",
             )
+        self.invalidate_snapshot(created_by)
         return result
 
     def update_row(self, sheet_name, row_id, data, user_email=None, role=None):
@@ -637,6 +936,7 @@ class DbService:
                             pass
                     updates.append(f"{col} = ?")
                     params.append(val)
+            updates.append("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')")
             if updates:
                 params.append(row_id)
                 conn.execute(
@@ -645,13 +945,16 @@ class DbService:
                 )
                 conn.commit()
             conn.close()
-        self._cache.invalidate(f"rows:{sheet_name}", "summary", "capital_flows_summary")
+        self._cache.invalidate(f"rows:{sheet_name}", "summary", "capital_flows_summary",
+                               "bulk_data:__all__")
         if user_email:
             self._cache.invalidate(
                 f"rows:{sheet_name}:user:{user_email}",
                 f"summary:user:{user_email}",
                 f"capital_flows_summary:user:{user_email}",
+                f"bulk_data:{user_email}",
             )
+        self.invalidate_snapshot(user_email)
         return True
 
     def delete_row(self, sheet_name, row_id, user_email=None, role=None):
@@ -673,13 +976,16 @@ class DbService:
             deleted = cursor.rowcount > 0
             conn.close()
         if deleted:
-            self._cache.invalidate(f"rows:{sheet_name}", "summary", "capital_flows_summary")
+            self._cache.invalidate(f"rows:{sheet_name}", "summary", "capital_flows_summary",
+                                   "bulk_data:__all__")
             if user_email:
                 self._cache.invalidate(
                     f"rows:{sheet_name}:user:{user_email}",
                     f"summary:user:{user_email}",
                     f"capital_flows_summary:user:{user_email}",
+                    f"bulk_data:{user_email}",
                 )
+            self.invalidate_snapshot(user_email)
         return deleted
 
     def get_setting(self, key: str):
@@ -772,7 +1078,7 @@ class DbService:
             return cached
         with self._db_lock():
             conn = self._connect()
-            cursor = conn.execute("SELECT name, ticker, price FROM equity_tickers")
+            cursor = conn.execute("SELECT name, ticker, price FROM tickers WHERE asset_type = 'equity'")
             result = {row["name"]: {"ticker": row["ticker"], "price": row["price"]} for row in cursor.fetchall()}
             conn.close()
         self._cache.set("tickers:equity", result)
@@ -782,17 +1088,19 @@ class DbService:
         with self._db_lock():
             conn = self._connect()
             conn.execute(
-                "INSERT INTO equity_tickers (name, ticker) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET ticker = excluded.ticker",
+                "INSERT INTO tickers (name, asset_type, ticker) VALUES (?, 'equity', ?) "
+                "ON CONFLICT(name, asset_type) DO UPDATE SET ticker = excluded.ticker",
                 (name.strip(), ticker.strip())
             )
             conn.commit()
             conn.close()
         self._cache.invalidate("tickers:equity")
+        self.invalidate_snapshot()
 
     def update_ticker_prices(self, prices: dict):
         """Persist latest prices keyed by ticker symbol. prices = {ticker: price}"""
         if not prices:
-            print("[equity_tickers] No prices to persist.")
+            print("[tickers] No equity prices to persist.")
             return
         updated = 0
         with self._db_lock():
@@ -800,7 +1108,7 @@ class DbService:
             for ticker, price in prices.items():
                 if price is not None:
                     cursor = conn.execute(
-                        "UPDATE equity_tickers SET price = ? WHERE ticker = ?",
+                        "UPDATE tickers SET price = ? WHERE ticker = ? AND asset_type = 'equity'",
                         (float(price), ticker)
                     )
                     if hasattr(cursor, 'rowcount'):
@@ -808,7 +1116,8 @@ class DbService:
             conn.commit()
             conn.close()
         self._cache.invalidate("tickers:equity")
-        print(f"[equity_tickers] Persisted {len(prices)} prices ({updated} rows updated).")
+        self.invalidate_snapshot()
+        print(f"[tickers] Persisted {len(prices)} equity prices ({updated} rows updated).")
 
     # ── MF Tickers ──
 
@@ -818,7 +1127,7 @@ class DbService:
             return cached
         with self._db_lock():
             conn = self._connect()
-            cursor = conn.execute("SELECT name, ticker, price FROM mf_tickers")
+            cursor = conn.execute("SELECT name, ticker, price FROM tickers WHERE asset_type = 'mf'")
             result = {row["name"]: {"ticker": row["ticker"], "price": row["price"]} for row in cursor.fetchall()}
             conn.close()
         self._cache.set("tickers:mf", result)
@@ -828,12 +1137,14 @@ class DbService:
         with self._db_lock():
             conn = self._connect()
             conn.execute(
-                "INSERT INTO mf_tickers (name, ticker) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET ticker = excluded.ticker",
+                "INSERT INTO tickers (name, asset_type, ticker) VALUES (?, 'mf', ?) "
+                "ON CONFLICT(name, asset_type) DO UPDATE SET ticker = excluded.ticker",
                 (name.strip(), ticker.strip())
             )
             conn.commit()
             conn.close()
         self._cache.invalidate("tickers:mf")
+        self.invalidate_snapshot()
 
     def update_mf_ticker_prices(self, prices: dict):
         if not prices:
@@ -843,13 +1154,14 @@ class DbService:
             for ticker, price in prices.items():
                 if price is not None:
                     conn.execute(
-                        "UPDATE mf_tickers SET price = ? WHERE ticker = ?",
+                        "UPDATE tickers SET price = ? WHERE ticker = ? AND asset_type = 'mf'",
                         (float(price), ticker)
                     )
             conn.commit()
             conn.close()
         self._cache.invalidate("tickers:mf")
-        print(f"[mf_tickers] Persisted {len(prices)} prices.")
+        self.invalidate_snapshot()
+        print(f"[tickers] Persisted {len(prices)} MF prices.")
 
     # ── Commodity Tickers ──
 
@@ -859,7 +1171,7 @@ class DbService:
             return cached
         with self._db_lock():
             conn = self._connect()
-            cursor = conn.execute("SELECT name, ticker, price FROM commodity_tickers")
+            cursor = conn.execute("SELECT name, ticker, price FROM tickers WHERE asset_type = 'commodity'")
             result = {row["name"]: {"ticker": row["ticker"], "price": row["price"]} for row in cursor.fetchall()}
             conn.close()
         self._cache.set("tickers:commodity", result)
@@ -869,12 +1181,14 @@ class DbService:
         with self._db_lock():
             conn = self._connect()
             conn.execute(
-                "INSERT INTO commodity_tickers (name, ticker) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET ticker = excluded.ticker",
+                "INSERT INTO tickers (name, asset_type, ticker) VALUES (?, 'commodity', ?) "
+                "ON CONFLICT(name, asset_type) DO UPDATE SET ticker = excluded.ticker",
                 (name.strip(), ticker.strip())
             )
             conn.commit()
             conn.close()
         self._cache.invalidate("tickers:commodity")
+        self.invalidate_snapshot()
 
     def update_commodity_ticker_prices(self, prices: dict):
         if not prices:
@@ -884,13 +1198,313 @@ class DbService:
             for ticker, price in prices.items():
                 if price is not None:
                     conn.execute(
-                        "UPDATE commodity_tickers SET price = ? WHERE ticker = ?",
+                        "UPDATE tickers SET price = ? WHERE ticker = ? AND asset_type = 'commodity'",
                         (float(price), ticker)
                     )
             conn.commit()
             conn.close()
         self._cache.invalidate("tickers:commodity")
-        print(f"[commodity_tickers] Persisted {len(prices)} prices.")
+        self.invalidate_snapshot()
+        print(f"[tickers] Persisted {len(prices)} commodity prices.")
+
+    # ── Portfolio Snapshot (persistent server-side cache for cold-start speed) ──
+
+    _SNAPSHOT_TTL_SECONDS = 300  # 5 minutes
+
+    def _get_snapshot(self, user_scope: str):
+        """Return parsed snapshot dict if it exists and is fresh, else None."""
+        try:
+            import json, time as _time
+            conn = self._connect()
+            row = conn.execute(
+                "SELECT snapshot_json, updated_at FROM portfolio_snapshot WHERE user_scope = ?",
+                (user_scope,)
+            ).fetchone()
+            conn.close()
+            if row is None:
+                return None
+            updated_at_str = row["updated_at"]
+            # Parse ISO timestamp
+            from datetime import datetime, timezone
+            ts = datetime.fromisoformat(updated_at_str.replace("Z", "+00:00")).timestamp()
+            if _time.time() - ts > self._SNAPSHOT_TTL_SECONDS:
+                return None
+            return json.loads(row["snapshot_json"])
+        except Exception:
+            return None
+
+    def _save_snapshot(self, user_scope: str, data: dict):
+        """Persist the full bulk-load result as a snapshot in the DB."""
+        try:
+            import json
+            snapshot_json = json.dumps(data, default=str)
+            conn = self._connect()
+            conn.execute(
+                "INSERT INTO portfolio_snapshot (user_scope, snapshot_json, updated_at) VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%SZ','now')) "
+                "ON CONFLICT(user_scope) DO UPDATE SET snapshot_json = excluded.snapshot_json, updated_at = excluded.updated_at",
+                (user_scope, snapshot_json)
+            )
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"[snapshot] Failed to save: {e}")
+
+    def invalidate_snapshot(self, user_scope: str = None):
+        """Remove snapshot(s). Call after any write or price update."""
+        try:
+            conn = self._connect()
+            if user_scope:
+                conn.execute("DELETE FROM portfolio_snapshot WHERE user_scope = ? OR user_scope = '__all__'", (user_scope,))
+            else:
+                conn.execute("DELETE FROM portfolio_snapshot")
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+
+    # ── Summary computation helpers (derived from fetched rows — no extra DB call) ──
+
+    @staticmethod
+    def _eval_row_where(row: dict, where_clause: str) -> bool:
+        """Evaluate simple col = 'val' predicates used in TABLES buy_where/sell_where."""
+        if not where_clause:
+            return True
+        if "= '" in where_clause:
+            col, val = where_clause.split("= '", 1)
+            return str(row.get(col.strip(), "")) == val.rstrip("'")
+        return True
+
+    def _compute_summary_from_rows(self, data: dict) -> dict:
+        """Compute the same summary dict as get_summary() but from already-fetched rows."""
+        skip = {"Forex", "P2P Repayments", "P2P Escrow"}
+        summary = {}
+
+        for sheet_name, table in SHEET_TO_TABLE.items():
+            if sheet_name in skip:
+                continue
+            config = TABLES[table]
+            rows = data.get(table, [])
+            buy_col = config.get("buy_col")
+            sell_col = config.get("sell_col")
+            buy_where = config.get("buy_where", "")
+            sell_where = config.get("sell_where", "")
+
+            if sheet_name == "P2P":
+                # P2P is handled specially below
+                continue
+
+            s = {
+                "count": len(rows),
+                "total_buy": round(sum(float(r.get(buy_col) or 0) for r in rows if buy_col and self._eval_row_where(r, buy_where)), 2),
+                "total_sell": round(sum(float(r.get(sell_col) or 0) for r in rows if sell_col and self._eval_row_where(r, sell_where)), 2),
+            }
+            s["net"] = round(s["total_sell"] - s["total_buy"], 2)
+            summary[sheet_name] = s
+
+        # P2P: buy from p2p.amount, sell from p2p_repayments.amount, with extra stats
+        p2p_rows = data.get("p2p", [])
+        p2p_rep_rows = data.get("p2p_repayments", [])
+        p2p_escrow_rows = data.get("p2p_escrow", [])
+
+        p2p_total_buy = round(sum(float(r.get("amount") or 0) for r in p2p_rows), 2)
+        p2p_received = round(sum(float(r.get("amount") or 0) for r in p2p_rep_rows), 2)
+
+        # Pending principal per lending_id
+        repaid_by_lid = {}
+        for r in p2p_rep_rows:
+            lid = r.get("lending_id", "")
+            repaid_by_lid[lid] = repaid_by_lid.get(lid, 0) + float(r.get("amount") or 0)
+        pending = round(sum(
+            float(r.get("amount") or 0) - repaid_by_lid.get(r.get("lending_id"), 0)
+            for r in p2p_rows
+            if float(r.get("amount") or 0) > repaid_by_lid.get(r.get("lending_id"), 0)
+        ), 2)
+
+        escrow_balance = round(sum(
+            float(r.get("amount") or 0) if r.get("type") == "Deposit" else -float(r.get("amount") or 0)
+            for r in p2p_escrow_rows
+        ), 2)
+
+        summary["P2P"] = {
+            "count": len(p2p_rows),
+            "total_buy": p2p_total_buy,
+            "total_sell": p2p_received,
+            "net": round(p2p_received - p2p_total_buy, 2),
+            "current_invested": pending,
+            "escrow_balance": escrow_balance,
+        }
+        return summary
+
+    @staticmethod
+    def _compute_capital_flows_summary_from_rows(cf_rows: list) -> dict:
+        """Compute capital flows summary from already-fetched rows."""
+        total_deposits = round(sum(float(r.get("amount") or 0) for r in cf_rows if r.get("type") == "Deposit"), 2)
+        total_withdrawals = round(sum(float(r.get("amount") or 0) for r in cf_rows if r.get("type") == "Withdrawal"), 2)
+        return {
+            "total_deposits": total_deposits,
+            "total_withdrawals": total_withdrawals,
+            "actual_investment": round(total_deposits - total_withdrawals, 2),
+        }
+
+    # ── Bulk data loader (single execute_pipeline call to Turso) ──
+
+    def get_bulk_data(self, user_email=None, role=None) -> dict:
+        """Fetch ALL dashboard data in one HTTP round-trip via execute_pipeline.
+
+        Returns a dict with keys matching the legacy bulk-load task names.
+        Summary and capital_flows_summary are computed in Python from the rows — no extra DB call.
+        """
+        user_filter = role == 'user' and user_email
+        user_scope = user_email if user_filter else '__all__'
+
+        # 1. Check persistent snapshot (survives Render cold-starts)
+        snapshot = self._get_snapshot(user_scope)
+        if snapshot is not None:
+            return snapshot
+
+        # 2. Check in-memory TTL cache
+        cache_key = f"bulk_data:{user_scope}"
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        # 3. Build all SELECT queries ─────────────────────────────────────────
+        # Data tables to fetch (with RBAC filter where applicable)
+        data_sheets = [
+            "Equity", "Commodity", "Mutual Funds", "P2P", "P2P Repayments",
+            "P2P Escrow",   # needed for P2P summary (escrow balance) — not sent to frontend
+            "Fixed Deposits", "Forex", "Capital Flows", "Equity Dividends",
+        ]
+        # P2P Escrow is never user-filtered (shared across all users)
+        no_user_filter_sheets = {"P2P Escrow"}
+
+        queries = []
+        for sheet_name in data_sheets:
+            table = SHEET_TO_TABLE[sheet_name]
+            columns = TABLES[table]["columns"]
+            col_list = f"id, {', '.join(columns)}, created_by"
+            if user_filter and sheet_name not in no_user_filter_sheets:
+                queries.append((
+                    f"SELECT {col_list} FROM {table} WHERE created_by = ? ORDER BY id",
+                    (user_email,)
+                ))
+            else:
+                queries.append((
+                    f"SELECT {col_list} FROM {table} ORDER BY id",
+                    None
+                ))
+
+        # Three ticker queries (one per asset_type) ─ batched in the same pipeline
+        ticker_offset = len(queries)
+        queries.append(("SELECT name, ticker, price FROM tickers WHERE asset_type = 'equity'", None))
+        queries.append(("SELECT name, ticker, price FROM tickers WHERE asset_type = 'mf'", None))
+        queries.append(("SELECT name, ticker, price FROM tickers WHERE asset_type = 'commodity'", None))
+
+        # 4. Execute — 1 HTTP round-trip for Turso, sequential fallback for SQLite
+        conn = self._connect()
+        if hasattr(conn, "execute_pipeline"):
+            cursors = conn.execute_pipeline(queries)
+        else:
+            cursors = [conn.execute(sql, params or []) for sql, params in queries]
+        conn.close()
+
+        # 5. Parse row data ────────────────────────────────────────────────────
+        result = {}
+        for i, sheet_name in enumerate(data_sheets):
+            table = SHEET_TO_TABLE[sheet_name]
+            columns = TABLES[table]["columns"]
+            rows = []
+            for row in cursors[i]:
+                entry = {"id": row["id"]}
+                for col in columns:
+                    val = row[col]
+                    if col in NUMERIC_FIELDS and val is not None:
+                        try:
+                            val = float(val)
+                        except (ValueError, TypeError):
+                            pass
+                    entry[col] = val
+                try:
+                    entry["created_by"] = row["created_by"]
+                except Exception:
+                    entry["created_by"] = None
+                rows.append(entry)
+            result[table] = rows  # key = table name, e.g. "mutual_funds"
+
+        # 6. Parse tickers ────────────────────────────────────────────────────
+        def _parse_tickers(cursor):
+            return {row["name"]: {"ticker": row["ticker"], "price": row["price"]} for row in cursor.fetchall()}
+
+        result["equity_tickers"] = _parse_tickers(cursors[ticker_offset])
+        result["mf_tickers"] = _parse_tickers(cursors[ticker_offset + 1])
+        result["commodity_tickers"] = _parse_tickers(cursors[ticker_offset + 2])
+
+        # 7. Compute derived summaries in Python (no extra DB call) ───────────
+        result["summary"] = self._compute_summary_from_rows(result)
+        result["capital_flows_summary"] = self._compute_capital_flows_summary_from_rows(result.get("capital_flows", []))
+
+        # 8. Cache result
+        self._cache.set(cache_key, result)
+        # Note: snapshot saved by app.py after unrealized_pnl is appended
+
+        return result
+
+    # ── P2P Escrow compaction ──────────────────────────────────────────────────
+
+    def compact_p2p_escrow(self, threshold: int = 20):
+        """When escrow row count exceeds threshold, collapse compactable rows into a
+        single balance row.  Rows marked 'Auto: {lending_id}' for ACTIVE loans are
+        intentionally kept so the cascade-delete on P2P loan deletion still works.
+        The running balance of all non-preserved rows is stored in the balance row."""
+        from datetime import date as _date
+        with self._db_lock():
+            conn = self._connect()
+            cnt_row = conn.execute("SELECT COUNT(*) as cnt FROM p2p_escrow").fetchone()
+            if cnt_row["cnt"] <= threshold:
+                conn.close()
+                return
+
+            # Active-loan IDs — their auto-created escrow rows must not be compacted
+            active_ids = {
+                r["lending_id"]
+                for r in conn.execute(
+                    "SELECT lending_id FROM p2p WHERE status != 'Closed'"
+                ).fetchall()
+            }
+
+            all_rows = conn.execute(
+                "SELECT id, type, amount, remarks FROM p2p_escrow"
+            ).fetchall()
+
+            def _linked_to_active(r):
+                rem = str(r["remarks"] or "")
+                return rem.startswith("Auto: ") and any(
+                    rem.startswith(f"Auto: {lid}") for lid in active_ids
+                )
+
+            safe      = [r for r in all_rows if not _linked_to_active(r)]
+            preserved = len(all_rows) - len(safe)
+            if not safe:
+                conn.close()
+                return
+
+            balance = round(sum(
+                float(r["amount"] or 0) if r["type"] == "Deposit" else -float(r["amount"] or 0)
+                for r in safe
+            ), 4)
+            safe_ids     = [r["id"] for r in safe]
+            placeholders = ",".join("?" for _ in safe_ids)
+            conn.execute(f"DELETE FROM p2p_escrow WHERE id IN ({placeholders})", safe_ids)
+            conn.execute(
+                "INSERT INTO p2p_escrow (date, type, amount, platform, remarks) "
+                "VALUES (?, 'Deposit', ?, 'System', 'Balance compaction')",
+                (_date.today().isoformat(), balance)
+            )
+            conn.commit()
+            conn.close()
+        self._cache.invalidate("rows:P2P Escrow", "bulk_data:__all__")
+        self.invalidate_snapshot()
+        print(f"[escrow] Compacted {len(safe)} rows → 1 balance row (balance={balance}), preserved {preserved} active-loan rows")
 
     def get_user_role(self, email):
         """Return role string ('admin'/'user'/'guest') for email, or None if not in allowlist."""

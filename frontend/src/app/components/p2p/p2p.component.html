@@ -1,13 +1,13 @@
-<div class="page">
+﻿<div class="page">
   <!-- KPI Tiers -->
   <div class="kpi-tiers-row">
     <div class="kpi-tier">
       <h4 class="kpi-tier-title">Portfolio</h4>
       <div class="kpi-tier-cards">
-        <div class="kpi-card-mini kpi-card-clickable" (click)="showEscrowPanel = true" title="View Escrow Transactions"><span class="kpi-label">Escrow 🔗</span><span class="kpi-value" [class.pnl-positive]="escrowBalance >= 0" [class.pnl-negative]="escrowBalance < 0">₹{{ escrowBalance | number:'1.2-2' }}</span></div>
-        <div class="kpi-card-mini"><span class="kpi-label">Total Lent</span><span class="kpi-value">₹{{ totalLent | number:'1.2-2' }}</span></div>
-        <div class="kpi-card-mini"><span class="kpi-label">Active Lent</span><span class="kpi-value" style="color: #667eea">₹{{ activeLentAmount | number:'1.2-2' }}</span></div>
-        <div class="kpi-card-mini"><span class="kpi-label">Pending</span><span class="kpi-value" [style.color]="isEscrowUnderFunded ? '#ef4444' : totalPending > 0 ? '#f59e0b' : '#4caf50'">₹{{ totalPending | number:'1.2-2' }}</span></div>
+        <div class="kpi-card-mini kpi-card-clickable" (click)="showEscrowPanel = true" title="View Escrow Transactions"><span class="kpi-label">Escrow 🔗</span><span class="kpi-value" [class.pnl-positive]="escrowBalance >= 0" [class.pnl-negative]="escrowBalance < 0">{{ escrowBalance | inr }}</span></div>
+        <div class="kpi-card-mini"><span class="kpi-label">Total Lent</span><span class="kpi-value">{{ totalLent | inr }}</span></div>
+        <div class="kpi-card-mini"><span class="kpi-label">Active Lent</span><span class="kpi-value" style="color: #667eea">{{ activeLentAmount | inr }}</span></div>
+        <div class="kpi-card-mini"><span class="kpi-label">Pending</span><span class="kpi-value" [style.color]="isEscrowUnderFunded ? '#ef4444' : totalPending > 0 ? '#f59e0b' : '#4caf50'">{{ totalPending | inr }}</span></div>
       </div>
       <div class="escrow-underfunded-flag" *ngIf="isEscrowUnderFunded">
         ⚠️ Pending principal exceeds Escrow Balance by more than 5% — please top up Escrow.
@@ -16,15 +16,15 @@
     <div class="kpi-tier">
       <h4 class="kpi-tier-title">Returns</h4>
       <div class="kpi-tier-cards">
-        <div class="kpi-card-mini"><span class="kpi-label">Total Return</span><span class="kpi-value pnl-positive">₹{{ totalReturns | number:'1.2-2' }}</span></div>
-        <div class="kpi-card-mini"><span class="kpi-label">Exp. Return</span><span class="kpi-value" style="color: #667eea">₹{{ expectedReturn | number:'1.2-2' }}</span></div>
+        <div class="kpi-card-mini"><span class="kpi-label">Total Return</span><span class="kpi-value pnl-positive">{{ totalReturns | inr }}</span></div>
+        <div class="kpi-card-mini"><span class="kpi-label">Exp. Return</span><span class="kpi-value" style="color: #667eea">{{ expectedReturn | inr }}</span></div>
         <div class="kpi-card-mini"><span class="kpi-label">Avg Rate (p.a.)</span><span class="kpi-value">{{ avgInterestRate }}</span></div>
       </div>
     </div>
     <div class="kpi-tier">
       <h4 class="kpi-tier-title">Risk & Health</h4>
       <div class="kpi-tier-cards">
-        <div class="kpi-card-mini"><span class="kpi-label">Overdue</span><span class="kpi-value" [class.pnl-negative]="overdueCount > 0">{{ overdueCount }} (₹{{ overdueAmount | number:'1.2-2' }})</span></div>
+        <div class="kpi-card-mini"><span class="kpi-label">Overdue</span><span class="kpi-value" [class.pnl-negative]="overdueCount > 0">{{ overdueCount }} ({{ overdueAmount | inr }})</span></div>
         <div class="kpi-card-mini"><span class="kpi-label">Defaulted</span><span class="kpi-value" [class.pnl-negative]="defaultedCount > 0">{{ defaultedCount }}</span></div>
         <div class="kpi-card-mini"><span class="kpi-label">Foreclosed</span><span class="kpi-value" style="color: #667eea">{{ foreclosedCount }}</span></div>
         <div class="kpi-card-mini"><span class="kpi-label">Portfolio IRR</span><span class="kpi-value pnl-positive">{{ portfolioIRR != null ? (portfolioIRR | number:'1.2-2') + '%' : '-' }}</span></div>
@@ -39,11 +39,11 @@
       <div class="kpi-row">
         <div class="kpi-item">
           <span class="kpi-label">Expected</span>
-          <span class="kpi-value">₹{{ prevMonthExpected | number:'1.2-2' }}</span>
+          <span class="kpi-value">{{ prevMonthExpected | inr }}</span>
         </div>
         <div class="kpi-item">
           <span class="kpi-label">Actual</span>
-          <span class="kpi-value" [class.pnl-positive]="prevMonthActual >= prevMonthExpected" [class.pnl-negative]="prevMonthActual < prevMonthExpected">₹{{ prevMonthActual | number:'1.2-2' }}</span>
+          <span class="kpi-value" [class.pnl-positive]="prevMonthActual >= prevMonthExpected" [class.pnl-negative]="prevMonthActual < prevMonthExpected">{{ prevMonthActual | inr }}</span>
         </div>
       </div>
     </div>
@@ -52,11 +52,11 @@
       <div class="kpi-row">
         <div class="kpi-item">
           <span class="kpi-label">Expected</span>
-          <span class="kpi-value">₹{{ currentMonthExpected | number:'1.2-2' }}</span>
+          <span class="kpi-value">{{ currentMonthExpected | inr }}</span>
         </div>
         <div class="kpi-item">
           <span class="kpi-label">Actual</span>
-          <span class="kpi-value" [class.pnl-positive]="currentMonthActual >= currentMonthExpected" [class.pnl-negative]="currentMonthActual < currentMonthExpected">₹{{ currentMonthActual | number:'1.2-2' }}</span>
+          <span class="kpi-value" [class.pnl-positive]="currentMonthActual >= currentMonthExpected" [class.pnl-negative]="currentMonthActual < currentMonthExpected">{{ currentMonthActual | inr }}</span>
         </div>
       </div>
     </div>
@@ -65,11 +65,11 @@
       <div class="kpi-row">
         <div class="kpi-item">
           <span class="kpi-label">Expected</span>
-          <span class="kpi-value">₹{{ nextMonthExpected | number:'1.2-2' }}</span>
+          <span class="kpi-value">{{ nextMonthExpected | inr }}</span>
         </div>
         <div class="kpi-item">
           <span class="kpi-label">Actual</span>
-          <span class="kpi-value" [class.pnl-positive]="nextMonthActual >= nextMonthExpected" [class.pnl-negative]="nextMonthActual < nextMonthExpected">₹{{ nextMonthActual | number:'1.2-2' }}</span>
+          <span class="kpi-value" [class.pnl-positive]="nextMonthActual >= nextMonthExpected" [class.pnl-negative]="nextMonthActual < nextMonthExpected">{{ nextMonthActual | inr }}</span>
         </div>
       </div>
     </div>
@@ -115,7 +115,7 @@
   <div class="platform-breakdown" *ngIf="platformBreakdown.length > 0">
     <div class="platform-chip" *ngFor="let p of platformBreakdown">
       <span class="platform-name">{{ p.platform }}</span>
-      <span class="platform-amount">₹{{ p.lent | number:'1.2-2' }}</span>
+      <span class="platform-amount">{{ p.lent | inr }}</span>
       <span class="platform-active">{{ p.active }} active</span>
       <span class="platform-rate">{{ p.avgRate }}</span>
     </div>
@@ -192,23 +192,23 @@
           <div class="escrow-preview-title">💰 Escrow Impact</div>
           <div class="escrow-preview-row">
             <span>Escrow Balance</span>
-            <span>₹{{ escrowBalance | number:'1.2-2' }}</span>
+            <span>{{ escrowBalance | inr }}</span>
           </div>
           <div class="escrow-preview-row">
             <span>Pending Lent (Net of Returns)</span>
-            <span>₹{{ escrowImpactPreview.netPendingLent | number:'1.2-2' }}</span>
+            <span>{{ escrowImpactPreview.netPendingLent | inr }}</span>
           </div>
           <div class="escrow-preview-divider"></div>
           <div class="escrow-preview-row" [class.deficiency]="escrowImpactPreview.needsDeposit">
             <span>{{ escrowImpactPreview.needsDeposit ? '⚠️ Escrow Deficiency' : '✓ Escrow Surplus' }}</span>
-            <span>₹{{ (escrowImpactPreview.deficiency < 0 ? -escrowImpactPreview.deficiency : escrowImpactPreview.deficiency) | number:'1.2-2' }}</span>
+            <span>{{ (escrowImpactPreview.deficiency < 0 ? -escrowImpactPreview.deficiency : escrowImpactPreview.deficiency) | inr }}</span>
           </div>
           <div class="escrow-preview-row" style="opacity:0.65; font-size:0.8rem; margin-top:0.25rem">
             <span>This New Entry</span>
-            <span class="preview-new">+ ₹{{ (form.amount || 0) | number:'1.2-2' }}</span>
+            <span class="preview-new">+ {{ (form.amount || 0) | inr }}</span>
           </div>
           <div class="escrow-preview-note warn" *ngIf="escrowImpactPreview.needsDeposit">
-            Please deposit ₹{{ escrowImpactPreview.deficiency | number:'1.2-2' }} into Escrow to cover pending lent.
+            Please deposit {{ escrowImpactPreview.deficiency | inr }} into Escrow to cover pending lent.
           </div>
           <div class="escrow-preview-note ok" *ngIf="!escrowImpactPreview.needsDeposit">
             ✓ Escrow fully covers pending lent after this entry.
@@ -227,7 +227,7 @@
     <div class="form-modal" (click)="$event.stopPropagation()">
       <h2>{{ editingRepaymentId ? 'Edit' : 'Add' }} Repayment — {{ repaymentForm.lending_id }}</h2>
       <div class="pending-info" *ngIf="!editingRepaymentId">
-        Pending Principal: <strong>₹{{ getRepaymentPendingAmount() | number:'1.2-2' }}</strong>
+        Pending Principal: <strong>{{ getRepaymentPendingAmount() | inr }}</strong>
       </div>
       <form (ngSubmit)="saveRepayment()">
         <div class="form-grid">
@@ -249,11 +249,11 @@
           </div>
           <div class="form-group">
             <label>Repayment Amount</label>
-            <input type="text" [value]="'₹' + (repaymentGrossAmount | number:'1.2-2')" disabled class="computed-field">
+            <input type="text" [value]="repaymentGrossAmount | inr" disabled class="computed-field">
           </div>
           <div class="form-group">
             <label>Net Credited</label>
-            <input type="text" [value]="'₹' + (repaymentNetCreditedPreview | number:'1.2-2')" disabled class="computed-field" [style.color]="repaymentNetCreditedPreview >= 0 ? '#4caf50' : '#ef4444'">
+            <input type="text" [value]="repaymentNetCreditedPreview | inr" disabled class="computed-field" [style.color]="repaymentNetCreditedPreview >= 0 ? '#4caf50' : '#ef4444'">
           </div>
           <div class="form-group full-width">
             <label>Remarks</label>
@@ -304,11 +304,11 @@
             <td><span class="badge platform">{{ entry.platform }}</span></td>
             <td class="name-cell">{{ entry.name }}</td>
             <td>{{ entry.date }}</td>
-            <td class="number">₹{{ entry.amount | number:'1.2-2' }}</td>
+            <td class="number">{{ entry.amount | inr }}</td>
             <td class="number">{{ entry.tenure }} mo</td>
-            <td class="number">₹{{ getTotalRepaid(entry.lending_id) | number:'1.2-2' }}</td>
-            <td class="number" [class.pnl-positive]="getPendingAmount(entry) === 0" [class.pnl-negative]="getPendingAmount(entry) > 0">₹{{ getPendingAmount(entry) | number:'1.2-2' }}</td>
-            <td class="number pnl-positive">₹{{ getTotalNetInterest(entry.lending_id) | number:'1.2-2' }}</td>
+            <td class="number">{{ getTotalRepaid(entry.lending_id) | inr }}</td>
+            <td class="number" [class.pnl-positive]="getPendingAmount(entry) === 0" [class.pnl-negative]="getPendingAmount(entry) > 0">{{ getPendingAmount(entry) | inr }}</td>
+            <td class="number pnl-positive">{{ getTotalNetInterest(entry.lending_id) | inr }}</td>
             <td class="number">{{ getTotalRepaid(entry.lending_id) > 0 ? ((getTotalNetInterest(entry.lending_id) / getTotalRepaid(entry.lending_id)) * 100 | number:'1.2-2') + '%' : '-' }}</td>
             <td class="number">{{ getIRR(entry) != null ? (getIRR(entry) | number:'1.2-2') + '%' : '-' }}</td>
             <td>{{ entry.maturity_date }}</td>
@@ -351,10 +351,10 @@
                   <tbody>
                     <tr *ngFor="let rep of getRepayments(entry.lending_id); let i = index">
                       <td>{{ rep.date }}</td>
-                      <td class="number">₹{{ getRepaymentPrincipal(rep, entry, i) | number:'1.2-2' }}</td>
-                      <td class="number pnl-positive">₹{{ getRepaymentInterest(rep, entry, i) | number:'1.2-2' }}</td>
-                      <td class="number" style="color: #f59e0b">{{ (rep.platform_fee || 0) > 0 ? ('₹' + ((rep.platform_fee || 0) | number:'1.2-2')) : '-' }}</td>
-                      <td class="number" style="color: #667eea">₹{{ getRepaymentNetCredited(rep) | number:'1.2-2' }}</td>
+                      <td class="number">{{ getRepaymentPrincipal(rep, entry, i) | inr }}</td>
+                      <td class="number pnl-positive">{{ getRepaymentInterest(rep, entry, i) | inr }}</td>
+                      <td class="number" style="color: #f59e0b">{{ (rep.platform_fee || 0) > 0 ? ((rep.platform_fee || 0) | inr) : '-' }}</td>
+                      <td class="number" style="color: #667eea">{{ getRepaymentNetCredited(rep) | inr }}</td>
                       <td class="number">{{ getRepaymentAnnualizedRate(entry, i) != null ? (getRepaymentAnnualizedRate(entry, i)! | number:'1.2-2') + '%' : '-' }}</td>
                       <td class="remarks">{{ rep.remarks }}</td>
                       <td class="actions">
@@ -386,11 +386,11 @@
         </div>
         <div class="card-body">
           <div class="card-row"><span>Date:</span><span>{{ entry.date }}</span></div>
-          <div class="card-row"><span>Amount:</span><span>₹{{ entry.amount | number:'1.2-2' }}</span></div>
+          <div class="card-row"><span>Amount:</span><span>{{ entry.amount | inr }}</span></div>
           <div class="card-row"><span>Tenure:</span><span>{{ entry.tenure }} months</span></div>
-          <div class="card-row"><span>Received:</span><span>₹{{ getTotalRepaid(entry.lending_id) | number:'1.2-2' }}</span></div>
-          <div class="card-row"><span>Pending:</span><span [class.pnl-positive]="getPendingAmount(entry) === 0" [class.pnl-negative]="getPendingAmount(entry) > 0">₹{{ getPendingAmount(entry) | number:'1.2-2' }}</span></div>
-          <div class="card-row"><span>Return Amt:</span><span class="pnl-positive">₹{{ getTotalNetInterest(entry.lending_id) | number:'1.2-2' }}</span></div>
+          <div class="card-row"><span>Received:</span><span>{{ getTotalRepaid(entry.lending_id) | inr }}</span></div>
+          <div class="card-row"><span>Pending:</span><span [class.pnl-positive]="getPendingAmount(entry) === 0" [class.pnl-negative]="getPendingAmount(entry) > 0">{{ getPendingAmount(entry) | inr }}</span></div>
+          <div class="card-row"><span>Return Amt:</span><span class="pnl-positive">{{ getTotalNetInterest(entry.lending_id) | inr }}</span></div>
           <div class="card-row" *ngIf="getTotalRepaid(entry.lending_id) > 0"><span>Return %:</span><span>{{ (getTotalNetInterest(entry.lending_id) / getTotalRepaid(entry.lending_id)) * 100 | number:'1.2-2' }}%</span></div>
           <div class="card-row"><span>IRR:</span><span class="pnl-positive">{{ getIRR(entry) != null ? (getIRR(entry) | number:'1.2-2') + '%' : '-' }}</span></div>
           <div class="card-row"><span>Maturity:</span><span>{{ entry.maturity_date }}</span></div>
@@ -411,7 +411,7 @@
           <div *ngIf="expandedLendingId === entry.lending_id" class="repayment-list">
             <div class="repayment-item" *ngFor="let rep of getRepayments(entry.lending_id)">
               <span>{{ rep.date }}</span>
-              <span style="color: #667eea">₹{{ getRepaymentNetCredited(rep) | number:'1.2-2' }}</span>
+              <span style="color: #667eea">{{ getRepaymentNetCredited(rep) | inr }}</span>
               <span class="remarks">{{ rep.remarks }}</span>
             </div>
           </div>
@@ -435,15 +435,15 @@
       <div class="escrow-summary">
       <div class="escrow-stat">
         <span class="stat-label">Total Deposits</span>
-        <span class="stat-value pnl-positive">₹{{ escrowTotalDeposits | number:'1.2-2' }}</span>
+        <span class="stat-value pnl-positive">{{ escrowTotalDeposits | inr }}</span>
       </div>
       <div class="escrow-stat">
         <span class="stat-label">Total Withdrawals</span>
-        <span class="stat-value pnl-negative">₹{{ escrowTotalWithdrawals | number:'1.2-2' }}</span>
+        <span class="stat-value pnl-negative">{{ escrowTotalWithdrawals | inr }}</span>
       </div>
       <div class="escrow-stat">
         <span class="stat-label">Balance</span>
-        <span class="stat-value" [class.pnl-positive]="escrowBalance >= 0" [class.pnl-negative]="escrowBalance < 0">₹{{ escrowBalance | number:'1.2-2' }}</span>
+        <span class="stat-value" [class.pnl-positive]="escrowBalance >= 0" [class.pnl-negative]="escrowBalance < 0">{{ escrowBalance | inr }}</span>
       </div>
     </div>
     <table class="data-table" *ngIf="escrowTransactions.length > 0">
@@ -461,7 +461,7 @@
         <tr *ngFor="let txn of escrowTransactionsSorted">
           <td>{{ txn.date }}</td>
           <td><span class="badge" [class.buy]="txn.type === 'Deposit'" [class.sell]="txn.type === 'Withdrawal'" [class.completed]="txn.type === 'Repayment'">{{ txn.type }}</span></td>
-          <td class="number">₹{{ txn.amount | number:'1.2-2' }}</td>
+          <td class="number">{{ txn.amount | inr }}</td>
           <td>{{ txn.platform }}</td>
           <td class="remarks">{{ txn.remarks }}</td>
           <td class="actions">
@@ -595,14 +595,14 @@
                   <td><input type="checkbox" [(ngModel)]="row.selected"></td>
                   <td class="loan-id-cell">{{ row.loan_id }}</td>
                   <td>{{ row.name }}</td>
-                  <td class="num">₹{{ row.stmt_principal | number:'1.2-2' }}</td>
-                  <td class="num">₹{{ row.stmt_interest | number:'1.2-2' }}</td>
-                  <td class="num">₹{{ row.stmt_platform_fee | number:'1.2-2' }}</td>
-                  <td class="num muted">₹{{ row.already_posted_principal | number:'1.2-2' }} P / ₹{{ row.already_posted_interest | number:'1.2-2' }} I</td>
-                  <td class="num delta">₹{{ row.delta_principal | number:'1.2-2' }}</td>
-                  <td class="num delta">₹{{ row.delta_interest | number:'1.2-2' }}</td>
-                  <td class="num delta">₹{{ row.delta_platform_fee | number:'1.2-2' }}</td>
-                  <td class="num delta-total">₹{{ row.delta_total | number:'1.2-2' }}</td>
+                  <td class="num">{{ row.stmt_principal | inr }}</td>
+                  <td class="num">{{ row.stmt_interest | inr }}</td>
+                  <td class="num">{{ row.stmt_platform_fee | inr }}</td>
+                  <td class="num muted">{{ row.already_posted_principal | inr }} P / {{ row.already_posted_interest | inr }} I</td>
+                  <td class="num delta">{{ row.delta_principal | inr }}</td>
+                  <td class="num delta">{{ row.delta_interest | inr }}</td>
+                  <td class="num delta">{{ row.delta_platform_fee | inr }}</td>
+                  <td class="num delta-total">{{ row.delta_total | inr }}</td>
                   <td>
                     <span *ngIf="row.new_status" class="status-change-badge">{{ row.old_status }} → {{ row.new_status }}</span>
                     <span *ngIf="!row.new_status" class="muted">—</span>

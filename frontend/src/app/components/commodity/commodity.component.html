@@ -1,9 +1,9 @@
-<div class="page">
+﻿<div class="page">
   <!-- Allocation Card -->
   <div class="allocation-card" *ngIf="!loading && allEntries.length > 0">
     <div style="display:flex;justify-content:space-between;align-items:baseline;">
       <span class="allocation-title">Commodity Allocation (Net Invested)</span>
-      <span class="allocation-total">₹{{ netInvested | number:'1.0-0' }} &nbsp;·&nbsp; {{ uniqueHoldingsCount }} holdings</span>
+      <span class="allocation-total">{{ netInvested | inr }} &nbsp;·&nbsp; {{ uniqueHoldingsCount }} holdings</span>
     </div>
     <div class="allocation-bar">
       <div class="bar-segment" *ngFor="let c of commodityTotals"
@@ -33,7 +33,7 @@
         <span class="tax-dot stcg-dot"></span>
         <div>
           <div class="tax-label">Short Term <span class="tax-thresh">(&lt; 3Y)</span></div>
-          <div class="tax-value">&#8377;{{ taxTermSummary.stcg | number:'1.0-0' }}</div>
+          <div class="tax-value">{{ taxTermSummary.stcg | inr }}</div>
           <div class="tax-pct">{{ taxTermSummary.stcgPct }}% of net invested</div>
         </div>
       </div>
@@ -42,7 +42,7 @@
         <span class="tax-dot ltcg-dot"></span>
         <div>
           <div class="tax-label">Long Term <span class="tax-thresh">(&#8805; 3Y)</span></div>
-          <div class="tax-value">&#8377;{{ taxTermSummary.ltcg | number:'1.0-0' }}</div>
+          <div class="tax-value">{{ taxTermSummary.ltcg | inr }}</div>
           <div class="tax-pct">{{ taxTermSummary.ltcgPct }}% of net invested</div>
         </div>
       </div>
@@ -202,8 +202,8 @@
             <td class="number bucket-cell lt1y-cell">{{ h.lt1y > 0 ? (h.lt1y | number:'1.0-5') : '-' }}</td>
             <td class="number bucket-cell lt2y-cell">{{ h.lt2y > 0 ? (h.lt2y | number:'1.0-5') : '-' }}</td>
             <td class="number bucket-cell gt2y-cell">{{ h.gt2y > 0 ? (h.gt2y | number:'1.0-5') : '-' }}</td>
-            <td class="number">&#8377;{{ h.netValue | number:'1.2-2' }}</td>
-            <td class="number">&#8377;{{ h.costPerUnit | number:'1.2-2' }}</td>
+            <td class="number">{{ h.netValue | inr }}</td>
+            <td class="number">{{ h.costPerUnit | inr }}</td>
             <td class="number" [class.pnl-pos]="h.realizedPnL > 0" [class.pnl-neg]="h.realizedPnL < 0">
               <span [class.pill-pos]="h.realizedPnL > 0" [class.pill-neg]="h.realizedPnL < 0">
                 {{ h.realizedPnL === 0 ? '—' : ((h.realizedPnLPct >= 0 ? '+' : '') + (h.realizedPnLPct | number:'1.2-2') + '%') }}
@@ -213,7 +213,7 @@
               <ng-container *ngIf="getUnrealizedPnL(h) as upnl">
                 <span [class.pill-pos]="upnl.pnl > 0" [class.pill-neg]="upnl.pnl < 0">
                   {{ upnl.pnl >= 0 ? '+' : '' }}{{ upnl.pct | number:'1.2-2' }}%
-                  <span class="sub-text">₹{{ upnl.pnl | number:'1.0-0' }}</span>
+                  <span class="sub-text">{{ upnl.pnl | inr }}</span>
                 </span>
               </ng-container>
               <span *ngIf="getUnrealizedPnL(h) == null">—</span>
@@ -241,10 +241,10 @@
                     <tr *ngFor="let t of getCommodityTransactionsByName(h.name)">
                       <td>{{ t.date }}</td>
                       <td class="number">{{ t.buy_quantity ?? '-' }}</td>
-                      <td class="number">{{ t.buy_value !== null ? '₹' + (t.buy_value | number:'1.2-2') : '-' }}</td>
+                      <td class="number">{{ t.buy_value !== null ? (t.buy_value | inr) : '-' }}</td>
                       <td class="number">{{ t.sell_quantity ?? '-' }}</td>
-                      <td class="number">{{ t.sell_value !== null ? '₹' + (t.sell_value | number:'1.2-2') : '-' }}</td>
-                      <td class="number">{{ t.buy_quantity && t.buy_value ? '₹' + (t.buy_value / t.buy_quantity | number:'1.2-2') : '-' }}</td>
+                      <td class="number">{{ t.sell_value !== null ? (t.sell_value | inr) : '-' }}</td>
+                      <td class="number">{{ t.buy_quantity && t.buy_value ? (t.buy_value / t.buy_quantity | inr) : '-' }}</td>
                       <td class="remarks">{{ t.remarks }}</td>
                       <td class="actions">
                         <ng-container *ngIf="canWrite">
@@ -296,10 +296,10 @@
           <td class="name-cell">{{ entry.name }}</td>
           <td>{{ entry.date }}</td>
           <td class="number">{{ entry.buy_quantity ?? '-' }}</td>
-          <td class="number">{{ entry.buy_value !== null ? '₹' + (entry.buy_value | number:'1.2-2') : '-' }}</td>
+          <td class="number">{{ entry.buy_value !== null ? (entry.buy_value | inr) : '-' }}</td>
           <td class="number">{{ entry.sell_quantity ?? '-' }}</td>
-          <td class="number">{{ entry.sell_value !== null ? '₹' + (entry.sell_value | number:'1.2-2') : '-' }}</td>
-          <td class="number">{{ entry.buy_quantity && entry.buy_value ? '₹' + (entry.buy_value / entry.buy_quantity | number:'1.2-2') : '-' }}</td>
+          <td class="number">{{ entry.sell_value !== null ? (entry.sell_value | inr) : '-' }}</td>
+          <td class="number">{{ entry.buy_quantity && entry.buy_value ? (entry.buy_value / entry.buy_quantity | inr) : '-' }}</td>
           <td class="remarks">{{ entry.remarks }}</td>
           <td class="actions">
             <ng-container *ngIf="canWrite">
@@ -323,8 +323,8 @@
         </div>
         <div class="card-body">
           <div class="card-row"><span>Date:</span><span>{{ entry.date }}</span></div>
-          <div class="card-row" *ngIf="entry.buy_quantity"><span>Buy:</span><span>{{ entry.buy_quantity }} &#64; ₹{{ entry.buy_value | number:'1.2-2' }}</span></div>
-          <div class="card-row" *ngIf="entry.sell_quantity"><span>Sell:</span><span>{{ entry.sell_quantity }} &#64; ₹{{ entry.sell_value | number:'1.2-2' }}</span></div>
+          <div class="card-row" *ngIf="entry.buy_quantity"><span>Buy:</span><span>{{ entry.buy_quantity }} &#64; {{ entry.buy_value | inr }}</span></div>
+          <div class="card-row" *ngIf="entry.sell_quantity"><span>Sell:</span><span>{{ entry.sell_quantity }} &#64; {{ entry.sell_value | inr }}</span></div>
         </div>
         <div class="card-actions" *ngIf="canWrite">
           <button class="btn-icon edit" (click)="openEditForm(entry)" title="Edit">✏️</button>

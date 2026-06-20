@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, HostListener, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
@@ -6,6 +6,7 @@ import { InvestmentService } from '../../services/investment.service';
 import { AuthService } from '../../services/auth.service';
 import { UiActionService } from '../../services/ui-action.service';
 import { CsvExportService } from '../../services/csv-export.service';
+import { InrPipe } from '../../pipes/inr.pipe';
 import { MutualFundEntry } from '../../models/investment.model';
 
 function getCurrentFY(): string {
@@ -31,7 +32,7 @@ interface HoldingRow {
 @Component({
   selector: 'app-mutual-funds',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, InrPipe],
   templateUrl: './mutual-funds.component.html',
   styleUrl: './mutual-funds.component.scss'
 })
@@ -242,6 +243,11 @@ export class MutualFundsComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void { this.addSub?.unsubscribe(); }
+
+  @HostListener('document:keydown.escape')
+  onEscape(): void {
+    if (this.showForm) { this.showForm = false; this.editingId = null; }
+  }
 
   emptyForm(): MutualFundEntry {
     return {

@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, HostListener, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
@@ -6,6 +6,7 @@ import { InvestmentService } from '../../services/investment.service';
 import { AuthService } from '../../services/auth.service';
 import { UiActionService } from '../../services/ui-action.service';
 import { CsvExportService } from '../../services/csv-export.service';
+import { InrPipe } from '../../pipes/inr.pipe';
 import { FixedDepositEntry } from '../../models/investment.model';
 
 function getCurrentFY(): string {
@@ -23,7 +24,7 @@ function getFYOptions(): string[] {
 @Component({
   selector: 'app-fixed-deposits',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, InrPipe],
   templateUrl: './fixed-deposits.component.html',
   styleUrl: './fixed-deposits.component.scss'
 })
@@ -72,6 +73,11 @@ export class FixedDepositsComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void { this.addSub?.unsubscribe(); }
+
+  @HostListener('document:keydown.escape')
+  onEscape(): void {
+    if (this.showForm) { this.showForm = false; this.editingId = null; }
+  }
 
   emptyForm(): FixedDepositEntry {
     return {

@@ -111,55 +111,14 @@
         <button *ngIf="isActive('fixed-deposits') && canWrite" class="nav-plus-btn" (click)="triggerAddEntry()" title="Add Fixed Deposit">+</button>
       </div>
 
-      <div class="nav-row">
-        <button
-          class="nav-btn"
-          [class.active]="isActive('forex')"
-          (click)="navigateTo('forex')"
-          [title]="sidebarCollapsed ? 'Forex' : ''">
-          <span class="nav-icon">💱</span><span class="nav-label"> Forex</span>
-        </button>
-        <button *ngIf="isActive('forex') && canWrite" class="nav-plus-btn" (click)="triggerAddEntry()" title="Add Forex Entry">+</button>
-      </div>
-
-      <hr class="divider">
-
-      <button
-        class="nav-btn"
-        [class.active]="isActive('investment-analysis')"
-        (click)="navigateTo('investment-analysis')"
-        [title]="sidebarCollapsed ? 'Investment Analysis' : ''">
-        <span class="nav-icon">📊</span><span class="nav-label"> Investment Analysis</span>
+      <!-- More button — collapses Forex, Analysis, Refresh, Live Prices, Chatbot, Users into a popup -->
+      <button class="nav-btn nav-btn-more"
+              [class.active]="isDesktopMoreActive"
+              (click)="toggleDesktopMore()"
+              [title]="sidebarCollapsed ? 'More' : ''">
+        <span class="nav-icon">☰</span><span class="nav-label"> More</span>
       </button>
 
-      <hr class="divider">
-
-      <button class="nav-btn refresh-btn" (click)="refreshData()" [disabled]="isRefreshing" [title]="sidebarCollapsed ? (isRefreshing ? 'Refreshing…' : 'Refresh') : ''">
-        <span class="nav-icon">{{ isRefreshing ? '⏳' : '🔄' }}</span><span class="nav-label"> {{ isRefreshing ? 'Refreshing...' : 'Refresh' }}</span>
-      </button>
-
-      <button class="nav-btn" (click)="fetchAllLivePrices()" [disabled]="isFetchingAllPrices" [title]="livePriceTooltip">
-        <span class="nav-icon">{{ isFetchingAllPrices ? '⏳' : '📡' }}</span><span class="nav-label"> {{ isFetchingAllPrices ? 'Fetching...' : 'Live Prices' }}</span>
-      </button>
-
-      <button
-        class="nav-btn"
-        [class.active]="isActive('chatbot')"
-        (click)="navigateTo('chatbot')"
-        [title]="sidebarCollapsed ? 'Chatbot' : ''">
-        <span class="nav-icon">💬</span><span class="nav-label"> Chatbot</span>
-      </button>
-
-      <ng-container *ngIf="isAdmin">
-        <hr class="divider">
-        <button
-          class="nav-btn nav-btn-admin"
-          [class.active]="isActive('user-management')"
-          (click)="navigateTo('user-management')"
-          [title]="sidebarCollapsed ? 'User Management' : ''">
-          <span class="nav-icon">👥</span><span class="nav-label"> Users</span>
-        </button>
-      </ng-container>
     </nav>
   </aside>
 
@@ -169,26 +128,79 @@
     <app-dashboard [view]="dashboardView" [hidden]="!showDashboard"></app-dashboard>
 
     <!-- Equity -->
-    <app-equity *ngIf="visitedPages.has('equity')" [hidden]="currentPage !== 'equity'"></app-equity>
+    @defer (when visitedPages.has('equity')) {
+      <app-equity [hidden]="currentPage !== 'equity'"></app-equity>
+    }
 
     <!-- Mutual Funds -->
-    <app-mutual-funds *ngIf="visitedPages.has('mutual-funds')" [hidden]="currentPage !== 'mutual-funds'"></app-mutual-funds>
+    @defer (when visitedPages.has('mutual-funds')) {
+      <app-mutual-funds [hidden]="currentPage !== 'mutual-funds'"></app-mutual-funds>
+    }
 
     <!-- Commodity -->
-    <app-commodity *ngIf="visitedPages.has('commodity')" [hidden]="currentPage !== 'commodity'"></app-commodity>
+    @defer (when visitedPages.has('commodity')) {
+      <app-commodity [hidden]="currentPage !== 'commodity'"></app-commodity>
+    }
 
     <!-- P2P -->
-    <app-p2p *ngIf="visitedPages.has('p2p')" [hidden]="currentPage !== 'p2p'"></app-p2p>
+    @defer (when visitedPages.has('p2p')) {
+      <app-p2p [hidden]="currentPage !== 'p2p'"></app-p2p>
+    }
 
     <!-- Fixed Deposits -->
-    <app-fixed-deposits *ngIf="visitedPages.has('fixed-deposits')" [hidden]="currentPage !== 'fixed-deposits'"></app-fixed-deposits>
+    @defer (when visitedPages.has('fixed-deposits')) {
+      <app-fixed-deposits [hidden]="currentPage !== 'fixed-deposits'"></app-fixed-deposits>
+    }
 
     <!-- Forex -->
-    <app-forex *ngIf="visitedPages.has('forex')" [hidden]="currentPage !== 'forex'"></app-forex>
+    @defer (when visitedPages.has('forex')) {
+      <app-forex [hidden]="currentPage !== 'forex'"></app-forex>
+    }
 
-    <!-- User Management (Admin only) -->
-    <app-user-management *ngIf="isAdmin && currentPage === 'user-management'" (viewAs)="onViewAs($event)"></app-user-management>
+    <!-- User Management (Admin only) — deferred, but instance destroyed on leave via *ngIf -->
+    @defer (when isAdmin) {
+      <app-user-management *ngIf="isAdmin && currentPage === 'user-management'" (viewAs)="onViewAs($event)"></app-user-management>
+    }
   </main>
+
+  <!-- ===== DESKTOP "MORE" FLYOUT (desktop-only) ===== -->
+  <!-- Transparent overlay to close on outside click -->
+  <div class="desktop-more-overlay" *ngIf="showDesktopMore" (click)="closeDesktopMore()"></div>
+  <!-- Flyout panel anchored to right of sidebar -->
+  <div class="desktop-more-popup" *ngIf="showDesktopMore" [style.left]="desktopMoreLeft">
+    <div class="nav-row">
+      <button class="nav-btn" [class.active]="isActive('forex')"
+              (click)="navigateTo('forex'); closeDesktopMore()"
+              title="">
+        <span class="nav-icon">💱</span><span class="nav-label"> Forex</span>
+      </button>
+      <button *ngIf="isActive('forex') && canWrite" class="nav-plus-btn" (click)="triggerAddEntry(); closeDesktopMore()" title="Add Forex Entry">+</button>
+    </div>
+    <button class="nav-btn" [class.active]="isActive('investment-analysis')"
+            (click)="navigateTo('investment-analysis'); closeDesktopMore()">
+      <span class="nav-icon">📊</span><span class="nav-label"> Investment Analysis</span>
+    </button>
+    <hr class="divider">
+    <button class="nav-btn" (click)="refreshData(); closeDesktopMore()" [disabled]="isRefreshing">
+      <span class="nav-icon">{{ isRefreshing ? '⏳' : '🔄' }}</span>
+      <span class="nav-label"> {{ isRefreshing ? 'Refreshing...' : 'Refresh' }}</span>
+    </button>
+    <button class="nav-btn" (click)="fetchAllLivePrices(); closeDesktopMore()" [disabled]="isFetchingAllPrices" [title]="livePriceTooltip">
+      <span class="nav-icon">{{ isFetchingAllPrices ? '⏳' : '📡' }}</span>
+      <span class="nav-label"> {{ isFetchingAllPrices ? 'Fetching...' : 'Live Prices' }}</span>
+    </button>
+    <button class="nav-btn" [class.active]="isActive('chatbot')"
+            (click)="navigateTo('chatbot'); closeDesktopMore()">
+      <span class="nav-icon">💬</span><span class="nav-label"> Chatbot</span>
+    </button>
+    <ng-container *ngIf="isAdmin">
+      <hr class="divider">
+      <button class="nav-btn nav-btn-admin" [class.active]="isActive('user-management')"
+              (click)="navigateTo('user-management'); closeDesktopMore()">
+        <span class="nav-icon">👥</span><span class="nav-label"> Users</span>
+      </button>
+    </ng-container>
+  </div>
   </div>
 
   <!-- ===== MOBILE BOTTOM TAB BAR ===== -->

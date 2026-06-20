@@ -1,4 +1,4 @@
-<div class="page">
+﻿<div class="page">
   <!-- Summary Cards -->
   <div class="forex-summary">
     <div class="forex-stat">
@@ -17,7 +17,7 @@
       <span class="stat-label">Wallet Balance</span>
       <div style="display:flex;align-items:baseline;gap:0.5rem;flex-wrap:wrap;">
         <span class="stat-value">${{ walletBalanceUSD | number:'1.2-2' }}</span>
-        <span class="stat-sub">&#8377;{{ walletBalanceUSD * latestRateNum | number:'1.2-2' }}</span>
+        <span class="stat-sub">{{ walletBalanceUSD * latestRateNum | inr }}</span>
       </div>
     </div>
     <div class="forex-stat">
@@ -42,12 +42,12 @@
     </div>
     <div class="forex-stat">
       <span class="stat-label">Forex Impact on Withdrawals</span>
-      <span class="stat-value" [class.pnl-positive]="forexWithdrawalImpact >= 0" [class.pnl-negative]="forexWithdrawalImpact < 0">₹{{ (forexWithdrawalImpact < 0 ? -forexWithdrawalImpact : forexWithdrawalImpact) | number:'1.2-2' }}</span>
+      <span class="stat-value" [class.pnl-positive]="forexWithdrawalImpact >= 0" [class.pnl-negative]="forexWithdrawalImpact < 0">{{ (forexWithdrawalImpact < 0 ? -forexWithdrawalImpact : forexWithdrawalImpact) | inr }}</span>
       <span class="stat-sub">{{ forexWithdrawalImpact >= 0 ? 'extra INR received vs avg deposit rate' : 'INR lost vs avg deposit rate' }}</span>
     </div>
     <div class="forex-stat">
       <span class="stat-label">Forex Impact on Deposits</span>
-      <span class="stat-value" [class.pnl-positive]="forexDepositImpact < 0" [class.pnl-negative]="forexDepositImpact >= 0">₹{{ (forexDepositImpact < 0 ? -forexDepositImpact : forexDepositImpact) | number:'1.2-2' }}</span>
+      <span class="stat-value" [class.pnl-positive]="forexDepositImpact < 0" [class.pnl-negative]="forexDepositImpact >= 0">{{ (forexDepositImpact < 0 ? -forexDepositImpact : forexDepositImpact) | inr }}</span>
       <span class="stat-sub">{{ forexDepositImpact >= 0 ? 'extra INR paid vs cheapest deposit rate' : 'INR saved vs cheapest deposit rate' }}</span>
     </div>
   </div>
@@ -127,9 +127,9 @@
         <tr *ngFor="let entry of entries">
           <td>{{ entry.date }}</td>
           <td><span class="badge" [class.buy]="entry.type === 'Deposit'" [class.sell]="entry.type === 'Withdrawal'">{{ entry.type }}</span></td>
-          <td class="number">₹{{ entry.inr_amount | number:'1.2-2' }}</td>
+          <td class="number">{{ entry.inr_amount | inr }}</td>
           <td class="number">${{ entry.usd_amount | number:'1.2-2' }}</td>
-          <td class="number">₹{{ entry.rate | number:'1.4-4' }}</td>
+          <td class="number">{{ entry.rate | inr }}</td>
           <td class="remarks">{{ entry.remarks }}</td>
           <td class="actions">
             <ng-container *ngIf="canWrite">
@@ -148,9 +148,9 @@
           <strong>{{ entry.date }}</strong>
         </div>
         <div class="card-body">
-          <div class="card-row"><span>INR:</span><span>₹{{ entry.inr_amount | number:'1.2-2' }}</span></div>
+          <div class="card-row"><span>INR:</span><span>{{ entry.inr_amount | inr }}</span></div>
           <div class="card-row"><span>USD:</span><span>${{ entry.usd_amount | number:'1.2-2' }}</span></div>
-          <div class="card-row"><span>Rate:</span><span>₹{{ entry.rate | number:'1.4-4' }}</span></div>
+          <div class="card-row"><span>Rate:</span><span>{{ entry.rate | inr }}</span></div>
         </div>
         <div class="card-actions" *ngIf="canWrite">
           <button class="btn-icon edit" (click)="openEditForm(entry)" title="Edit">✏️</button>

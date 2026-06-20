@@ -43,6 +43,13 @@ CORS(app, origins=_ALLOWED_ORIGINS, allow_headers=["Authorization", "Content-Typ
 def handle_exception(e):
     return jsonify({"error": str(e)}), 500
 
+
+@app.route("/api/ping", methods=["GET"])
+def ping():
+    """Lightweight keep-alive endpoint — no auth, no DB call. Used by the frontend
+    on startup to warm the Render instance before the user triggers a real request."""
+    return jsonify({"ok": True}), 200
+
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("DATABASE_PATH", os.path.join(_BASE_DIR, "investments.db"))
 TURSO_URL = os.environ.get("TURSO_DATABASE_URL")
@@ -807,6 +814,8 @@ def add_p2p_escrow():
     if not data:
         return jsonify({"error": "No data provided"}), 400
     result = db_service.add_row("P2P Escrow", data, created_by=request.user_email)
+    # Keep escrow table compact: auto-collapse when row count exceeds 20
+    db_service.compact_p2p_escrow(threshold=20)
     return jsonify({"message": "Escrow transaction added", "id": result["id"]}), 201
 
 
@@ -1312,38 +1321,19 @@ def get_unrealized_pnl():
 
 @app.route("/api/bulk-load", methods=["GET"])
 def bulk_load():
-    """Fetch all dashboard data in parallel using a single backend request."""
-    # Capture request context values BEFORE entering threads — Flask's request
-    # proxy is thread-local and is NOT available inside ThreadPoolExecutor workers.
+    """Fetch all dashboard data via a single execute_pipeline call (1 HTTP round-trip to Turso).
+    Summary and capital_flows_summary are computed in Python from the fetched rows.
+    Result is persisted as a portfolio_snapshot for near-instant Render cold-start loads.
+    """
     _user_email = request.user_email
     _user_role = request.user_role
-    tasks = {
-        "summary":              lambda: db_service.get_summary(user_email=_user_email, role=_user_role),
-        "equity":               lambda: db_service.get_all("Equity", user_email=_user_email, role=_user_role),
-        "commodity":            lambda: db_service.get_all("Commodity", user_email=_user_email, role=_user_role),
-        "mutual_funds":         lambda: db_service.get_all("Mutual Funds", user_email=_user_email, role=_user_role),
-        "p2p":                  lambda: db_service.get_all("P2P", user_email=_user_email, role=_user_role),
-        "p2p_repayments":       lambda: db_service.get_all("P2P Repayments", user_email=_user_email, role=_user_role),
-        "fixed_deposits":       lambda: db_service.get_all("Fixed Deposits", user_email=_user_email, role=_user_role),
-        "forex":                lambda: db_service.get_all("Forex", user_email=_user_email, role=_user_role),
-        "capital_flows_summary": lambda: db_service.get_capital_flows_summary(user_email=_user_email, role=_user_role),
-        "capital_flows":        lambda: db_service.get_all("Capital Flows", user_email=_user_email, role=_user_role),
-        "equity_tickers":       lambda: db_service.get_all_tickers(),
-        "mf_tickers":           lambda: db_service.get_all_mf_tickers(),
-        "commodity_tickers":    lambda: db_service.get_all_commodity_tickers(),
-        "equity_dividends":     lambda: db_service.get_all("Equity Dividends", user_email=_user_email, role=_user_role),
-    }
-    result = {}
-    with ThreadPoolExecutor(max_workers=len(tasks)) as executor:
-        futures = {executor.submit(fn): key for key, fn in tasks.items()}
-        for future in as_completed(futures):
-            key = futures[future]
-            try:
-                result[key] = future.result()
-            except Exception as e:
-                result[key] = None
-                print(f"[bulk-load] Error fetching {key}: {e}")
+    user_scope = _user_email if (_user_role == 'user' and _user_email) else '__all__'
 
+    # get_bulk_data checks the persistent snapshot first, then the in-memory cache,
+    # then falls back to a single execute_pipeline call covering all tables + tickers.
+    result = db_service.get_bulk_data(user_email=_user_email, role=_user_role)
+
+    # Compute unrealized P&L from the already-fetched rows (pure Python — no DB call)
     try:
         result["unrealized_pnl"] = _compute_unrealized_pnl_data(
             result.get("equity") or [],
@@ -1357,6 +1347,10 @@ def bulk_load():
     except Exception as e:
         print(f"[bulk-load] Error computing unrealized PnL: {e}")
         result["unrealized_pnl"] = None
+
+    # Persist the complete result (including unrealized_pnl) as a snapshot so the
+    # next cold-start can serve it instantly from a single small DB read.
+    db_service._save_snapshot(user_scope, result)
 
     return jsonify(result)
 

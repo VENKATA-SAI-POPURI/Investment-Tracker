@@ -645,12 +645,11 @@ app-dashboard.animations-done {
 }
 
 .pnl-chart-bars {
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  gap: 12px;
+  display: grid;
+  // grid-template-columns set dynamically via [style] binding
+  // gap and padding must remain 0 so bar centres align with SVG (i+0.5)/N*100% positions
+  align-items: stretch;
   height: 200px;
-  padding: 0 8px;
   position: relative;
 }
 
@@ -658,9 +657,9 @@ app-dashboard.animations-done {
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: 72px;
+  width: 100%;
   max-width: 96px;
-  flex-shrink: 0;
+  justify-self: center;
   height: 100%;
   position: relative;
   gap: 0;
@@ -710,10 +709,15 @@ app-dashboard.animations-done {
   flex-shrink: 0;
 }
 
+.pnl-chart-labels {
+  display: grid;
+  // grid-template-columns set dynamically via [style] binding — must match .pnl-chart-bars
+  margin-top: 4px;
+}
+
 .pnl-col-label {
   font-size: 0.68rem;
   color: var(--text-muted);
-  margin-top: 4px;
   text-align: center;
   white-space: nowrap;
 }
@@ -749,9 +753,77 @@ app-dashboard.animations-done {
 }
 
 .pnl-empty {
-  margin: auto;
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--text-muted);
   font-size: 0.85rem;
+}
+
+// Net P&L Trend Line
+.pnl-trend-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+  z-index: 3;
+}
+
+.pnl-trend-area {
+  fill: url(#pnlAreaGrad);
+  filter: drop-shadow(0 0 4px rgba(163, 230, 53, 0.3));
+}
+
+.pnl-trend-polyline {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.85);
+  stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  stroke-dasharray: 8 5;
+  filter: drop-shadow(0 0 3px rgba(163, 230, 53, 0.55));
+}
+
+.pnl-trend-dot {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 4;
+  pointer-events: all;
+  cursor: default;
+  border: 2px solid rgba(10, 15, 30, 0.9);
+  transition: transform 0.15s, box-shadow 0.15s;
+  &:hover { transform: translate(-50%, -50%) scale(1.5); }
+  &.pos {
+    background: #4ade80;
+    box-shadow: 0 0 8px rgba(74, 222, 128, 0.7), 0 0 2px rgba(74, 222, 128, 0.9);
+  }
+  &.neg {
+    background: #f87171;
+    box-shadow: 0 0 8px rgba(248, 113, 113, 0.7), 0 0 2px rgba(248, 113, 113, 0.9);
+  }
+  &.zero { display: none; }
+}
+
+// Trend legend
+.legend-trend {
+  margin-left: 0.25rem;
+  padding-left: 0.5rem;
+  border-left: 1px solid rgba(255,255,255,0.12);
+}
+.legend-trend-dash {
+  width: 20px;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 1px;
+  flex-shrink: 0;
+  box-shadow: 0 0 4px rgba(163, 230, 53, 0.5);
 }
 
 @media (max-width: 600px) {
@@ -781,14 +853,12 @@ app-dashboard.animations-done {
   }
 
   .pnl-chart-bars {
-    justify-content: flex-start; // let it scroll for monthly view
     gap: 6px;
     height: 170px;
   }
 
   .pnl-bar-col {
-    width: 48px;
-    max-width: 48px;
+    min-width: 36px;
   }
 
   .pnl-data-label {
@@ -1848,26 +1918,34 @@ app-dashboard.animations-done {
 
 .skeleton-kpi-row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 1rem;
-  margin-bottom: 2rem;
+  margin-bottom: 1.5rem;
 }
 
 .skeleton-kpi {
-  height: 90px;
+  height: 110px;
   border-radius: 12px;
   background: linear-gradient(90deg, var(--skeleton-bg) 25%, var(--skeleton-shine) 50%, var(--skeleton-bg) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }
 
-.skeleton-chart {
-  height: 200px;
-  border-radius: 12px;
+.skeleton-chart-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
   margin-bottom: 1.5rem;
+}
+
+.skeleton-chart {
+  border-radius: 12px;
   background: linear-gradient(90deg, var(--skeleton-bg) 25%, var(--skeleton-shine) 50%, var(--skeleton-bg) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
+
+  &--half { height: 260px; }
+  &--wide { height: 200px; margin-bottom: 1.5rem; }
 }
 
 @keyframes shimmer {
@@ -2039,6 +2117,7 @@ app-dashboard.animations-done {
 
   // Skeleton & misc
   .skeleton-kpi-row { grid-template-columns: repeat(2, 1fr); }
+  .skeleton-chart-row { grid-template-columns: 1fr; }
   .forex-popup { max-width: 95vw; margin: 0 0.5rem; }
 }
 
@@ -2894,18 +2973,26 @@ app-dashboard.animations-done {
   border-radius: 16px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
   width: 100%;
-  max-width: 600px;
-  max-height: 90vh;
-  overflow-y: auto;
+  max-width: 900px;
+  max-height: 85vh;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+.modal-content {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1.5rem;
+  padding: 1.25rem 1.5rem;
   border-bottom: 1px solid var(--border-color, #e2e8f0);
   flex-shrink: 0;
 
@@ -2932,15 +3019,18 @@ app-dashboard.animations-done {
 }
 
 .modal-body {
-  padding: 1.5rem;
+  width: 300px;
   flex-shrink: 0;
+  overflow-y: auto;
+  padding: 1.25rem 1.5rem;
+  border-right: 1px solid var(--border-color, #e2e8f0);
 }
 
 .modal-list {
-  padding: 1.5rem;
-  border-top: 1px solid var(--border-color, #e2e8f0);
   flex: 1;
   overflow-y: auto;
+  min-height: 0;
+  padding: 1.25rem 1.5rem;
 
   h3 {
     margin: 0 0 1rem 0;
@@ -3044,6 +3134,16 @@ app-dashboard.animations-done {
 
   tr:hover {
     background: var(--bg-card-alt, #f8fafc);
+  }
+
+  tr.aggregated-row {
+    opacity: 0.7;
+    font-style: italic;
+
+    .delete-btn:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
   }
 
   .amount {
@@ -3203,10 +3303,26 @@ app-dashboard.animations-done {
     padding: 0.85rem;
   }
 
-  // Capital-flows modal: full-width on mobile
+  // Capital-flows modal: stack vertically on mobile
   .capital-flows-modal {
     max-width: 95vw;
-    max-height: 88vh;
+    max-height: 90vh;
+  }
+
+  .modal-content {
+    flex-direction: column;
+  }
+
+  .modal-body {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--border-color, #e2e8f0);
+    max-height: 55vh;
+    overflow-y: auto;
+  }
+
+  .modal-list {
+    max-height: 35vh;
   }
 
   .modal-header,

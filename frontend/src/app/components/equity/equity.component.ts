@@ -1,10 +1,11 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, HostListener, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom, Subscription } from 'rxjs';
 import { InvestmentService } from '../../services/investment.service';
 import { UiActionService } from '../../services/ui-action.service';
 import { CsvExportService } from '../../services/csv-export.service';
+import { InrPipe } from '../../pipes/inr.pipe';
 import { AuthService } from '../../services/auth.service';
 import { EquityEntry, ForexEntry, EquityDividend } from '../../models/investment.model';
 
@@ -37,7 +38,7 @@ interface HoldingRow {
 @Component({
   selector: 'app-equity',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, InrPipe],
   templateUrl: './equity.component.html',
   styleUrl: './equity.component.scss'
 })
@@ -317,6 +318,12 @@ export class EquityComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void { this.addSub?.unsubscribe(); }
+
+  @HostListener('document:keydown.escape')
+  onEscape(): void {
+    if (this.showForm) { this.showForm = false; this.editingId = null; }
+    if (this.showDividendModal) { this.showDividendModal = false; }
+  }
 
   loadForexData(): void {
     this.investmentService.getForex().subscribe({
