@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, shareReplay } from 'rxjs';
+import { Observable, of, shareReplay } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { EquityEntry, CommodityEntry, MutualFundEntry, P2PEntry, P2PRepayment, P2PEscrow, FixedDepositEntry, ForexEntry, Summary, EquityDividend, LendenParseResult } from '../models/investment.model';
 import { environment } from '../../environments/environment';
@@ -12,7 +12,12 @@ export class InvestmentService {
 
   private cached<T>(key: string, url: string): Observable<T> {
     if (!this.cache[key]) {
-      this.cache[key] = this.http.get<T>(url).pipe(shareReplay(1));
+      // tap error handler runs before shareReplay caches the result,
+      // so a failed request is evicted and the next subscriber retries.
+      this.cache[key] = this.http.get<T>(url).pipe(
+        tap({ error: () => { delete this.cache[key]; } }),
+        shareReplay(1)
+      );
     }
     return this.cache[key] as Observable<T>;
   }
@@ -28,7 +33,11 @@ export class InvestmentService {
     this.cache = {};
   }
 
-  constructor(private http: HttpClient) {}
+  constructor(private http: HttpClient) {
+    // Warm the Render backend immediately so it's ready before the user's first real request.
+    // Fire-and-forget — no auth header needed, errors silently ignored.
+    this.http.get(`${this.baseUrl}/ping`).subscribe({ error: () => {} });
+  }
 
   // ── Equity ──
   getEquity(): Observable<EquityEntry[]> {
@@ -217,7 +226,37 @@ export class InvestmentService {
 
   // ── Bulk Load ──
   getBulkLoad(): Observable<any> {
-    return this.cached<any>('bulk-load', `${this.baseUrl}/bulk-load`);
+    if (!this.cache['bulk-load']) {
+      this.cache['bulk-load'] = this.http.get<any>(`${this.baseUrl}/bulk-load`).pipe(
+        tap({
+          next: (data) => this._primeIndividualCaches(data),
+          error: () => { delete this.cache['bulk-load']; }
+        }),
+        shareReplay(1)
+      );
+    }
+    return this.cache['bulk-load'];
+  }
+
+  /** Populate individual caches from a bulk-load response so that
+   *  components navigating away from home don't need extra API calls. */
+  private _primeIndividualCaches(data: any): void {
+    const prime = (key: string, value: any) => {
+      if (value !== undefined && !this.cache[key]) {
+        this.cache[key] = of(value).pipe(shareReplay(1));
+      }
+    };
+    prime('summary',         data.summary);
+    prime('equity',          data.equity);
+    prime('commodity',       data.commodity);
+    prime('mutual-funds',    data.mutual_funds);
+    prime('p2p',             data.p2p);
+    prime('p2p-repayments',  data.p2p_repayments);
+    prime('p2p-escrow',      data.p2p_escrow);
+    prime('fixed-deposits',  data.fixed_deposits);
+    prime('forex',           data.forex);
+    prime('capital-flows',   data.capital_flows);
+    prime('equity-dividends', data.equity_dividends);
   }
 
   // ── Name Suggestions (for autocomplete — no financial data) ──
