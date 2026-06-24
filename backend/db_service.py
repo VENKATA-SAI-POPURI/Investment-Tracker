@@ -431,14 +431,13 @@ class DbService:
                 conn.execute(f"SELECT updated_at FROM {tbl} LIMIT 0")
             except Exception:
                 try:
-                    conn.execute(
-                        f"ALTER TABLE {tbl} ADD COLUMN updated_at TEXT "
-                        f"DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))"
-                    )
+                    # Use plain TEXT column without DEFAULT expression — Turso (and older SQLite)
+                    # do not support function expressions in ALTER TABLE ADD COLUMN DEFAULT clauses.
+                    conn.execute(f"ALTER TABLE {tbl} ADD COLUMN updated_at TEXT")
                     conn.commit()
                     print(f"[db_service] {tbl} migrated: added updated_at column.")
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"[db_service] Could not add updated_at to {tbl}: {e}")
 
     def _migrate_tickers_unified(self, conn):
         """Copy any remaining data from old separate ticker tables into the unified tickers table.
