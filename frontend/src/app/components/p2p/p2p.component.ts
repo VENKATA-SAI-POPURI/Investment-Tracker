@@ -1,7 +1,7 @@
 import { Component, HostListener, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Subscription } from 'rxjs';
+import { Subscription, forkJoin } from 'rxjs';
 import { InvestmentService } from '../../services/investment.service';
 import { AuthService } from '../../services/auth.service';
 import { UiActionService } from '../../services/ui-action.service';
@@ -66,6 +66,20 @@ export class P2PComponent implements OnInit, OnDestroy {
     this.addSub = this.uiActionService.addEntry.subscribe(page => { if (page === 'p2p') this.openAddForm(); });
     this.addSub.add(this.uiActionService.refresh.subscribe(() => { this.uiActionService.beginRefresh(); this.loadData(() => this.uiActionService.endRefresh()); }));
     this.loadData();
+    // When fresh bulk-load data arrives, update the view automatically.
+    this.addSub.add(this.investmentService.getBulkLoad().subscribe({
+      next: (bulk) => {
+        if (bulk.p2p)              { this.allEntries = bulk.p2p; }
+        if (bulk.p2p_repayments)   { this.repayments = bulk.p2p_repayments; }
+        if (bulk.p2p_escrow)       { this.escrowTransactions = bulk.p2p_escrow; }
+        if (bulk.p2p || bulk.p2p_repayments || bulk.p2p_escrow) {
+          this.applyFilter();
+          this.loading = false;
+          this.autoUpdateDefaultedStatuses();
+        }
+      },
+      error: () => {}
+    }));
   }
 
   ngOnDestroy(): void { this.addSub?.unsubscribe(); }
@@ -728,19 +742,19 @@ export class P2PComponent implements OnInit, OnDestroy {
 
   loadData(onComplete?: () => void): void {
     if (this.allEntries.length === 0) this.loading = true;
-    this.investmentService.getP2P().subscribe({
-      next: (data) => {
-        this.allEntries = data;
-        this.investmentService.getP2PRepayments().subscribe({
-          next: (rep) => {
-            this.repayments = rep;
-            this.investmentService.getP2PEscrow().subscribe({
-              next: (esc) => { this.escrowTransactions = esc; this.applyFilter(); this.loading = false; this.autoUpdateDefaultedStatuses(); onComplete?.(); },
-              error: () => { this.escrowTransactions = []; this.applyFilter(); this.loading = false; onComplete?.(); }
-            });
-          },
-          error: () => { this.repayments = []; this.applyFilter(); this.loading = false; onComplete?.(); }
-        });
+    forkJoin({
+      p2p: this.investmentService.getP2P(),
+      repayments: this.investmentService.getP2PRepayments(),
+      escrow: this.investmentService.getP2PEscrow()
+    }).subscribe({
+      next: ({ p2p, repayments, escrow }) => {
+        this.allEntries = p2p;
+        this.repayments = repayments;
+        this.escrowTransactions = escrow;
+        this.applyFilter();
+        this.loading = false;
+        this.autoUpdateDefaultedStatuses();
+        onComplete?.();
       },
       error: () => { this.toast('Failed to load entries', 'error'); this.loading = false; onComplete?.(); }
     });

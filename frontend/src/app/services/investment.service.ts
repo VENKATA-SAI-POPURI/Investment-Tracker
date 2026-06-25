@@ -57,11 +57,13 @@ export class InvestmentService {
   }
 
   getEquityTickers(): Observable<Record<string, {ticker: string, price: number | null}>> {
-    return this.http.get<Record<string, {ticker: string, price: number | null}>>(`${this.baseUrl}/equity/tickers`);
+    return this.cached<Record<string, {ticker: string, price: number | null}>>('equity-tickers', `${this.baseUrl}/equity/tickers`);
   }
 
   saveEquityTicker(name: string, ticker: string): Observable<any> {
-    return this.http.put(`${this.baseUrl}/equity/tickers/${encodeURIComponent(name)}`, { ticker });
+    return this.http.put(`${this.baseUrl}/equity/tickers/${encodeURIComponent(name)}`, { ticker }).pipe(
+      tap(() => { delete this.cache['equity-tickers']; delete this.cache['bulk-load']; })
+    );
   }
 
   fetchEquityPrices(symbols: string[]): Observable<Record<string, number | null>> {
@@ -88,11 +90,13 @@ export class InvestmentService {
   }
 
   getCommodityTickers(): Observable<Record<string, {ticker: string, price: number | null}>> {
-    return this.http.get<Record<string, {ticker: string, price: number | null}>>(`${this.baseUrl}/commodity/tickers`);
+    return this.cached<Record<string, {ticker: string, price: number | null}>>('commodity-tickers', `${this.baseUrl}/commodity/tickers`);
   }
 
   saveCommodityTicker(name: string, ticker: string): Observable<any> {
-    return this.http.put(`${this.baseUrl}/commodity/tickers/${encodeURIComponent(name)}`, { ticker });
+    return this.http.put(`${this.baseUrl}/commodity/tickers/${encodeURIComponent(name)}`, { ticker }).pipe(
+      tap(() => { delete this.cache['commodity-tickers']; delete this.cache['bulk-load']; })
+    );
   }
 
   fetchCommodityPrices(symbols: string[]): Observable<Record<string, number | null>> {
@@ -119,11 +123,13 @@ export class InvestmentService {
   }
 
   getMFTickers(): Observable<Record<string, {ticker: string, price: number | null}>> {
-    return this.http.get<Record<string, {ticker: string, price: number | null}>>(`${this.baseUrl}/mutual-funds/tickers`);
+    return this.cached<Record<string, {ticker: string, price: number | null}>>('mf-tickers', `${this.baseUrl}/mutual-funds/tickers`);
   }
 
   saveMFTicker(name: string, ticker: string): Observable<any> {
-    return this.http.put(`${this.baseUrl}/mutual-funds/tickers/${encodeURIComponent(name)}`, { ticker });
+    return this.http.put(`${this.baseUrl}/mutual-funds/tickers/${encodeURIComponent(name)}`, { ticker }).pipe(
+      tap(() => { delete this.cache['mf-tickers']; delete this.cache['bulk-load']; })
+    );
   }
 
   fetchMFPrices(symbols: string[]): Observable<Record<string, number | null>> {
@@ -238,25 +244,44 @@ export class InvestmentService {
     return this.cache['bulk-load'];
   }
 
-  /** Populate individual caches from a bulk-load response so that
-   *  components navigating away from home don't need extra API calls. */
+  /** Populate individual caches from a bulk-load response.
+   *  Always overwrites so fresh data replaces any stale warm-up data. */
   private _primeIndividualCaches(data: any): void {
     const prime = (key: string, value: any) => {
-      if (value !== undefined && !this.cache[key]) {
+      if (value !== undefined) {
         this.cache[key] = of(value).pipe(shareReplay(1));
       }
     };
-    prime('summary',         data.summary);
-    prime('equity',          data.equity);
-    prime('commodity',       data.commodity);
-    prime('mutual-funds',    data.mutual_funds);
-    prime('p2p',             data.p2p);
-    prime('p2p-repayments',  data.p2p_repayments);
-    prime('p2p-escrow',      data.p2p_escrow);
-    prime('fixed-deposits',  data.fixed_deposits);
-    prime('forex',           data.forex);
-    prime('capital-flows',   data.capital_flows);
-    prime('equity-dividends', data.equity_dividends);
+    prime('summary',           data.summary);
+    prime('equity',            data.equity);
+    prime('commodity',         data.commodity);
+    prime('mutual-funds',      data.mutual_funds);
+    prime('p2p',               data.p2p);
+    prime('p2p-repayments',    data.p2p_repayments);
+    prime('p2p-escrow',        data.p2p_escrow);
+    prime('fixed-deposits',    data.fixed_deposits);
+    prime('forex',             data.forex);
+    prime('capital-flows',     data.capital_flows);
+    prime('equity-dividends',  data.equity_dividends);
+    prime('equity-tickers',    data.equity_tickers);
+    prime('mf-tickers',        data.mf_tickers);
+    prime('commodity-tickers', data.commodity_tickers);
+  }
+
+  /**
+   * Synchronously prime all individual caches from the last-known dashboard
+   * localStorage snapshot so pages can render stale data instantly on cold starts.
+   * Must be called before getBulkLoad() so the primed cache values are available
+   * when child components initialize.
+   */
+  warmFromLocalStorage(): void {
+    try {
+      const userRaw = localStorage.getItem('auth_user');
+      const email = userRaw ? (JSON.parse(userRaw)?.email ?? 'guest') : 'guest';
+      const raw = localStorage.getItem(`dashboard_cache_v1:${email}`);
+      if (!raw) return;
+      this._primeIndividualCaches(JSON.parse(raw));
+    } catch { /* ignore parse/storage errors */ }
   }
 
   // ── Name Suggestions (for autocomplete — no financial data) ──

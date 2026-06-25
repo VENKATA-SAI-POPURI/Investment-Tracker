@@ -238,6 +238,20 @@ export class CommodityComponent implements OnInit, OnDestroy {
       },
       error: () => {}
     });
+    // When fresh bulk-load data arrives, update the view automatically.
+    this.addSub.add(this.investmentService.getBulkLoad().subscribe({
+      next: (bulk) => {
+        if (bulk.commodity) { this.allEntries = bulk.commodity; this.applyFilter(); this.loading = false; }
+        if (bulk.commodity_tickers) {
+          this.tickerMap = {};
+          for (const [name, val] of Object.entries(bulk.commodity_tickers as Record<string, { ticker: string; price: number | null }>)) {
+            this.tickerMap[name] = val.ticker;
+            if (val.price != null) this.livePrices[val.ticker] = val.price;
+          }
+        }
+      },
+      error: () => {}
+    }));
   }
 
   ngOnDestroy(): void { this.addSub?.unsubscribe(); }

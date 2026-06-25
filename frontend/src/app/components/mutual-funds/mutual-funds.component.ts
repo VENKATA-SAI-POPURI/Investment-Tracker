@@ -240,6 +240,20 @@ export class MutualFundsComponent implements OnInit, OnDestroy {
       },
       error: () => {}
     });
+    // When fresh bulk-load data arrives, update the view automatically.
+    this.addSub.add(this.investmentService.getBulkLoad().subscribe({
+      next: (bulk) => {
+        if (bulk.mutual_funds) { this.allEntries = bulk.mutual_funds; this.applyFilter(); this.loading = false; }
+        if (bulk.mf_tickers) {
+          this.tickerMap = {};
+          for (const [name, val] of Object.entries(bulk.mf_tickers as Record<string, { ticker: string; price: number | null }>)) {
+            this.tickerMap[name] = val.ticker;
+            if (val.price != null) this.livePrices[val.ticker] = val.price;
+          }
+        }
+      },
+      error: () => {}
+    }));
   }
 
   ngOnDestroy(): void { this.addSub?.unsubscribe(); }

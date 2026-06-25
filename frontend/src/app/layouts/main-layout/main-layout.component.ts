@@ -64,6 +64,12 @@ export class MainLayoutComponent implements OnInit, OnDestroy {
     document.body.classList.toggle('dark', this.darkMode);
     document.body.classList.toggle('light', !this.darkMode);
     this.refreshDoneSub = this.uiActionService.refreshDone.subscribe(() => { this.isRefreshing = false; });
+    // Synchronously prime caches from last session's localStorage snapshot so every
+    // page renders instantly with stale data while the backend wakes up.
+    this.investmentService.warmFromLocalStorage();
+    // Pre-warm all page data so navigating to any page loads instantly from cache.
+    // Fire-and-forget — errors are ignored and each individual page will retry on its own.
+    this.investmentService.getBulkLoad().subscribe({ error: () => {} });
     this.autoFetchPricesIfDue();
   }
 

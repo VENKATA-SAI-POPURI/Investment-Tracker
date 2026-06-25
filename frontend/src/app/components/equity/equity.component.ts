@@ -315,6 +315,23 @@ export class EquityComponent implements OnInit, OnDestroy {
       },
       error: () => {}
     });
+    // When fresh bulk-load data arrives (backend warmed up), update the view
+    // without requiring a navigation or manual refresh.
+    this.addSub.add(this.investmentService.getBulkLoad().subscribe({
+      next: (bulk) => {
+        if (bulk.equity)            { this.allEntries = bulk.equity; this.applyFilter(); this.loading = false; }
+        if (bulk.forex)             this.forexEntries = bulk.forex;
+        if (bulk.equity_dividends)  this.dividendData = bulk.equity_dividends;
+        if (bulk.equity_tickers) {
+          this.tickerMap = {};
+          for (const [name, val] of Object.entries(bulk.equity_tickers as Record<string, { ticker: string; price: number | null }>)) {
+            this.tickerMap[name] = val.ticker;
+            if (val.price != null) this.livePrices[val.ticker] = val.price;
+          }
+        }
+      },
+      error: () => {}
+    }));
   }
 
   ngOnDestroy(): void { this.addSub?.unsubscribe(); }
@@ -375,8 +392,6 @@ export class EquityComponent implements OnInit, OnDestroy {
   }
 
   loadDividends(): void {
-    // Always bypass cache to get fresh data
-    delete (this.investmentService as any).cache['equity-dividends'];
     this.investmentService.getEquityDividends().subscribe({
       next: (data) => { this.dividendData = data; },
       error: () => {}
