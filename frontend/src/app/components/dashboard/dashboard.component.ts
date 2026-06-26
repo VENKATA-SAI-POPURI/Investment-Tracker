@@ -58,6 +58,13 @@ const DEFAULT_TARGET_ALLOCATION: Record<string, number> = {
   'P2P': 5
 };
 
+interface RebalancePlanItem {
+  label: string; currentPct: number; currentAmt: number; targetPct: number; deltaAmt: number;
+}
+interface RebalancePlan {
+  startDate: string; totalValue: number; items: RebalancePlanItem[];
+}
+
 @Component({
   selector: 'app-dashboard',
   standalone: true,
@@ -75,6 +82,19 @@ export class DashboardComponent implements OnInit, OnDestroy {
   refreshing = false;
   showTargetEditor = false;
   targetAllocation: Record<string, number> = { ...DEFAULT_TARGET_ALLOCATION };
+
+  // ── Portfolio Review & Rebalance ──
+  readonly REVIEW_FREQUENCY_MONTHS = 6;
+  lastReviewDate: string | null = null;
+  reviewSnapshot: Record<string, number> = {};
+  rebalancePlan: RebalancePlan | null = null;
+  showReviewModal = false;
+  showRebalancePlanPanel = false;
+  reviewDraftTargets: Record<string, number> = {};
+  reviewDraftPlan: { label: string; currentPct: number; currentAmt: number; targetPct: number; targetAmt: number; deltaAmt: number }[] = [];
+  reviewDriftRowsCache: { label: string; snapshotPct: number; currentPct: number; delta: number }[] = [];
+  reviewDraftTotalPctCache = 0;
+  reviewDismissedUntil: string | null = localStorage.getItem('reviewDismissedUntil');
 
   saveTargets(): void {
     this.investmentService.saveSetting('targetAllocation', JSON.stringify(this.targetAllocation)).subscribe();
@@ -208,6 +228,20 @@ export class DashboardComponent implements OnInit, OnDestroy {
           this.targetAllocation = { ...DEFAULT_TARGET_ALLOCATION, ...JSON.parse(res.value) };
         } catch {}
       }
+    });
+    this.investmentService.getSetting('lastReviewDate').subscribe(res => {
+      if (res.value) {
+        this.lastReviewDate = res.value;
+      } else {
+        this.lastReviewDate = new Date().toISOString().split('T')[0];
+        this.investmentService.saveSetting('lastReviewDate', this.lastReviewDate).subscribe();
+      }
+    });
+    this.investmentService.getSetting('reviewSnapshot').subscribe(res => {
+      if (res.value) { try { this.reviewSnapshot = JSON.parse(res.value); } catch {} }
+    });
+    this.investmentService.getSetting('rebalancePlan').subscribe(res => {
+      if (res.value) { try { this.rebalancePlan = JSON.parse(res.value); } catch {} }
     });
   }
 
@@ -2027,6 +2061,134 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (slice.pct > target + threshold) return '#ef4444';
     if (slice.pct < target - threshold) return '#f59e0b';
     return '#4caf50';
+  }
+
+  // ── Portfolio Review & Rebalance ──
+
+  private monthsSince(dateStr: string): number {
+    const d = new Date(dateStr);
+    const now = new Date();
+    return (now.getFullYear() - d.getFullYear()) * 12 + (now.getMonth() - d.getMonth());
+  }
+
+  get isReviewDue(): boolean {
+    if (!this.lastReviewDate) return false;
+    if (this.reviewDismissedUntil && new Date(this.reviewDismissedUntil) > new Date()) return false;
+    return this.monthsSince(this.lastReviewDate) >= this.REVIEW_FREQUENCY_MONTHS;
+  }
+
+  get reviewDueLabelText(): string {
+    if (!this.lastReviewDate) return '';
+    const months = this.monthsSince(this.lastReviewDate);
+    if (months < 1) return 'less than a month ago';
+    if (months === 1) return '1 month ago';
+    return `${months} months ago`;
+  }
+
+  get reviewLastDateLabel(): string {
+    if (!this.lastReviewDate) return 'Never';
+    const d = new Date(this.lastReviewDate);
+    return d.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
+  }
+
+  // reviewDriftRows, reviewDraftActionPlan, reviewDraftTotalPct are now cached as
+  // reviewDriftRowsCache, reviewDraftPlan, reviewDraftTotalPctCache — computed in computeReviewDraft()
+
+  get hasActiveRebalancePlan(): boolean { return this.rebalancePlan !== null; }
+
+  get rebalancePlanProgress(): { label: string; deltaAmt: number; doneAmt: number; remainingAmt: number; pctDone: number; action: string }[] {
+    if (!this.rebalancePlan) return [];
+    return this.rebalancePlan.items.map(item => {
+      const current = this.categoryAllocationPie.slices.find(s => s.label === item.label);
+      const currentAmt = current?.value ?? item.currentAmt;
+      const rawDone = currentAmt - item.currentAmt;
+      const doneAmt = item.deltaAmt < 0 ? Math.min(0, rawDone) : Math.max(0, rawDone);
+      const remainingAmt = Math.round((item.deltaAmt - doneAmt) * 100) / 100;
+      const pctDone = Math.abs(item.deltaAmt) > 0 ? Math.min(100, Math.round(Math.abs(doneAmt) / Math.abs(item.deltaAmt) * 100)) : 100;
+      return { label: item.label, deltaAmt: item.deltaAmt, doneAmt: Math.round(doneAmt * 100) / 100, remainingAmt, pctDone, action: item.deltaAmt < 0 ? 'Reduce' : 'Add' };
+    });
+  }
+
+  get rebalancePlanStaleDays(): number {
+    if (!this.rebalancePlan) return 0;
+    return Math.floor((new Date().getTime() - new Date(this.rebalancePlan.startDate).getTime()) / 86400000);
+  }
+
+  get rebalancePlanStartLabel(): string {
+    if (!this.rebalancePlan) return '';
+    return new Date(this.rebalancePlan.startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+
+  openReviewModal(): void {
+    this.reviewDraftTargets = { ...this.targetAllocation };
+    this.categoryAllocationPie.slices.forEach(s => {
+      if (!(s.label in this.reviewDraftTargets)) this.reviewDraftTargets[s.label] = 0;
+    });
+    this.computeReviewDraft();
+    this.showReviewModal = true;
+  }
+
+  onReviewTargetChange(label: string, value: number): void {
+    this.reviewDraftTargets[label] = value;
+    this.computeReviewDraft();
+  }
+
+  private computeReviewDraft(): void {
+    const total = this.categoryAllocationPie.total;
+    const slices = this.categoryAllocationPie.slices;
+    this.reviewDriftRowsCache = slices.map(s => ({
+      label: s.label,
+      snapshotPct: this.reviewSnapshot[s.label] ?? 0,
+      currentPct: s.pct,
+      delta: Math.round((s.pct - (this.reviewSnapshot[s.label] ?? 0)) * 10) / 10
+    }));
+    this.reviewDraftPlan = total === 0 ? [] : slices.map(s => {
+      const targetPct = this.reviewDraftTargets[s.label] ?? s.pct;
+      const targetAmt = targetPct / 100 * total;
+      return { label: s.label, currentPct: s.pct, currentAmt: s.value, targetPct, targetAmt, deltaAmt: Math.round((targetAmt - s.value) * 100) / 100 };
+    });
+    this.reviewDraftTotalPctCache = Math.round(Object.values(this.reviewDraftTargets).reduce((s, v) => s + (v || 0), 0) * 10) / 10;
+  }
+
+  closeReviewModal(): void { this.showReviewModal = false; }
+
+  dismissReview(): void {
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    this.reviewDismissedUntil = d.toISOString().split('T')[0];
+    localStorage.setItem('reviewDismissedUntil', this.reviewDismissedUntil);
+  }
+
+  confirmReview(): void {
+    const today = new Date().toISOString().split('T')[0];
+    const total = this.categoryAllocationPie.total;
+    this.targetAllocation = { ...this.reviewDraftTargets };
+    this.investmentService.saveSetting('targetAllocation', JSON.stringify(this.targetAllocation)).subscribe();
+    this.lastReviewDate = today;
+    this.investmentService.saveSetting('lastReviewDate', today).subscribe();
+    const snapshot: Record<string, number> = {};
+    this.categoryAllocationPie.slices.forEach(s => { snapshot[s.label] = s.pct; });
+    this.reviewSnapshot = snapshot;
+    this.investmentService.saveSetting('reviewSnapshot', JSON.stringify(snapshot)).subscribe();
+    const planItems: RebalancePlanItem[] = this.reviewDraftPlan
+      .filter(item => Math.abs(item.deltaAmt) > 500)
+      .map(item => ({ label: item.label, currentPct: item.currentPct, currentAmt: item.currentAmt, targetPct: item.targetPct, deltaAmt: item.deltaAmt }));
+    if (planItems.length > 0) {
+      this.rebalancePlan = { startDate: today, totalValue: total, items: planItems };
+      this.investmentService.saveSetting('rebalancePlan', JSON.stringify(this.rebalancePlan)).subscribe();
+    } else {
+      this.rebalancePlan = null;
+      this.investmentService.saveSetting('rebalancePlan', '').subscribe();
+    }
+    this.reviewDismissedUntil = null;
+    localStorage.removeItem('reviewDismissedUntil');
+    this.showReviewModal = false;
+  }
+
+  markRebalanceComplete(): void {
+    this.rebalancePlan = null;
+    this.showRebalancePlanPanel = false;
+    this.investmentService.saveSetting('rebalancePlan', '').subscribe();
   }
 
   selectCategory(key: string): void {

@@ -846,6 +846,194 @@ def delete_p2p_escrow(row_id):
     return jsonify({"error": "Row not found"}), 404
 
 
+# ── P2P Order Report Bulk Import ──
+
+@app.route("/api/p2p/parse-order-report", methods=["POST"])
+def parse_order_report():
+    """Parse a LenDenClub ORDER_REPORT xlsx and return a preview of new loans to add."""
+    if request.user_role == 'guest':
+        return jsonify({"error": "Permission denied"}), 403
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    import io, re
+    try:
+        import openpyxl
+    except ImportError:
+        return jsonify({"error": "openpyxl not installed on server"}), 500
+
+    file = request.files['file']
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(file.read()), data_only=True)
+        ws = wb.active
+        rows = list(ws.iter_rows(values_only=True))
+    except Exception as e:
+        return jsonify({"error": f"Failed to read Excel: {str(e)}"}), 400
+
+    # Find metadata rows
+    from_date = to_date = None
+    data_header_row = None
+    for i, row in enumerate(rows):
+        first = str(row[0]).strip() if row[0] else ""
+        if first == "From Date" and row[1]:
+            from_date = str(row[1]).strip()
+        elif first == "To Date" and row[1]:
+            to_date = str(row[1]).strip()
+        elif first == "Order ID":
+            data_header_row = i
+            break
+
+    if data_header_row is None:
+        return jsonify({"error": "Could not find loan data table in report (missing 'Order ID' header row)"}), 400
+
+    headers = [str(c).strip() if c else "" for c in rows[data_header_row]]
+    def col(name):
+        try: return headers.index(name)
+        except ValueError: return None
+
+    idx = {
+        "loan_id":           col("Loan ID"),
+        "interest_rate":     col("Interest Rate (%)"),
+        "tenure":            col("Tenure (months)"),
+        "disbursement_date": col("Disbursement Date"),
+        "disbursed_amount":  col("Disbursed Amount (₹)"),
+        "loan_status":       col("Loan Status"),
+        "score":             col("LenDenClub Score"),
+    }
+
+    def safe_float(val):
+        try: return round(float(val or 0), 4)
+        except: return 0.0
+
+    def parse_date_dd_mm_yyyy(s):
+        if not s: return None
+        s = str(s).strip()
+        m = re.match(r"(\d{1,2})/(\d{1,2})/(\d{4})", s)
+        if m: return f"{m.group(3)}-{m.group(2).zfill(2)}-{m.group(1).zfill(2)}"
+        return s
+
+    def compute_maturity_date(date_str, tenure_months):
+        if not date_str or not tenure_months: return ""
+        try:
+            import datetime
+            d = datetime.date.fromisoformat(date_str)
+            base_offset = 1 if d.day <= 20 else 2
+            months_offset = base_offset + int(tenure_months) - 1
+            year = d.year + (d.month + months_offset - 1) // 12
+            month = (d.month + months_offset - 1) % 12 + 1
+            return datetime.date(year, month, 5).isoformat()
+        except Exception:
+            return ""
+
+    # Parse dates
+    from_dt = parse_date_dd_mm_yyyy(from_date) or from_date
+    to_dt   = parse_date_dd_mm_yyyy(to_date)   or to_date
+
+    # Load existing P2P entries for duplicate check
+    p2p_entries = db_service.get_all("P2P", user_email=request.user_email, role=request.user_role)
+    existing_loan_ids = {(e.get("loan_id") or "").strip().upper() for e in p2p_entries}
+
+    # Generate next lending_id base
+    max_num = 0
+    for e in p2p_entries:
+        m = re.match(r"P2P-(\d+)", e.get("lending_id") or "")
+        if m: max_num = max(max_num, int(m.group(1)))
+
+    status_map = {"DISBURSED": "Active", "CLOSED": "Closed", "NPA": "Defaulted",
+                  "ACTIVE": "Active", "FORECLOSED": "Closed"}
+
+    result_rows = []
+    skipped = 0
+    seen_loan_ids = set()
+
+    for row in rows[data_header_row + 1:]:
+        if not any(row): continue
+
+        loan_id_raw = str(row[idx["loan_id"]] or "").strip() if idx["loan_id"] is not None else ""
+        if not loan_id_raw: continue
+
+        loan_id = loan_id_raw.upper()
+        stmt_status = str(row[idx["loan_status"]] or "").strip().upper() if idx["loan_status"] is not None else ""
+        disbursed   = safe_float(row[idx["disbursed_amount"]] if idx["disbursed_amount"] is not None else 0)
+
+        # Skip PENDING, CANCELLED, and zero-disbursed
+        if stmt_status in ("PENDING", "CANCELLED") or disbursed == 0:
+            skipped += 1
+            continue
+
+        # De-duplicate within file
+        if loan_id in seen_loan_ids:
+            continue
+        seen_loan_ids.add(loan_id)
+
+        interest_rate = safe_float(row[idx["interest_rate"]] if idx["interest_rate"] is not None else 0)
+        tenure        = int(safe_float(row[idx["tenure"]] if idx["tenure"] is not None else 0))
+        score         = int(safe_float(row[idx["score"]] if idx["score"] is not None else 0))
+        disb_date     = parse_date_dd_mm_yyyy(row[idx["disbursement_date"]]) if idx["disbursement_date"] is not None else None
+        status        = status_map.get(stmt_status, "Active")
+        maturity_date = compute_maturity_date(disb_date, tenure)
+
+        max_num += 1
+        lending_id = f"P2P-{str(max_num).zfill(3)}"
+
+        result_rows.append({
+            "loan_id":       loan_id,
+            "lending_id":    lending_id,
+            "platform":      "LenDen",
+            "name":          "",
+            "date":          disb_date or "",
+            "amount":        disbursed,
+            "tenure":        tenure,
+            "interest_rate": interest_rate,
+            "score":         score,
+            "status":        status,
+            "maturity_date": maturity_date,
+            "remarks":       f"Rate: {interest_rate}%, Score: {score}",
+            "selected":      loan_id not in existing_loan_ids,
+            "already_exists": loan_id in existing_loan_ids,
+        })
+
+    return jsonify({
+        "from_date": from_dt,
+        "to_date":   to_dt,
+        "rows":      result_rows,
+        "skipped":   skipped,
+    })
+
+
+@app.route("/api/p2p/bulk-add-loans", methods=["POST"])
+def bulk_add_loans():
+    """Bulk-add P2P lending entries parsed from an ORDER_REPORT file."""
+    if request.user_role == 'guest':
+        return jsonify({"error": "Permission denied"}), 403
+    data = request.get_json()
+    if not data or "rows" not in data:
+        return jsonify({"error": "No rows provided"}), 400
+
+    results = []
+    for row in data["rows"]:
+        try:
+            entry = {
+                "lending_id":    row.get("lending_id", ""),
+                "loan_id":       (row.get("loan_id") or "").strip().upper(),
+                "platform":      row.get("platform", "LenDen"),
+                "name":          row.get("name", ""),
+                "date":          row.get("date", ""),
+                "amount":        float(row.get("amount") or 0),
+                "tenure":        int(row.get("tenure") or 0),
+                "maturity_date": row.get("maturity_date", ""),
+                "status":        row.get("status", "Active"),
+                "remarks":       row.get("remarks", ""),
+            }
+            result = db_service.add_row("P2P", entry, created_by=request.user_email)
+            _auto_create_capital_flows("P2P", entry, created_by=request.user_email)
+            results.append({"loan_id": entry["loan_id"], "success": True, "id": result["id"]})
+        except Exception as e:
+            results.append({"loan_id": row.get("loan_id", ""), "success": False, "error": str(e)})
+
+    return jsonify({"results": results})
+
+
 # ── P2P LenDen Statement Import ──
 
 @app.route("/api/p2p/parse-statement", methods=["POST"])
@@ -973,6 +1161,8 @@ def parse_lenden_statement():
             warnings_list.append({
                 "type": "unmatched",
                 "loan_id": loan_id,
+                "disbursement_date": disbursement_date,
+                "disbursed_amount": safe_float(row[idx["disbursed_amount"]] if idx["disbursed_amount"] is not None else 0) or None,
                 "message": f"Loan ID '{loan_id}' not found in your P2P entries. Add this lending entry first."
             })
             continue
@@ -1007,7 +1197,7 @@ def parse_lenden_statement():
             "entry_id": entry.get("id"),
             "platform": entry.get("platform", ""),
             "name": entry.get("name", ""),
-            "date": today,
+            "date": to_dt or today,
             "stmt_principal":    stmt_principal,
             "stmt_interest":     stmt_interest,
             "stmt_platform_fee": stmt_platform_fee,
@@ -1046,6 +1236,7 @@ def import_lenden_statement():
         loan_id     = row.get("loan_id", "")
         lending_id  = row.get("lending_id", "")
         platform    = row.get("platform", "LenDen")
+        rep_date    = row.get("date") or today
         to_date     = row.get("to_date", today)
         delta_principal    = float(row.get("delta_principal", 0) or 0)
         delta_interest     = float(row.get("delta_interest", 0) or 0)
@@ -1063,7 +1254,7 @@ def import_lenden_statement():
             # 1. Insert p2p_repayments row
             repayment = {
                 "lending_id":   lending_id,
-                "date":         today,
+                "date":         rep_date,
                 "principal":    delta_principal,
                 "interest":     delta_interest,
                 "platform_fee": delta_platform_fee,
@@ -1075,7 +1266,7 @@ def import_lenden_statement():
 
             # 2. Insert p2p_escrow (Repayment type)
             escrow_entry = {
-                "date":     today,
+                "date":     rep_date,
                 "type":     "Repayment",
                 "amount":   delta_total,
                 "platform": platform,
@@ -1085,7 +1276,7 @@ def import_lenden_statement():
 
             # 3. Insert capital_flows (Withdrawal)
             capital_flow = {
-                "date":     today,
+                "date":     rep_date,
                 "amount":   delta_total,
                 "type":     "Withdrawal",
                 "category": "P2P",

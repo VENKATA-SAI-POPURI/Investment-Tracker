@@ -20,6 +20,85 @@
     </div>
   </div>
 
+  <!-- Portfolio Review Modal -->
+  <div class="form-overlay" *ngIf="showReviewModal" (click)="closeReviewModal()">
+    <div class="review-modal" (click)="$event.stopPropagation()">
+      <div class="review-modal-header">
+        <div>
+          <h2>📅 Portfolio Review</h2>
+          <span class="review-modal-sub">Every {{ REVIEW_FREQUENCY_MONTHS }} months · Last reviewed: {{ reviewLastDateLabel }}</span>
+        </div>
+        <button class="close-btn" (click)="closeReviewModal()">✕</button>
+      </div>
+
+      <!-- Drift Table -->
+      <div class="review-section" *ngIf="reviewDriftRowsCache.length > 0">
+        <div class="review-section-title">Allocation Drift Since Last Review</div>
+        <table class="review-table">
+          <thead><tr><th>Category</th><th class="num">At Last Review</th><th class="num">Today</th><th class="num">Change</th></tr></thead>
+          <tbody>
+            <tr *ngFor="let row of reviewDriftRowsCache">
+              <td>{{ row.label }}</td>
+              <td class="num muted">{{ row.snapshotPct > 0 ? row.snapshotPct + '%' : '—' }}</td>
+              <td class="num"><strong>{{ row.currentPct }}%</strong></td>
+              <td class="num" [style.color]="row.delta > 1.5 ? '#ef4444' : row.delta < -1.5 ? '#f59e0b' : '#10b981'">
+                {{ row.delta > 0 ? '+' : '' }}{{ row.delta }}%
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Set New Targets -->
+      <div class="review-section">
+        <div class="review-section-title">Set Your Targets</div>
+        <div class="review-target-hint">Adjust targets freely — the action plan below updates live.</div>
+        <div class="review-target-grid">
+          <div class="review-target-row" *ngFor="let item of reviewDraftPlan">
+            <span class="review-target-label">{{ item.label }}</span>
+            <input class="review-target-input" type="number" min="0" max="100" step="0.5"
+              [ngModel]="reviewDraftTargets[item.label]"
+              (ngModelChange)="onReviewTargetChange(item.label, +$event)">
+            <span class="review-target-sign">%</span>
+          </div>
+        </div>
+        <div class="review-target-total" [class.review-total-warn]="reviewDraftTotalPctCache !== 100">
+          Total: {{ reviewDraftTotalPctCache }}% {{ reviewDraftTotalPctCache !== 100 ? '⚠️ should sum to 100%' : '✔' }}
+        </div>
+      </div>
+
+      <!-- Live Action Plan -->
+      <div class="review-section">
+        <div class="review-section-title">Action Plan</div>
+        <table class="review-table">
+          <thead><tr><th>Category</th><th class="num">Current</th><th class="num">Target</th><th class="num">Δ Amount</th><th>Guidance</th></tr></thead>
+          <tbody>
+            <tr *ngFor="let item of reviewDraftPlan">
+              <td>{{ item.label }}</td>
+              <td class="num muted">{{ item.currentPct }}% · {{ item.currentAmt | inr }}</td>
+              <td class="num">{{ item.targetPct }}%</td>
+              <td class="num" [style.color]="item.deltaAmt > 0 ? '#10b981' : item.deltaAmt < 0 ? '#ef4444' : '#6b7280'">
+                {{ item.deltaAmt > 0 ? '+' : '' }}{{ item.deltaAmt | inr }}
+              </td>
+              <td class="review-guidance">
+                <span *ngIf="item.deltaAmt > 500" class="guidance-add">↑ Add {{ item.deltaAmt | inr }}</span>
+                <span *ngIf="item.deltaAmt < -500" class="guidance-reduce">↓ Reduce {{ (item.deltaAmt * -1) | inr }}</span>
+                <span *ngIf="item.deltaAmt >= -500 && item.deltaAmt <= 500" class="guidance-ok">✔ On target</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="review-modal-footer">
+        <button class="btn btn-secondary" (click)="closeReviewModal()">Cancel</button>
+        <button class="btn btn-primary" (click)="confirmReview()" [disabled]="reviewDraftTotalPctCache !== 100">
+          ✔ Save Targets &amp; Mark Reviewed
+        </button>
+      </div>
+    </div>
+  </div>
+
   <div class="form-overlay" *ngIf="showForexPopup" (click)="toggleForexPopup()">
     <div class="forex-popup" (click)="$event.stopPropagation()">
       <div class="forex-popup-header">
@@ -153,11 +232,27 @@
     <!-- 2-column main grid: cards auto-flow L→R so row heights match automatically -->
     <div class="home-main-grid">
 
+      <!-- Review Due Banner -->
+      <div class="review-due-banner" *ngIf="isReviewDue" style="grid-column: 1 / -1">
+        <div class="review-due-left">
+          <span class="review-due-icon">📅</span>
+          <div>
+            <div class="review-due-title">Portfolio Review Due</div>
+            <div class="review-due-sub">Last reviewed {{ reviewLastDateLabel }} ({{ reviewDueLabelText }}) &middot; You review every {{ REVIEW_FREQUENCY_MONTHS }} months</div>
+          </div>
+        </div>
+        <div class="review-due-actions">
+          <button class="btn btn-secondary btn-sm" (click)="dismissReview()">Remind in 30 days</button>
+          <button class="btn btn-primary btn-sm" (click)="openReviewModal()">Review Now →</button>
+        </div>
+      </div>
+
       <!-- Row 1, Col 1: Category Allocation Pie -->
       <div class="pie-card allocation-pie">
         <div class="pie-card-header">
           <h3>{{ categoryAllocationPie.title }}</h3>
           <button class="target-edit-btn" (click)="showTargetEditor = true">Edit Targets</button>
+          <button class="target-edit-btn" (click)="openReviewModal()" title="Review portfolio & rebalance">Review</button>
         </div>
         <div class="pie-content">
           <div class="pie-chart" [style.background]="categoryAllocationPie.gradient"></div>
@@ -180,9 +275,46 @@
             </div>
           </div>
         </div>
-      </div>
 
-      <!-- Row 1, Col 2: Actual Investment Allocation -->
+        <!-- Rebalancing In Progress Banner -->
+        <div class="rebalance-banner" *ngIf="hasActiveRebalancePlan">
+          <div class="rebalance-banner-top">
+            <div class="rebalance-banner-left">
+              <span>🔄 <strong>Rebalancing in progress</strong> &middot; Started {{ rebalancePlanStartLabel }}</span>
+              <span class="rebalance-stale-warn" *ngIf="rebalancePlanStaleDays > 180">⚠️ Plan is {{ rebalancePlanStaleDays }} days old — consider reviewing</span>
+            </div>
+            <div class="rebalance-banner-actions">
+              <button class="btn btn-secondary btn-sm" (click)="showRebalancePlanPanel = !showRebalancePlanPanel">
+                {{ showRebalancePlanPanel ? 'Hide Plan' : 'View Plan' }}
+              </button>
+              <button class="btn btn-secondary btn-sm" (click)="markRebalanceComplete()">Mark Complete</button>
+            </div>
+          </div>
+
+          <!-- Plan Progress Panel -->
+          <div class="rebalance-plan-panel" *ngIf="showRebalancePlanPanel">
+            <table class="review-table" style="margin-top:0.75rem">
+              <thead><tr><th>Category</th><th>Action</th><th class="num">Target Move</th><th class="num">Done So Far</th><th class="num">Remaining</th><th style="min-width:90px">Progress</th></tr></thead>
+              <tbody>
+                <tr *ngFor="let row of rebalancePlanProgress">
+                  <td>{{ row.label }}</td>
+                  <td><span [style.color]="row.action === 'Add' ? '#10b981' : '#ef4444'">{{ row.action }}</span></td>
+                  <td class="num">{{ row.deltaAmt | inr }}</td>
+                  <td class="num" [style.color]="row.pctDone >= 100 ? '#10b981' : '#6b7280'">{{ row.doneAmt | inr }}</td>
+                  <td class="num" [style.color]="row.pctDone >= 100 ? '#10b981' : '#f59e0b'">{{ row.remainingAmt | inr }}</td>
+                  <td>
+                    <div class="rebalance-progress-bar">
+                      <div class="rebalance-progress-fill" [style.width]="row.pctDone + '%'"
+                        [style.background]="row.pctDone >= 100 ? '#10b981' : '#6366f1'"></div>
+                    </div>
+                    <span class="rebalance-progress-pct">{{ row.pctDone }}%</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
       <div class="pie-card allocation-pie">
         <div class="pie-card-header">
           <h3>Actual Investment Allocation</h3>

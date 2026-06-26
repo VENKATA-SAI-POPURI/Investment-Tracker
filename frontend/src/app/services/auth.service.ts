@@ -58,6 +58,17 @@ export class AuthService {
   }
 
   /**
+   * Restore session from a pre-verified token (e.g. OAuth redirect flow)
+   */
+  restoreSession(token: string, user: AuthUser | null): void {
+    localStorage.setItem('auth_token', token);
+    if (user) localStorage.setItem('auth_user', JSON.stringify(user));
+    this.token$.next(token);
+    this.user$.next(user);
+    this._isAuthenticated$.next(true);
+  }
+
+  /**
    * Logout
    */
   logout(): void {

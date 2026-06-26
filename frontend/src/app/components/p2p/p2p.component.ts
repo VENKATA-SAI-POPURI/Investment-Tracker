@@ -7,7 +7,7 @@ import { AuthService } from '../../services/auth.service';
 import { UiActionService } from '../../services/ui-action.service';
 import { CsvExportService } from '../../services/csv-export.service';
 import { InrPipe } from '../../pipes/inr.pipe';
-import { P2PEntry, P2PRepayment, P2PEscrow, LendenStatementRow, LendenStatementWarning, LendenParseResult } from '../../models/investment.model';
+import { P2PEntry, P2PRepayment, P2PEscrow, LendenStatementRow, LendenStatementWarning, LendenParseResult, OrderReportRow, OrderReportParseResult } from '../../models/investment.model';
 
 @Component({
   selector: 'app-p2p',
@@ -51,6 +51,17 @@ export class P2PComponent implements OnInit, OnDestroy {
   importParseResult: LendenParseResult | null = null;
   importError = '';
   importSelectedFile: File | null = null;
+  quickAddLoanWarning: LendenStatementWarning | null = null;
+  quickAddForm: P2PEntry = this.emptyForm();
+  quickAddSubmitting = false;
+
+  // ── Order Report Bulk Import ──
+  showOrderReportModal = false;
+  orderReportParsing = false;
+  orderReportSubmitting = false;
+  orderReportParseResult: OrderReportParseResult | null = null;
+  orderReportError = '';
+  orderReportFile: File | null = null;
 
   form: P2PEntry = this.emptyForm();
   repaymentForm: P2PRepayment = this.emptyRepaymentForm();
@@ -1161,6 +1172,7 @@ export class P2PComponent implements OnInit, OnDestroy {
     this.importParseResult = null;
     this.importError = '';
     this.importSelectedFile = null;
+    this.quickAddLoanWarning = null;
   }
 
   onImportFileChange(event: Event): void {
@@ -1231,6 +1243,7 @@ export class P2PComponent implements OnInit, OnDestroy {
       lending_id:       r.lending_id,
       platform:         r.platform,
       entry_id:         r.entry_id,
+      date:             r.date,
       delta_principal:  r.delta_principal,
       delta_interest:   r.delta_interest,
       delta_platform_fee: r.delta_platform_fee,
@@ -1262,8 +1275,152 @@ export class P2PComponent implements OnInit, OnDestroy {
     });
   }
 
-  toast(msg: string, type: string): void {
-    const t = { msg, type };
+  // ── Quick Add Loan from Import Warning ──
+
+  openQuickAddLoan(w: LendenStatementWarning): void {
+    this.quickAddLoanWarning = w;
+    this.quickAddForm = this.emptyForm();
+    this.quickAddForm.loan_id = w.loan_id;
+    this.quickAddForm.lending_id = this.generateLendingId();
+    this.quickAddForm.platform = 'LenDen';
+    if (w.disbursement_date) this.quickAddForm.date = w.disbursement_date;
+    if (w.disbursed_amount)  this.quickAddForm.amount = w.disbursed_amount;
+  }
+
+  cancelQuickAdd(): void {
+    this.quickAddLoanWarning = null;
+  }
+
+  onQuickAddDateOrTenureChange(): void {
+    if (this.quickAddForm.date && this.quickAddForm.tenure) {
+      this.quickAddForm.maturity_date = this._getInstallmentDate(this.quickAddForm, this.quickAddForm.tenure).toISOString().split('T')[0];
+    } else {
+      this.quickAddForm.maturity_date = '';
+    }
+  }
+
+  submitQuickAdd(): void {
+    if (!this.quickAddForm.name?.trim())                              { this.toast('Name is required', 'error'); return; }
+    if (!this.quickAddForm.amount || this.quickAddForm.amount <= 0)  { this.toast('Amount is required', 'error'); return; }
+    if (!this.quickAddForm.tenure || this.quickAddForm.tenure <= 0)  { this.toast('Tenure is required', 'error'); return; }
+    if (this.quickAddForm.loan_id) this.quickAddForm.loan_id = this.quickAddForm.loan_id.trim().toUpperCase();
+    this.onQuickAddDateOrTenureChange();
+    this.quickAddSubmitting = true;
+    this.investmentService.addP2P(this.quickAddForm).subscribe({
+      next: (res) => {
+        this.allEntries.push({ ...this.quickAddForm, id: res.id });
+        this.quickAddSubmitting = false;
+        this.quickAddLoanWarning = null;
+        this.toast(`Loan ${this.quickAddForm.loan_id} added`, 'success');
+        this.uiActionService.triggerSilentRefresh();
+        // Re-parse the statement so the newly added entry gets matched
+        if (this.importSelectedFile) this.parseStatement();
+      },
+      error: () => { this.quickAddSubmitting = false; this.toast('Failed to add loan', 'error'); }
+    });
+  }
+
+  // ── Order Report Bulk Loan Import ──
+
+  openOrderReportModal(): void {
+    this.showOrderReportModal = true;
+    this.orderReportParseResult = null;
+    this.orderReportError = '';
+    this.orderReportFile = null;
+  }
+
+  closeOrderReportModal(): void {
+    this.showOrderReportModal = false;
+    this.orderReportParseResult = null;
+    this.orderReportError = '';
+    this.orderReportFile = null;
+  }
+
+  onOrderReportFileChange(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0] || null;
+    this.orderReportParseResult = null;
+    if (file && !file.name.toLowerCase().endsWith('.xlsx')) {
+      this.orderReportFile = null;
+      this.orderReportError = 'Invalid file format. Please select a .xlsx file.';
+      input.value = '';
+    } else {
+      this.orderReportFile = file;
+      this.orderReportError = '';
+    }
+  }
+
+  parseOrderReport(): void {
+    if (!this.orderReportFile) return;
+    this.orderReportParsing = true;
+    this.orderReportError = '';
+    this.orderReportParseResult = null;
+    this.investmentService.parseOrderReport(this.orderReportFile).subscribe({
+      next: (result) => {
+        this.orderReportParseResult = result;
+        this.orderReportParsing = false;
+      },
+      error: (e) => {
+        this.orderReportError = e.error?.error || 'Failed to parse file';
+        this.orderReportParsing = false;
+      }
+    });
+  }
+
+  get orderReportSelectedRows(): OrderReportRow[] {
+    return (this.orderReportParseResult?.rows || []).filter(r => r.selected);
+  }
+
+  get orderReportNewRows(): OrderReportRow[] {
+    return (this.orderReportParseResult?.rows || []).filter(r => !r.already_exists);
+  }
+
+  toggleAllOrderReportRows(event: Event): void {
+    const checked = (event.target as HTMLInputElement).checked;
+    this.orderReportParseResult?.rows.forEach(r => { if (!r.already_exists) r.selected = checked; });
+  }
+
+  onOrderReportTenureChange(row: OrderReportRow): void {
+    if (row.date && row.tenure) {
+      const d = new Date(row.date);
+      const baseOffset = d.getDate() <= 20 ? 1 : 2;
+      const totalMonths = d.getMonth() + baseOffset + row.tenure - 1;
+      row.maturity_date = new Date(d.getFullYear(), totalMonths, 5).toISOString().split('T')[0];
+    }
+  }
+
+  submitOrderReport(): void {
+    const rows = this.orderReportSelectedRows;
+    if (!rows.length) return;
+    const missing = rows.filter(r => !r.name?.trim());
+    if (missing.length > 0) {
+      this.toast(`Fill in the Name field for all selected rows (${missing.length} missing)`, 'error');
+      return;
+    }
+    this.orderReportSubmitting = true;
+    this.investmentService.bulkAddLoans(rows).subscribe({
+      next: (resp) => {
+        this.orderReportSubmitting = false;
+        const results = resp.results || [];
+        const added = results.filter((r: any) => r.success).length;
+        const failed = results.filter((r: any) => !r.success).length;
+        if (failed === 0) {
+          this.toast(`${added} loan(s) added successfully`, 'success');
+          this.closeOrderReportModal();
+          this.loadData();
+          this.uiActionService.triggerSilentRefresh();
+        } else {
+          this.toast(`${added} added, ${failed} failed`, 'error');
+        }
+      },
+      error: (e) => {
+        this.orderReportSubmitting = false;
+        this.toast(e.error?.error || 'Bulk add failed', 'error');
+      }
+    });
+  }
+
+  toast(msg: string, type: string): void {    const t = { msg, type };
     this.toasts.push(t);
     setTimeout(() => { this.toasts = this.toasts.filter(x => x !== t); }, 3500);
   }

@@ -104,6 +104,9 @@ export interface LendenStatementWarning {
   old_status?: string;
   new_status?: string;
   message: string;
+  // unmatched-only: pre-fill data from the statement
+  disbursement_date?: string;
+  disbursed_amount?: number;
 }
 
 export interface LendenParseResult {
@@ -111,6 +114,30 @@ export interface LendenParseResult {
   to_date: string;
   suggested: LendenStatementRow[];
   warnings: LendenStatementWarning[];
+}
+
+export interface OrderReportRow {
+  loan_id: string;
+  lending_id: string;
+  platform: string;
+  name: string;
+  date: string;
+  amount: number;
+  tenure: number;
+  interest_rate: number;
+  score: number;
+  status: string;
+  maturity_date: string;
+  remarks: string;
+  selected: boolean;
+  already_exists: boolean;
+}
+
+export interface OrderReportParseResult {
+  from_date: string;
+  to_date: string;
+  rows: OrderReportRow[];
+  skipped: number;
 }
 
 export interface P2PEscrow {

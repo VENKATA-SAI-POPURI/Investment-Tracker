@@ -6,22 +6,38 @@
     </div>
 
     <div class="login-content">
-      <div *ngIf="error" class="error-message">
-        <strong>❌ Error:</strong> {{ error }}
+
+      <!-- iOS PWA: Google Sign-In popup can't return to a standalone app -->
+      <div *ngIf="isIosPwa" class="pwa-notice">
+        <div class="pwa-notice-icon">📱</div>
+        <div>
+          <strong>Sign in via Safari first</strong>
+          <p>Google Sign-In doesn't work inside a home-screen app on iOS. Tap the button below to open in Safari, sign in there, then come back here — you'll be logged in automatically.</p>
+          <button class="btn-open-browser" (click)="openInBrowser()">Open in Safari →</button>
+        </div>
       </div>
 
-      <div class="login-form">
+      <!-- Android PWA hint (non-blocking) -->
+      <div *ngIf="isPwaStandalone && !isIosPwa" class="pwa-hint">
+        💡 If sign-in doesn't complete, open this app in your browser, sign in there, then return here.
+      </div>
+
+      <div *ngIf="error" class="error-message">
+        <strong>❌</strong> {{ error }}
+      </div>
+
+      <div class="login-form" *ngIf="!isIosPwa">
         <div id="google-signin-button" class="google-button-container"></div>
       </div>
 
       <div class="loading" *ngIf="loading">
         <div class="spinner"></div>
-        <p>Signing in...</p>
+        <p>Signing in…</p>
       </div>
     </div>
 
     <div class="login-footer">
-      <p>Only authorized users can access this application</p>
+      <p>Only authorised users can access this application</p>
     </div>
   </div>
 </div>

@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, of, shareReplay } from 'rxjs';
 import { tap } from 'rxjs/operators';
-import { EquityEntry, CommodityEntry, MutualFundEntry, P2PEntry, P2PRepayment, P2PEscrow, FixedDepositEntry, ForexEntry, Summary, EquityDividend, LendenParseResult } from '../models/investment.model';
+import { EquityEntry, CommodityEntry, MutualFundEntry, P2PEntry, P2PRepayment, P2PEscrow, FixedDepositEntry, ForexEntry, Summary, EquityDividend, LendenParseResult, OrderReportParseResult } from '../models/investment.model';
 import { environment } from '../../environments/environment';
 
 @Injectable({ providedIn: 'root' })
@@ -187,6 +187,22 @@ export class InvestmentService {
         this.invalidate('p2p-escrow');
         delete (this.cache as any)['capital-flows'];
         delete (this.cache as any)['bulk-load'];
+      })
+    );
+  }
+
+  parseOrderReport(file: File): Observable<OrderReportParseResult> {
+    const fd = new FormData();
+    fd.append('file', file);
+    return this.http.post<OrderReportParseResult>(`${this.baseUrl}/p2p/parse-order-report`, fd);
+  }
+
+  bulkAddLoans(rows: any[]): Observable<any> {
+    return this.http.post(`${this.baseUrl}/p2p/bulk-add-loans`, { rows }).pipe(
+      tap(() => {
+        this.invalidate('p2p');
+        delete (this.cache as any)['bulk-load'];
+        delete (this.cache as any)['capital-flows'];
       })
     );
   }

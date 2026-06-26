@@ -131,6 +131,7 @@
     <input type="text" class="search-input" placeholder="Search by name, platform, status..." [(ngModel)]="searchQuery" (input)="onSearch()">
     <button class="btn btn-secondary btn-sm" (click)="showEscrowPanel = true" title="Escrow Account">💰 Escrow</button>
     <button *ngIf="canWrite" class="btn btn-secondary btn-sm import-stmt-btn" (click)="openImportModal()" title="Import LenDen Statement">📥 Import Statement</button>
+    <button *ngIf="canWrite" class="btn btn-secondary btn-sm" (click)="openOrderReportModal()" title="Bulk import loans from ORDER_REPORT">📋 Bulk Import Loans</button>
     <button class="btn btn-secondary btn-sm" (click)="exportLendingsCsv()" title="Export lendings to CSV">⬇ Export CSV</button>
     <span class="entry-count">Showing {{ entries.length }} of {{ allEntries.length }} entries</span>
   </div>
@@ -517,8 +518,7 @@
   </div>
 
   <!-- LenDen Statement Import Modal -->
-  <div class="form-overlay" *ngIf="showImportModal" (click)="closeImportModal()">
-    <div class="form-modal import-modal" (click)="$event.stopPropagation()">
+  <div class="form-overlay" *ngIf="showImportModal" (click)="closeImportModal()">    <div class="form-modal import-modal" (click)="$event.stopPropagation()">
       <h2>📥 Import LenDen Statement</h2>
 
       <!-- Step 1: File Upload -->
@@ -558,8 +558,66 @@
         <!-- Unmatched warnings -->
         <div class="import-warnings" *ngIf="importUnmatchedWarnings.length > 0">
           <div class="import-warning-title">⚠️ Unmatched Loans ({{ importUnmatchedWarnings.length }})</div>
-          <div class="import-warning-row" *ngFor="let w of importUnmatchedWarnings">
-            <strong>{{ w.loan_id }}</strong> — {{ w.message }}
+          <div class="import-warning-row unmatched-row" *ngFor="let w of importUnmatchedWarnings">
+            <span><strong>{{ w.loan_id }}</strong> — {{ w.message }}</span>
+            <button *ngIf="canWrite" type="button" class="btn btn-sm btn-add-loan"
+              (click)="openQuickAddLoan(w)"
+              [disabled]="quickAddLoanWarning?.loan_id === w.loan_id || quickAddSubmitting">
+              + Add Loan
+            </button>
+          </div>
+
+          <!-- Inline quick-add form for unmatched loan -->
+          <div class="quick-add-loan-form" *ngIf="quickAddLoanWarning">
+            <div class="quick-add-title">Add P2P Lending — <strong>{{ quickAddLoanWarning.loan_id }}</strong></div>
+            <div class="form-grid quick-add-grid">
+              <div class="form-group">
+                <label>Loan ID</label>
+                <input type="text" [value]="quickAddLoanWarning.loan_id" disabled class="computed-field">
+              </div>
+              <div class="form-group">
+                <label>Platform *</label>
+                <input type="text" [(ngModel)]="quickAddForm.platform" name="qa_platform" placeholder="e.g. LenDenClub">
+              </div>
+              <div class="form-group">
+                <label>Name *</label>
+                <input type="text" [(ngModel)]="quickAddForm.name" name="qa_name" placeholder="Borrower name">
+              </div>
+              <div class="form-group">
+                <label>Date *</label>
+                <input type="date" [(ngModel)]="quickAddForm.date" name="qa_date" (change)="onQuickAddDateOrTenureChange()">
+              </div>
+              <div class="form-group">
+                <label>Amount (₹) *</label>
+                <input type="number" [(ngModel)]="quickAddForm.amount" name="qa_amount" step="0.01" min="0">
+              </div>
+              <div class="form-group">
+                <label>Tenure (months) *</label>
+                <input type="number" [(ngModel)]="quickAddForm.tenure" name="qa_tenure" step="1" min="1" (change)="onQuickAddDateOrTenureChange()">
+              </div>
+              <div class="form-group">
+                <label>Status *</label>
+                <select [(ngModel)]="quickAddForm.status" name="qa_status">
+                  <option value="Active">Active</option>
+                  <option value="Closed">Closed</option>
+                  <option value="Defaulted">Defaulted</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Maturity Date</label>
+                <input type="text" [value]="quickAddForm.maturity_date || '-'" disabled class="computed-field">
+              </div>
+              <div class="form-group">
+                <label>Remarks</label>
+                <input type="text" [(ngModel)]="quickAddForm.remarks" name="qa_remarks" placeholder="Optional notes">
+              </div>
+            </div>
+            <div class="quick-add-actions">
+              <button type="button" class="btn btn-secondary btn-sm" (click)="cancelQuickAdd()">Cancel</button>
+              <button type="button" class="btn btn-primary btn-sm" [disabled]="quickAddSubmitting" (click)="submitQuickAdd()">
+                {{ quickAddSubmitting ? 'Saving...' : 'Save & Re-parse' }}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -578,6 +636,7 @@
                   <th></th>
                   <th>Loan ID</th>
                   <th>Name</th>
+                  <th>Date</th>
                   <th class="num">Stmt Principal</th>
                   <th class="num">Stmt Interest</th>
                   <th class="num">Stmt Fee</th>
@@ -595,6 +654,7 @@
                   <td><input type="checkbox" [(ngModel)]="row.selected"></td>
                   <td class="loan-id-cell">{{ row.loan_id }}</td>
                   <td>{{ row.name }}</td>
+                  <td><input type="date" class="import-date-input" [(ngModel)]="row.date"></td>
                   <td class="num">{{ row.stmt_principal | inr }}</td>
                   <td class="num">{{ row.stmt_interest | inr }}</td>
                   <td class="num">{{ row.stmt_platform_fee | inr }}</td>
@@ -625,6 +685,126 @@
             [disabled]="importSelectedRows.length === 0 || importSubmitting"
             (click)="submitImport()">
             {{ importSubmitting ? 'Posting...' : 'Post ' + importSelectedRows.length + ' Repayment(s)' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Order Report Bulk Loan Import Modal -->
+  <div class="form-overlay" *ngIf="showOrderReportModal" (click)="closeOrderReportModal()">
+    <div class="form-modal import-modal order-report-modal" (click)="$event.stopPropagation()">
+      <h2>📋 Bulk Import Loans</h2>
+
+      <!-- Step 1: File Upload -->
+      <div class="import-step" *ngIf="!orderReportParseResult">
+        <p class="import-hint">Upload the <strong>ORDER_REPORT</strong> Excel file downloaded from LenDen. New loans (not yet in your P2P table) will be shown for review before adding.</p>
+        <label class="file-upload-zone" [class.has-file]="orderReportFile">
+          <input type="file" accept=".xlsx" (change)="onOrderReportFileChange($event)" style="display:none">
+          <span class="file-upload-icon">{{ orderReportFile ? '📄' : '📂' }}</span>
+          <span class="file-upload-text">{{ orderReportFile ? orderReportFile.name : 'Choose ORDER_REPORT .xlsx' }}</span>
+          <span class="file-upload-sub">{{ orderReportFile ? 'Click to change file' : 'Click to browse' }}</span>
+        </label>
+        <div class="import-error" *ngIf="orderReportError">⚠️ {{ orderReportError }}</div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" (click)="closeOrderReportModal()">Cancel</button>
+          <button type="button" class="btn btn-primary" [disabled]="!orderReportFile || orderReportParsing" (click)="parseOrderReport()">
+            {{ orderReportParsing ? 'Parsing...' : 'Parse File' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- Step 2: Review & Submit -->
+      <div class="import-step" *ngIf="orderReportParseResult">
+        <div class="import-summary">
+          <span>Report period: <strong>{{ orderReportParseResult.from_date }}</strong> → <strong>{{ orderReportParseResult.to_date }}</strong></span>
+          <span *ngIf="orderReportParseResult.skipped > 0" class="muted" style="margin-left:1rem">{{ orderReportParseResult.skipped }} PENDING/CANCELLED skipped</span>
+        </div>
+
+        <div class="import-warnings" *ngIf="orderReportParseResult.rows.length === 0">
+          <div class="import-warning-title" style="color:#10b981">✅ All loans already exist</div>
+          <div class="import-warning-row">Every disbursed loan in this report is already in your P2P table.</div>
+        </div>
+
+        <div *ngIf="orderReportParseResult.rows.length > 0">
+          <div class="import-table-header">
+            <span class="import-count">{{ orderReportSelectedRows.length }} of {{ orderReportParseResult.rows.length }} selected</span>
+            <label class="import-select-all">
+              <input type="checkbox"
+                [checked]="orderReportSelectedRows.length === orderReportNewRows.length && orderReportNewRows.length > 0"
+                (change)="toggleAllOrderReportRows($event)"> Select All New
+            </label>
+          </div>
+          <div class="import-warnings" style="border-color:#6366f1;background:rgba(99,102,241,0.08);margin-bottom:0.75rem" *ngIf="orderReportSelectedRows.length > 0">
+            <div class="import-warning-row" style="color:#818cf8;font-size:0.8rem">⚠️ <strong>Name</strong> is required for all selected rows — fill it in before submitting.</div>
+          </div>
+          <div class="import-table-wrap">
+            <table class="import-table order-report-table">
+              <thead>
+                <tr>
+                  <th></th>
+                  <th>Loan ID</th>
+                  <th>Name *</th>
+                  <th>Platform</th>
+                  <th>Date</th>
+                  <th class="num">Amount (₹)</th>
+                  <th class="num">Tenure</th>
+                  <th class="num">Rate %</th>
+                  <th>Status</th>
+                  <th>Maturity Date</th>
+                  <th>Remarks</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let row of orderReportParseResult.rows"
+                    [class.import-row-selected]="row.selected"
+                    [class.order-row-exists]="row.already_exists">
+                  <td>
+                    <input type="checkbox" [(ngModel)]="row.selected" [disabled]="row.already_exists">
+                  </td>
+                  <td class="loan-id-cell">{{ row.loan_id }}</td>
+                  <td>
+                    <span *ngIf="row.already_exists" class="exists-badge">Exists</span>
+                    <input *ngIf="!row.already_exists" type="text" class="import-remarks-input" [(ngModel)]="row.name" placeholder="Borrower name *">
+                  </td>
+                  <td>
+                    <input type="text" class="import-remarks-input" [(ngModel)]="row.platform" [disabled]="row.already_exists" style="width:90px">
+                  </td>
+                  <td>
+                    <input type="date" class="import-date-input" [(ngModel)]="row.date" [disabled]="row.already_exists" (change)="onOrderReportTenureChange(row)">
+                  </td>
+                  <td class="num">
+                    <input type="number" class="import-num-input" [(ngModel)]="row.amount" [disabled]="row.already_exists" min="0" step="0.01">
+                  </td>
+                  <td class="num">
+                    <input type="number" class="import-num-input" [(ngModel)]="row.tenure" [disabled]="row.already_exists" min="1" step="1" style="width:50px" (change)="onOrderReportTenureChange(row)">
+                  </td>
+                  <td class="num muted">{{ row.interest_rate }}%</td>
+                  <td>
+                    <select class="import-status-select" [(ngModel)]="row.status" [disabled]="row.already_exists">
+                      <option value="Active">Active</option>
+                      <option value="Closed">Closed</option>
+                      <option value="Defaulted">Defaulted</option>
+                    </select>
+                  </td>
+                  <td class="muted" style="font-size:0.75rem">{{ row.maturity_date || '—' }}</td>
+                  <td>
+                    <input type="text" class="import-remarks-input" [(ngModel)]="row.remarks" [disabled]="row.already_exists" style="width:160px">
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="import-error" *ngIf="orderReportError">⚠️ {{ orderReportError }}</div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" (click)="orderReportParseResult = null">← Back</button>
+          <button type="button" class="btn btn-secondary" (click)="closeOrderReportModal()">Cancel</button>
+          <button type="button" class="btn btn-primary"
+            [disabled]="orderReportSelectedRows.length === 0 || orderReportSubmitting"
+            (click)="submitOrderReport()">
+            {{ orderReportSubmitting ? 'Adding...' : 'Add ' + orderReportSelectedRows.length + ' Loan(s)' }}
           </button>
         </div>
       </div>
