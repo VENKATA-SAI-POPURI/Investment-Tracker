@@ -853,18 +853,29 @@ def parse_order_report():
     """Parse a LenDenClub ORDER_REPORT xlsx and return a preview of new loans to add."""
     if request.user_role == 'guest':
         return jsonify({"error": "Permission denied"}), 403
-    if 'file' not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
 
-    import io, re
+    import io, re, base64 as _base64
+    # Accept JSON body with base64-encoded file (mobile-safe) or legacy multipart
+    if request.content_type and 'multipart/form-data' in request.content_type:
+        if 'file' not in request.files:
+            return jsonify({"error": "No file uploaded"}), 400
+        file_bytes = request.files['file'].read()
+    else:
+        body = request.get_json(silent=True) or {}
+        if 'file_data' not in body:
+            return jsonify({"error": "No file uploaded"}), 400
+        try:
+            file_bytes = _base64.b64decode(body['file_data'])
+        except Exception:
+            return jsonify({"error": "Invalid file data"}), 400
+
     try:
         import openpyxl
     except ImportError:
         return jsonify({"error": "openpyxl not installed on server"}), 500
 
-    file = request.files['file']
     try:
-        wb = openpyxl.load_workbook(io.BytesIO(file.read()), data_only=True)
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
         ws = wb.active
         rows = list(ws.iter_rows(values_only=True))
     except Exception as e:
@@ -1041,18 +1052,29 @@ def parse_lenden_statement():
     """Parse a LenDen Excel statement and return suggested repayment postings."""
     if request.user_role == 'guest':
         return jsonify({"error": "Permission denied"}), 403
-    if 'file' not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
 
-    import io, re
+    import io, re, base64 as _base64
+    # Accept JSON body with base64-encoded file (mobile-safe) or legacy multipart
+    if request.content_type and 'multipart/form-data' in request.content_type:
+        if 'file' not in request.files:
+            return jsonify({"error": "No file uploaded"}), 400
+        file_bytes = request.files['file'].read()
+    else:
+        body = request.get_json(silent=True) or {}
+        if 'file_data' not in body:
+            return jsonify({"error": "No file uploaded"}), 400
+        try:
+            file_bytes = _base64.b64decode(body['file_data'])
+        except Exception:
+            return jsonify({"error": "Invalid file data"}), 400
+
     try:
         import openpyxl
     except ImportError:
         return jsonify({"error": "openpyxl not installed on server"}), 500
 
-    file = request.files['file']
     try:
-        wb = openpyxl.load_workbook(io.BytesIO(file.read()), data_only=True)
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
         ws = wb.active
         rows = list(ws.iter_rows(values_only=True))
     except Exception as e:

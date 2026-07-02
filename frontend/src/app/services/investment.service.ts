@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, of, shareReplay } from 'rxjs';
-import { tap } from 'rxjs/operators';
+import { switchMap, tap } from 'rxjs/operators';
 import { EquityEntry, CommodityEntry, MutualFundEntry, P2PEntry, P2PRepayment, P2PEscrow, FixedDepositEntry, ForexEntry, Summary, EquityDividend, LendenParseResult, OrderReportParseResult } from '../models/investment.model';
 import { environment } from '../../environments/environment';
 
@@ -172,11 +172,32 @@ export class InvestmentService {
     return this.http.delete(`${this.baseUrl}/p2p-repayments/${id}`).pipe(tap(() => this.invalidate('p2p-repayments')));
   }
 
+  // ── File helper: read as base64 (reliable on all mobile browsers) ──
+  private readFileAsBase64(file: File): Observable<string> {
+    return new Observable(observer => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        // result is a data URL like "data:...;base64,XXXX" — strip the prefix
+        const base64 = result.includes(',') ? result.split(',')[1] : result;
+        observer.next(base64);
+        observer.complete();
+      };
+      reader.onerror = () => observer.error(new Error('Failed to read file'));
+      reader.readAsDataURL(file);
+    });
+  }
+
   // ── LenDen Statement Import ──
   parseLendenStatement(file: File): Observable<LendenParseResult> {
-    const fd = new FormData();
-    fd.append('file', file);
-    return this.http.post<LendenParseResult>(`${this.baseUrl}/p2p/parse-statement`, fd);
+    return this.readFileAsBase64(file).pipe(
+      switchMap(base64 =>
+        this.http.post<LendenParseResult>(`${this.baseUrl}/p2p/parse-statement`, {
+          filename: file.name,
+          file_data: base64
+        })
+      )
+    );
   }
 
   importLendenStatement(rows: any[]): Observable<any> {
@@ -192,9 +213,14 @@ export class InvestmentService {
   }
 
   parseOrderReport(file: File): Observable<OrderReportParseResult> {
-    const fd = new FormData();
-    fd.append('file', file);
-    return this.http.post<OrderReportParseResult>(`${this.baseUrl}/p2p/parse-order-report`, fd);
+    return this.readFileAsBase64(file).pipe(
+      switchMap(base64 =>
+        this.http.post<OrderReportParseResult>(`${this.baseUrl}/p2p/parse-order-report`, {
+          filename: file.name,
+          file_data: base64
+        })
+      )
+    );
   }
 
   bulkAddLoans(rows: any[]): Observable<any> {
