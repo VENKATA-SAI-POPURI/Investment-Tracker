@@ -529,7 +529,7 @@
           <div class="import-warning-row">Edit each lending and add its Loan ID before importing, or unmatched warnings will appear.</div>
         </div>
         <label class="file-upload-zone" [class.has-file]="importSelectedFile">
-          <input type="file" accept=".xlsx" (change)="onImportFileChange($event)" style="display:none">
+          <input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" (change)="onImportFileChange($event)" style="position:absolute;opacity:0;width:0;height:0;overflow:hidden">
           <span class="file-upload-icon">{{ importSelectedFile ? '📄' : '📂' }}</span>
           <span class="file-upload-text">{{ importSelectedFile ? importSelectedFile.name : 'Choose .xlsx file' }}</span>
           <span class="file-upload-sub">{{ importSelectedFile ? 'Click to change file' : 'Click to browse' }}</span>
@@ -700,7 +700,7 @@
       <div class="import-step" *ngIf="!orderReportParseResult">
         <p class="import-hint">Upload the <strong>ORDER_REPORT</strong> Excel file downloaded from LenDen. New loans (not yet in your P2P table) will be shown for review before adding.</p>
         <label class="file-upload-zone" [class.has-file]="orderReportFile">
-          <input type="file" accept=".xlsx" (change)="onOrderReportFileChange($event)" style="display:none">
+          <input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" (change)="onOrderReportFileChange($event)" style="position:absolute;opacity:0;width:0;height:0;overflow:hidden">
           <span class="file-upload-icon">{{ orderReportFile ? '📄' : '📂' }}</span>
           <span class="file-upload-text">{{ orderReportFile ? orderReportFile.name : 'Choose ORDER_REPORT .xlsx' }}</span>
           <span class="file-upload-sub">{{ orderReportFile ? 'Click to change file' : 'Click to browse' }}</span>

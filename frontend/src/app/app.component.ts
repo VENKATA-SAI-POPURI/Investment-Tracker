@@ -24,10 +24,13 @@ export class AppComponent implements OnInit, OnDestroy {
     // and then appear to be stuck on the login screen after re-authenticating.
     if (this.authService.getToken()) {
       this.authService.verifyToken().subscribe({
-        error: () => {
-          // Token rejected — clear it so the login screen starts clean
-          this.authService.logout();
-          this.router.navigate(['/login']);
+        error: (err) => {
+          // Only clear token on explicit 401 (invalid/expired token).
+          // Network errors, timeouts, etc. on mobile must NOT wipe a valid session.
+          if (err.status === 401) {
+            this.authService.logout();
+            this.router.navigate(['/login']);
+          }
         }
       });
     }
