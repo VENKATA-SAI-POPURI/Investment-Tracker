@@ -1429,7 +1429,7 @@ export class P2PComponent implements OnInit, OnDestroy {
     const entry = this.allEntries.find(e => e.lending_id === lendingId);
     if (!entry || entry.status === 'Closed' || entry.status === 'Defaulted') return;
     const received = this.getTotalRepaid(lendingId);
-    if (received >= (entry.amount || 0)) {
+    if (received >= (entry.amount || 0) - 1) {
       const reps = this.getRepayments(lendingId);
       const lastRepDate = reps.length > 0 ? reps[reps.length - 1].date : entry.maturity_date;
       const updated = { ...entry, status: 'Closed', maturity_date: lastRepDate };
@@ -1456,7 +1456,7 @@ export class P2PComponent implements OnInit, OnDestroy {
 
   /** True when pending principal exceeds escrow balance by more than 5% */
   get isEscrowUnderFunded(): boolean {
-    return this.totalPending > this.escrowBalance * 1.05;
+    return this.totalPending > this.escrowBalance * 1.25;
   }
 
   get escrowImpactPreview(): { netPendingLent: number; deficiency: number; needsDeposit: boolean } {

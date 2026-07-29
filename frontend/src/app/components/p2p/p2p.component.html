@@ -10,7 +10,7 @@
         <div class="kpi-card-mini"><span class="kpi-label">Pending</span><span class="kpi-value" [style.color]="isEscrowUnderFunded ? '#ef4444' : totalPending > 0 ? '#f59e0b' : '#4caf50'">{{ totalPending | inr }}</span></div>
       </div>
       <div class="escrow-underfunded-flag" *ngIf="isEscrowUnderFunded">
-        ⚠️ Pending principal exceeds Escrow Balance by more than 5% — please top up Escrow.
+        ⚠️ Pending principal exceeds Escrow Balance by more than 25% — please top up Escrow.
       </div>
     </div>
     <div class="kpi-tier">
