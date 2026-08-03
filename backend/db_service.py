@@ -588,17 +588,21 @@ class DbService:
         """Collapse all capital_flows rows older than the current month into one
         aggregate row per (year-month, type, category) group.
         Rows already aggregated (remarks starts with '[Aggregated') are skipped.
+        Rows referenced by equity_dividends are excluded from aggregation entirely.
         Idempotent — safe to call on every startup."""
         from datetime import date as _date
         cutoff = _date.today().replace(day=1).isoformat()  # e.g. '2026-06-01'
 
         try:
-            # Find groups that have at least one non-aggregated row before the cutoff
+            # Find groups, excluding rows protected by equity_dividends FK
             groups = conn.execute(
                 "SELECT strftime('%Y-%m', date) as ym, type, category, "
                 "    SUM(amount) as total, COUNT(*) as cnt, MAX(created_by) as cb "
                 "FROM capital_flows "
                 "WHERE date < ? AND (remarks IS NULL OR remarks NOT LIKE '[Aggregated%') "
+                "  AND id NOT IN ("
+                "    SELECT capital_flow_id FROM equity_dividends "
+                "    WHERE capital_flow_id IS NOT NULL) "
                 "GROUP BY ym, type, category "
                 "HAVING cnt > 0",
                 (cutoff,)

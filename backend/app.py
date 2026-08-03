@@ -1173,6 +1173,7 @@ def parse_lenden_statement():
         stmt_total       = safe_float(row[idx["total_recv"]]       if idx["total_recv"]       is not None else 0)
         stmt_status      = str(row[idx["loan_status"]] or "").strip().upper() if idx["loan_status"] is not None else ""
         stmt_closure_date= str(row[idx["closure_date"]] or "").strip() if idx["closure_date"] is not None else None
+        stmt_disbursed_amount = safe_float(row[idx["disbursed_amount"]] if idx["disbursed_amount"] is not None else 0)
 
         # Map statement status → DB status
         status_map = {"ACTIVE": "Active", "CLOSED": "Closed", "NPA": "Defaulted"}
@@ -1196,6 +1197,9 @@ def parse_lenden_statement():
         delta_interest     = round(stmt_interest     - existing["interest"],     4)
         delta_platform_fee = round(stmt_platform_fee - existing["platform_fee"], 4)
         delta_total        = round(delta_principal + delta_interest, 4)  # fee not in capital flow
+
+        if stmt_principal >= stmt_disbursed_amount-1:
+            db_status = "Closed"  # auto-close if principal fully repaid
 
         # Status change warning
         current_status = (entry.get("status") or "").strip()

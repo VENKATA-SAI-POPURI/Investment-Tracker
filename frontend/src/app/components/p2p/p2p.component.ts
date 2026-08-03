@@ -451,8 +451,13 @@ export class P2PComponent implements OnInit, OnDestroy {
   // ── Feature: Foreclosure check ──
   isForeclosed(entry: P2PEntry): boolean {
     if (entry.status !== 'Closed') return false;
+    if (!entry.maturity_date) return false;
     const reps = this.getRepayments(entry.lending_id);
-    return reps.length < (entry.tenure || 0);
+    if (reps.length === 0) return false;
+    const lastRepDate = new Date(reps.reduce((latest, r) => r.date > latest ? r.date : latest, reps[0].date));
+    const maturity = new Date(entry.maturity_date);
+    const diffDays = (maturity.getTime() - lastRepDate.getTime()) / (1000 * 60 * 60 * 24);
+    return diffDays >= 10;
   }
 
   get foreclosedCount(): number {
@@ -669,10 +674,17 @@ export class P2PComponent implements OnInit, OnDestroy {
     const targetMonth = targetDate.getMonth();
     const targetYear = targetDate.getFullYear();
     const targetStart = targetDate.getTime();
+    const fallbackRate = this.activeAvgInterestRateNum || this.avgInterestRateNum;
 
-    return this.allEntries.filter(e => e.status === 'Active').reduce((sum, e) => {
+    // For past/current months, include closed loans that had dues then; for future, only active
+    const entries = offset <= 0
+      ? this.allEntries.filter(e => e.status === 'Active' || e.status === 'Closed')
+      : this.allEntries.filter(e => e.status === 'Active');
+
+    return entries.reduce((sum, e) => {
       if (!e.date || !e.tenure) return sum;
       const pp = this.getPrincipalPerInstallment(e);
+      const rate = this.getInterestRate(e) ?? fallbackRate;
 
       // Sum principal already received before the target month started
       const reps = this.getRepayments(e.lending_id).slice().sort((a, b) => a.date < b.date ? -1 : 1);
@@ -690,12 +702,15 @@ export class P2PComponent implements OnInit, OnDestroy {
         if (instDate.getMonth() === targetMonth && instDate.getFullYear() === targetYear) {
           // Already fully paid early
           if (completedInstallments >= i) return sum;
+          // Outstanding balance before this installment
+          const balance = Math.max(0, (e.amount || 0) - principalBeforeMonth);
+          const expectedInterest = balance * (rate / 100 / 12);
           // This is the next due installment — reduce by any excess already paid
           if (i === completedInstallments + 1) {
             const remaining = Math.max(0, pp - excessPrincipal);
-            return sum + remaining;
+            return sum + remaining + expectedInterest;
           }
-          return sum + pp;
+          return sum + pp + expectedInterest;
         }
       }
       return sum;
@@ -708,17 +723,42 @@ export class P2PComponent implements OnInit, OnDestroy {
     const targetMonth = targetDate.getMonth();
     const targetYear = targetDate.getFullYear();
 
+    // Only count repayments received in the target month, proportioned to installments due in that month
     return this.repayments.reduce((sum, r) => {
-      if (!r.date || !r.amount) return sum;
+      if (!r.date) return sum;
       const d = new Date(r.date);
-      if (d.getMonth() === targetMonth && d.getFullYear() === targetYear) {
-        const entry = this.allEntries.find(e => e.lending_id === r.lending_id);
-        if (!entry) return sum + (r.principal ?? r.amount);
-        const reps = this.getRepayments(entry.lending_id);
-        const idx = reps.indexOf(r);
-        return sum + this.getRepaymentPrincipal(r, entry, idx >= 0 ? idx : undefined);
+      if (d.getMonth() !== targetMonth || d.getFullYear() !== targetYear) return sum;
+
+      const entry = this.allEntries.find(e => e.lending_id === r.lending_id);
+      if (!entry || !entry.tenure) return sum + this.getRepaymentNetCredited(r);
+
+      const pp = this.getPrincipalPerInstallment(entry);
+      if (pp <= 0) return sum + this.getRepaymentNetCredited(r);
+
+      const reps = this.getRepayments(entry.lending_id).slice().sort((a, b) => a.date < b.date ? -1 : 1);
+      const idx = reps.indexOf(r);
+      const repPrincipal = this.getRepaymentPrincipal(r, entry, idx >= 0 ? idx : undefined);
+      const installmentsCovered = Math.max(1, Math.round(repPrincipal / pp));
+
+      // Count how many of those covered installments are due in the target month
+      let cumBefore = 0;
+      for (let ri = 0; ri < idx && ri < reps.length; ri++) {
+        cumBefore += this.getRepaymentPrincipal(reps[ri], entry, ri);
       }
-      return sum;
+      const firstInst = Math.floor(cumBefore / pp) + 1;
+      let dueInTargetMonth = 0;
+      for (let i = firstInst; i < firstInst + installmentsCovered && i <= entry.tenure; i++) {
+        const instDate = this._getInstallmentDate(entry, i);
+        if (instDate.getMonth() === targetMonth && instDate.getFullYear() === targetYear) {
+          dueInTargetMonth++;
+        }
+      }
+
+      if (dueInTargetMonth === 0) {
+        // Prepayment or late catch-up with no installments due this month — count full amount
+        return sum + this.getRepaymentNetCredited(r);
+      }
+      return sum + this.getRepaymentNetCredited(r) * (dueInTargetMonth / installmentsCovered);
     }, 0);
   }
 
