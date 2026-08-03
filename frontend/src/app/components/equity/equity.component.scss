@@ -69,10 +69,12 @@
 .expand-icon {
   font-size: 0.75rem;
   color: var(--text-secondary, #94a3b8);
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 tr.expanded {
   background: rgba(99, 102, 241, 0.05);
+  .expand-icon { transform: rotate(90deg); }
 }
 
 .txn-expand-header td {
@@ -85,6 +87,7 @@ tr.expanded {
   background: var(--bg-input, #0f172a);
   border-radius: 0 0 8px 8px;
   margin-bottom: 0.25rem;
+  animation: fadeSlideUp 0.25s ease both;
 }
 
 .txn-section-title {
@@ -158,6 +161,7 @@ tr.expanded {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+  animation: fadeSlideUp 0.4s ease both;
 }
 
 .allocation-title {
@@ -190,11 +194,16 @@ tr.expanded {
   align-items: center;
   padding: 0.5rem 0.75rem;
   border-radius: 8px;
-  transition: width 0.4s ease;
+  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s ease, box-shadow 0.2s ease;
   overflow: visible;
   position: relative;
   cursor: pointer;
   min-width: 60px;
+
+  &:hover {
+    transform: scaleY(1.08);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  }
 
   .seg-label { font-size: 0.88rem; font-weight: 700; }
 

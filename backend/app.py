@@ -78,6 +78,9 @@ def require_auth_global():
     # Allow auth endpoints through
     if request.path.startswith("/api/auth/google-login"):
         return None
+    # Allow keep-alive ping through (no auth needed)
+    if request.path == "/api/ping":
+        return None
     # All other /api/ routes need a valid JWT
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
@@ -1248,7 +1251,9 @@ def parse_lenden_statement():
 
 @app.route("/api/p2p/import-statement", methods=["POST"])
 def import_lenden_statement():
-    """Commit selected repayment rows from a LenDen statement parse result."""
+    """Commit selected repayment rows from a LenDen statement parse result.
+    Uses batch_write for a single DB round-trip instead of 4N individual writes.
+    """
     if request.user_role == 'guest':
         return jsonify({"error": "Permission denied"}), 403
     data = request.get_json()
@@ -1257,6 +1262,7 @@ def import_lenden_statement():
 
     today = __import__("datetime").date.today().isoformat()
     results = []
+    operations = []
 
     for row in data["rows"]:
         loan_id     = row.get("loan_id", "")
@@ -1270,15 +1276,17 @@ def import_lenden_statement():
         delta_total        = round(delta_principal + delta_interest, 4)
         remarks     = row.get("remarks") or f"LenDen statement import – as on {to_date}"
         entry_id    = row.get("entry_id")
-        new_status  = row.get("new_status")  # optional status update
+        new_status  = row.get("new_status")
 
         if delta_total == 0 and delta_principal == 0 and delta_interest == 0 and delta_platform_fee == 0:
             results.append({"loan_id": loan_id, "success": True, "skipped": True, "reason": "nothing_to_post"})
             continue
 
-        try:
-            # 1. Insert p2p_repayments row
-            repayment = {
+        # 1. Insert p2p_repayments row
+        operations.append({
+            "action": "insert",
+            "sheet_name": "P2P Repayments",
+            "data": {
                 "lending_id":   lending_id,
                 "date":         rep_date,
                 "principal":    delta_principal,
@@ -1287,37 +1295,52 @@ def import_lenden_statement():
                 "amount":       round(delta_principal + delta_interest + delta_platform_fee, 4),
                 "source":       "statement_import",
                 "remarks":      remarks,
-            }
-            rep_result = db_service.add_row("P2P Repayments", repayment, created_by=request.user_email)
+            },
+        })
 
-            # 2. Insert p2p_escrow (Repayment type)
-            escrow_entry = {
+        # 2. Insert p2p_escrow (Repayment type)
+        operations.append({
+            "action": "insert",
+            "sheet_name": "P2P Escrow",
+            "data": {
                 "date":     rep_date,
                 "type":     "Repayment",
                 "amount":   delta_total,
                 "platform": platform,
                 "remarks":  f"LenDen repayment – {loan_id}",
-            }
-            db_service.add_row("P2P Escrow", escrow_entry, created_by=request.user_email)
+            },
+        })
 
-            # 3. Insert capital_flows (Withdrawal)
-            capital_flow = {
+        # 3. Insert capital_flows (Withdrawal)
+        operations.append({
+            "action": "insert",
+            "sheet_name": "Capital Flows",
+            "data": {
                 "date":     rep_date,
                 "amount":   delta_total,
                 "type":     "Withdrawal",
                 "category": "P2P",
                 "remarks":  f"LenDen repayment – {loan_id}",
-            }
-            db_service.add_row("Capital Flows", capital_flow, created_by=request.user_email)
+            },
+        })
 
-            # 4. Update lending status if changed
-            if new_status and entry_id:
-                db_service.update_row("P2P", entry_id, {"status": new_status},
-                                      user_email=request.user_email, role=request.user_role)
+        # 4. Update lending status if changed
+        if new_status and entry_id:
+            operations.append({
+                "action": "update",
+                "sheet_name": "P2P",
+                "row_id": entry_id,
+                "data": {"status": new_status},
+            })
 
-            results.append({"loan_id": loan_id, "success": True, "repayment_id": rep_result.get("id")})
+        results.append({"loan_id": loan_id, "success": True})
+
+    # Execute all writes in a single batch (1 round-trip, 1 cache invalidation)
+    if operations:
+        try:
+            db_service.batch_write(operations, user_email=request.user_email)
         except Exception as e:
-            results.append({"loan_id": loan_id, "success": False, "error": str(e)})
+            return jsonify({"error": f"Batch write failed: {str(e)}", "results": results}), 500
 
     return jsonify({"results": results})
 

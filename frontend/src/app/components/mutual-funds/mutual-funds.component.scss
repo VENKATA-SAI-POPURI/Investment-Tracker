@@ -42,14 +42,15 @@
 // ── Expand / transaction dropdown ──
 .expand-toggle-col { width: 30px; }
 .expand-toggle { cursor: pointer; width: 30px; text-align: center; user-select: none; }
-.expand-icon { font-size: 0.75rem; color: var(--text-secondary, #94a3b8); }
-tr.expanded { background: rgba(99, 102, 241, 0.05); }
+.expand-icon { font-size: 0.75rem; color: var(--text-secondary, #94a3b8); transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1); }
+tr.expanded { background: rgba(99, 102, 241, 0.05); .expand-icon { transform: rotate(90deg); } }
 .txn-expand-header td { padding: 0 !important; border-top: none !important; }
 .txn-section {
   padding: 0.75rem 1rem 1rem;
   background: var(--bg-input, #0f172a);
   border-radius: 0 0 8px 8px;
   margin-bottom: 0.25rem;
+  animation: fadeSlideUp 0.25s ease both;
 }
 .txn-section-title { font-size: 0.82rem; font-weight: 600; color: var(--text-secondary, #94a3b8); margin-bottom: 0.5rem; }
 .txn-table {
@@ -66,6 +67,7 @@ tr.expanded { background: rgba(99, 102, 241, 0.05); }
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+  animation: fadeSlideUp 0.4s ease both;
 }
 
 .allocation-title {
@@ -97,7 +99,7 @@ tr.expanded { background: rgba(99, 102, 241, 0.05); }
   justify-content: center;
   font-size: 0.82rem;
   font-weight: 700;
-  transition: width 0.4s ease;
+  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s ease, box-shadow 0.2s ease;
   white-space: nowrap;
   overflow: visible;
   position: relative;
@@ -105,6 +107,11 @@ tr.expanded { background: rgba(99, 102, 241, 0.05); }
   border-radius: 8px;
   border: 1.5px solid transparent;
   background: rgba(255, 255, 255, 0.04);
+
+  &:hover {
+    transform: scaleY(1.08);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  }
 
   &[data-tooltip]:hover::after {
     content: attr(data-tooltip);

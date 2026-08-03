@@ -705,6 +705,7 @@ class DbService:
             "CREATE INDEX IF NOT EXISTS idx_mutual_funds_created_by ON mutual_funds(created_by)",
             "CREATE INDEX IF NOT EXISTS idx_mutual_funds_name ON mutual_funds(name)",
             "CREATE INDEX IF NOT EXISTS idx_p2p_created_by ON p2p(created_by)",
+            "CREATE INDEX IF NOT EXISTS idx_p2p_loan_id ON p2p(loan_id)",
             "CREATE INDEX IF NOT EXISTS idx_p2p_repayments_lending_id ON p2p_repayments(lending_id)",
             "CREATE INDEX IF NOT EXISTS idx_p2p_repayments_created_by ON p2p_repayments(created_by)",
             "CREATE INDEX IF NOT EXISTS idx_fixed_deposits_created_by ON fixed_deposits(created_by)",
@@ -909,6 +910,101 @@ class DbService:
             )
         self.invalidate_snapshot(created_by)
         return result
+
+    def batch_write(self, operations, user_email=None):
+        """Execute multiple INSERT/UPDATE operations in a single round-trip.
+        operations: list of dicts with keys:
+          - action: "insert" or "update"
+          - sheet_name: e.g. "P2P Repayments"
+          - data: dict of column->value
+          - row_id: (for update only) the id to update
+        Returns list of {"id": ..., "action": ...} results.
+        Invalidates cache/snapshot only once at the end.
+        """
+        if not operations:
+            return []
+
+        queries = []
+        meta = []  # track which tables were touched
+
+        for op in operations:
+            action = op["action"]
+            sheet_name = op["sheet_name"]
+            table = SHEET_TO_TABLE[sheet_name]
+            config = TABLES[table]
+            columns = config["columns"]
+            data = op.get("data", {})
+            meta.append(sheet_name)
+
+            if action == "insert":
+                cols_present = []
+                vals = []
+                for col in columns:
+                    val = data.get(col, "")
+                    if col in NUMERIC_FIELDS:
+                        if val not in (None, ""):
+                            try:
+                                val = float(val)
+                            except (ValueError, TypeError):
+                                val = None
+                        else:
+                            val = None
+                    cols_present.append(col)
+                    vals.append(val)
+                cols_present.append("created_by")
+                vals.append(user_email)
+                placeholders = ", ".join("?" for _ in cols_present)
+                sql = f"INSERT INTO {table} ({', '.join(cols_present)}) VALUES ({placeholders})"
+                queries.append((sql, vals))
+
+            elif action == "update":
+                row_id = op["row_id"]
+                updates = []
+                params = []
+                for col in columns:
+                    if col in data:
+                        val = data[col]
+                        if col in NUMERIC_FIELDS and val not in (None, ""):
+                            try:
+                                val = float(val)
+                            except (ValueError, TypeError):
+                                pass
+                        updates.append(f"{col} = ?")
+                        params.append(val)
+                if updates:
+                    updates.append("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')")
+                    params.append(row_id)
+                    sql = f"UPDATE {table} SET {', '.join(updates)} WHERE id = ?"
+                    queries.append((sql, params))
+
+        if not queries:
+            return []
+
+        with self._db_lock():
+            conn = self._connect()
+            if self.turso_url and self.turso_token:
+                # Single HTTP round-trip for all writes
+                conn.execute_pipeline(queries)
+            else:
+                for sql, params in queries:
+                    conn.execute(sql, params)
+                conn.commit()
+            conn.close()
+
+        # Invalidate cache once for all affected tables
+        touched_sheets = set(meta)
+        cache_keys = ["summary", "capital_flows_summary", "bulk_data:__all__"]
+        for s in touched_sheets:
+            cache_keys.append(f"rows:{s}")
+        self._cache.invalidate(*cache_keys)
+        if user_email:
+            user_keys = [f"summary:user:{user_email}", f"capital_flows_summary:user:{user_email}", f"bulk_data:{user_email}"]
+            for s in touched_sheets:
+                user_keys.append(f"rows:{s}:user:{user_email}")
+            self._cache.invalidate(*user_keys)
+        self.invalidate_snapshot(user_email)
+
+        return [{"index": i, "action": operations[i]["action"]} for i in range(len(operations))]
 
     def update_row(self, sheet_name, row_id, data, user_email=None, role=None):
         table = SHEET_TO_TABLE[sheet_name]
