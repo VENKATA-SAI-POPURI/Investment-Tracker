@@ -437,7 +437,7 @@ export class P2PComponent implements OnInit, OnDestroy {
   }
 
   isAutoDefaulted(entry: P2PEntry): boolean {
-    return entry.status === 'Active' && this.isOverdue(entry) && this.getOverdueDays(entry) > 90;
+    return entry.status === 'Active' && this.isOverdue(entry) && this.getOverdueDays(entry) > 60;
   }
 
   get overdueCount(): number {
