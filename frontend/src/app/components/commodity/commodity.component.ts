@@ -166,7 +166,7 @@ export class CommodityComponent implements OnInit, OnDestroy {
     }
 
     const map = new Map<string, CommodityHoldingRow>();
-    for (const e of this.entries) {
+    for (const e of this.allEntries) {
       if (!map.has(e.name)) {
         const bkt = buckets.get(e.name) || { lt6m: 0, lt1y: 0, lt2y: 0, gt2y: 0 };
         map.set(e.name, {

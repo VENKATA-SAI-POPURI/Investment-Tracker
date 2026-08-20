@@ -176,6 +176,7 @@ TABLES = {
         "columns": ["year", "commodity", "name", "date", "buy_quantity", "buy_value", "sell_quantity", "sell_value", "buy_sell", "remarks"],
         "buy_col": "buy_value",
         "sell_col": "sell_value",
+        "no_upsert": True,
     },
     "mutual_funds": {
         "columns": ["year", "category", "fund_type", "name", "date", "buy_quantity", "buy_value", "sell_quantity", "sell_value", "buy_sell", "remarks"],
@@ -851,13 +852,15 @@ class DbService:
                 for col in columns:
                     if col in UPSERT_FIELDS and col in data:
                         val = data[col]
-                        if col in NUMERIC_FIELDS and val not in (None, ""):
-                            try:
-                                new_val = float(val)
-                            except (ValueError, TypeError):
-                                new_val = 0
-                            updates.append(f"{col} = COALESCE({col}, 0) + ?")
-                            params.append(new_val)
+                        if col in NUMERIC_FIELDS:
+                            if val not in (None, ""):
+                                try:
+                                    new_val = float(val)
+                                except (ValueError, TypeError):
+                                    new_val = 0
+                                updates.append(f"{col} = COALESCE({col}, 0) + ?")
+                                params.append(new_val)
+                            # Skip null/empty numeric fields to preserve existing data
                         else:
                             updates.append(f"{col} = ?")
                             params.append(val)

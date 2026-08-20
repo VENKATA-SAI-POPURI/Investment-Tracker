@@ -576,7 +576,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     total += this.equityFifoHoldings.reduce((s, h) => s + h.value, 0);
 
     total += this.mfData.reduce((sum, e) => sum + this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value), 0);
-    total += this.commodityData.reduce((sum, e) => sum + this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value), 0);
+    total += this.commodityFifoHoldings.reduce((s, h) => s + h.value, 0);
     // P2P: outstanding principal (interest does not reduce the invested amount)
     total += this.p2pOutstandingPrincipal;
     // FD: only active (not yet matured) deposits
@@ -715,7 +715,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
     // Commodity
     const cmdInv   = this.commodityData.reduce((s, e) => s + (e.buy_value || 0), 0);
-    const cmdCurr  = this.commodityData.reduce((s, e) => s + this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value), 0);
+    const cmdCurr  = this.commodityFifoHoldings.reduce((s, h) => s + h.value, 0);
     const cmdSales = this.commodityData.reduce((s, e) => s + (e.sell_value || 0), 0);
     const cmdCost  = cmdInv - cmdCurr;
     const cmdFlows = [
@@ -1022,6 +1022,44 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return result;
   }
 
+  // ── Commodity FIFO holdings (per-name cost of remaining lots) ──
+
+  private get commodityFifoHoldings(): { name: string; commodity: string; value: number }[] {
+    const buyLots = new Map<string, { date: string; qty: number; value: number }[]>();
+    const totalSells = new Map<string, number>();
+    const metaByName = new Map<string, string>();
+
+    for (const e of this.commodityData) {
+      const bq = e.buy_quantity || 0;
+      const sq = e.sell_quantity || 0;
+      if (bq > 0) {
+        metaByName.set(e.name, e.commodity || '');
+        if (!buyLots.has(e.name)) buyLots.set(e.name, []);
+        buyLots.get(e.name)!.push({ date: e.date || '', qty: bq, value: e.buy_value || 0 });
+      }
+      if (sq > 0) {
+        totalSells.set(e.name, (totalSells.get(e.name) || 0) + sq);
+      }
+    }
+
+    const result: { name: string; commodity: string; value: number }[] = [];
+    for (const [name, lots] of buyLots) {
+      const sorted = [...lots].sort((a, b) => a.date.localeCompare(b.date));
+      let sells = totalSells.get(name) || 0;
+      let fifoValue = 0;
+      for (const lot of sorted) {
+        let rem = lot.qty;
+        if (sells >= rem) { sells -= rem; continue; }
+        if (sells > 0) { rem -= sells; sells = 0; }
+        fifoValue += rem * (lot.qty > 0 ? lot.value / lot.qty : 0);
+      }
+      if (fifoValue > 0) {
+        result.push({ name, commodity: metaByName.get(name) || '', value: Math.round(fifoValue * 100) / 100 });
+      }
+    }
+    return result;
+  }
+
   // ── Equity net holdings helper (per-stock, clamped to 0) — used for analysis charts ──
 
   private equityNetHoldings(entries: EquityEntry[]): { name: string; value: number; market: string; market_cap: string; sector: string }[] {
@@ -1050,9 +1088,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (eqUSAVal > 0 || this.forexWalletBalanceINR > 0) catData.push({ label: 'Equity (USA)', value: Math.round((eqUSAVal + this.forexWalletBalanceINR) * 100) / 100 });
     if (eqOtherVal > 0) catData.push({ label: 'Equity (Other)', value: Math.round(eqOtherVal * 100) / 100 });
 
+    const cmdVal = this.commodityFifoHoldings.reduce((s, h) => s + h.value, 0);
+    if (cmdVal > 0) catData.push({ label: 'Commodity', value: Math.round(cmdVal * 100) / 100 });
+
     const otherCats = [
       { label: 'Mutual Funds', data: this.mfData, fn: (e: MutualFundEntry) => this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value) },
-      { label: 'Commodity', data: this.commodityData, fn: (e: CommodityEntry) => this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value) },
       // Only active (not yet matured) FDs
       { label: 'Fixed Deposits', data: this.fdData.filter(e => !e.return_value || e.return_value === 0), fn: (e: FixedDepositEntry) => (e.fd_value || 0) },
     ];
@@ -1634,9 +1674,22 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return out;
   }
 
+  private get commFifoValueMap(): Map<string, number> {
+    const map = new Map<string, number>();
+    this.commodityFifoHoldings.forEach(h => map.set(h.name, h.value));
+    return map;
+  }
+
   private commEntryValue(e: CommodityEntry): number {
     switch (this.selectedMetric) {
-      case 'Current Holdings': return this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value);
+      case 'Current Holdings': {
+        if (e.buy_sell === 'Sell' || !(e.buy_value || 0)) return 0;
+        const fifoVal = this.commFifoValueMap.get(e.name) || 0;
+        const totalBuyVal = this.commodityData
+          .filter(x => x.name === e.name && (x.buy_value || 0) > 0)
+          .reduce((s, x) => s + (x.buy_value || 0), 0);
+        return totalBuyVal > 0 ? fifoVal * (e.buy_value || 0) / totalBuyVal : 0;
+      }
       case 'Total Investments': return e.buy_value || 0;
       case 'Net P&L': {
         if (!(e.sell_quantity || 0)) return 0; // no realized P&L if nothing sold
@@ -2208,12 +2261,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (this.selectedCategory === 'Equity') {
       return Math.round(this.equityFifoHoldings.reduce((s, h) => s + h.value, 0) * 100) / 100;
     }
-    // MF and Commodity: aggregate per instrument name to correctly apply calcInvestment
-    if (this.selectedCategory === 'Mutual Funds' || this.selectedCategory === 'Commodity') {
+    if (this.selectedCategory === 'Commodity') {
+      return Math.round(this.commodityFifoHoldings.reduce((s, h) => s + h.value, 0) * 100) / 100;
+    }
+    // MF: aggregate per instrument name to correctly apply calcInvestment
+    if (this.selectedCategory === 'Mutual Funds') {
       const yearFilter = (e: any) => this.selectedYears.length === 0 || this.selectedYears.includes(e.year);
-      const data = this.selectedCategory === 'Mutual Funds'
-        ? this.mfData.filter(yearFilter)
-        : this.commodityData.filter(yearFilter);
+      const data = this.mfData.filter(yearFilter);
       const byName = new Map<string, { buyQty: number; buyVal: number; sellQty: number }>();
       data.forEach((e: any) => {
         const d = byName.get(e.name) || { buyQty: 0, buyVal: 0, sellQty: 0 };
@@ -2285,7 +2339,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       return this.xirrSafe(flows);
     }
     if (this.selectedCategory === 'Commodity') {
-      const cmdCurr = this.commodityData.reduce((s, e) => s + this.calcInvestment(e.buy_quantity, e.sell_quantity, e.buy_value), 0);
+      const cmdCurr = this.commodityFifoHoldings.reduce((s, h) => s + h.value, 0);
       const flows = [
         ...this.commodityData.map(e => ({ date: new Date(e.date), amount: e.buy_sell === 'Buy' ? -(e.buy_value || 0) : +(e.sell_value || 0) })),
         { date: today, amount: cmdCurr }
