@@ -994,7 +994,7 @@ def parse_order_report():
             "loan_id":       loan_id,
             "lending_id":    lending_id,
             "platform":      "LenDen",
-            "name":          "",
+            "name":          loan_id,
             "date":          disb_date or "",
             "amount":        disbursed,
             "tenure":        tenure,
@@ -1027,11 +1027,12 @@ def bulk_add_loans():
     results = []
     for row in data["rows"]:
         try:
+            loan_id = (row.get("loan_id") or "").strip().upper()
             entry = {
                 "lending_id":    row.get("lending_id", ""),
-                "loan_id":       (row.get("loan_id") or "").strip().upper(),
+                "loan_id":       loan_id,
                 "platform":      row.get("platform", "LenDen"),
-                "name":          row.get("name", ""),
+                "name":          (row.get("name") or "").strip() or loan_id,
                 "date":          row.get("date", ""),
                 "amount":        float(row.get("amount") or 0),
                 "tenure":        int(row.get("tenure") or 0),

@@ -735,16 +735,13 @@
                 (change)="toggleAllOrderReportRows($event)"> Select All New
             </label>
           </div>
-          <div class="import-warnings" style="border-color:#6366f1;background:rgba(99,102,241,0.08);margin-bottom:0.75rem" *ngIf="orderReportSelectedRows.length > 0">
-            <div class="import-warning-row" style="color:#818cf8;font-size:0.8rem">⚠️ <strong>Name</strong> is required for all selected rows — fill it in before submitting.</div>
-          </div>
           <div class="import-table-wrap">
             <table class="import-table order-report-table">
               <thead>
                 <tr>
                   <th></th>
                   <th>Loan ID</th>
-                  <th>Name *</th>
+                  <th>Name</th>
                   <th>Platform</th>
                   <th>Date</th>
                   <th class="num">Amount (₹)</th>
@@ -765,7 +762,7 @@
                   <td class="loan-id-cell">{{ row.loan_id }}</td>
                   <td>
                     <span *ngIf="row.already_exists" class="exists-badge">Exists</span>
-                    <input *ngIf="!row.already_exists" type="text" class="import-remarks-input" [(ngModel)]="row.name" placeholder="Borrower name *">
+                    <input *ngIf="!row.already_exists" type="text" class="import-remarks-input" [(ngModel)]="row.name" [placeholder]="row.loan_id">
                   </td>
                   <td>
                     <input type="text" class="import-remarks-input" [(ngModel)]="row.platform" [disabled]="row.already_exists" style="width:90px">

@@ -1432,11 +1432,7 @@ export class P2PComponent implements OnInit, OnDestroy {
   submitOrderReport(): void {
     const rows = this.orderReportSelectedRows;
     if (!rows.length) return;
-    const missing = rows.filter(r => !r.name?.trim());
-    if (missing.length > 0) {
-      this.toast(`Fill in the Name field for all selected rows (${missing.length} missing)`, 'error');
-      return;
-    }
+    rows.forEach(r => { if (!r.name?.trim()) r.name = r.loan_id; });
     this.orderReportSubmitting = true;
     this.investmentService.bulkAddLoans(rows).subscribe({
       next: (resp) => {
