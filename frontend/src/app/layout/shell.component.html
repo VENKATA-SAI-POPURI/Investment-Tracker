@@ -9,8 +9,8 @@
 <div class="layout">
   <aside class="sidebar" [class.open]="menuOpen()">
     <a routerLink="/" class="brand">
-      <span class="logo"><app-icon name="trend" [size]="16" /></span>
-      <span>Investments</span>
+      <span class="logo"><app-icon name="lotus" [size]="19" /></span>
+      <span class="brand-text">Investments<small>Shubh Labh</small></span>
     </a>
     <nav>
       @for (it of nav; track it.path) {
@@ -19,6 +19,7 @@
         </a>
       }
     </nav>
+    <app-mandala class="side-mandala" [size]="260" />
     <div class="me">
       @if (auth.user()?.picture) {
         <img [src]="auth.user()!.picture" alt="" referrerpolicy="no-referrer" class="avatar" />

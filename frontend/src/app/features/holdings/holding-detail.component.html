@@ -50,6 +50,18 @@
       }
     </section>
 
+    @if (history(); as h) {
+      @if (h.points.length > 1) {
+        <section class="card">
+          <div class="card-head">
+            <div class="row" style="gap:10px"><span class="chip blue sm"><app-icon name="trend" [size]="15" /></span><h2>Price & your trades</h2></div>
+            <div class="legend"><span><i class="swatch" style="background:#059669;border-radius:50%"></i>Buy</span><span><i class="swatch" style="background:#dc2626;border-radius:50%"></i>Sell</span></div>
+          </div>
+          <app-line-chart [labels]="hLabels()" [series]="hSeries()" [markers]="hMarkers()" [height]="240" [yFormat]="priceAxis" [tipFormat]="priceFmt" [ariaLabel]="'Price history of ' + p.name" />
+        </section>
+      }
+    }
+
     <section class="grid grid-3">
       <div class="card">
         <div class="card-head"><h2>Returns</h2></div>

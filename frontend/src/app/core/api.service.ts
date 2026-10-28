@@ -3,8 +3,8 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { environment } from '../../environments/environment';
 import {
-  AllowlistUser, CashMovement, Goal, Insight, Instrument, Benchmark, PerfMetrics, Performance, Portfolio,
-  RebalancePlan, Settings, SymbolHit, TaxReport, Transaction,
+  AllowlistUser, CashMovement, Goal, Income, Insight, Instrument, Benchmark, PerfMetrics, Performance, Portfolio,
+  PriceHistory, Pulse, RebalancePlan, Settings, SymbolHit, TaxReport, Transaction,
 } from './models';
 
 type Params = Record<string, string | number | boolean | null | undefined>;
@@ -34,6 +34,9 @@ export class ApiService {
   insights(performance = true) { return this.get<{ insights: Insight[]; benchmarks: Benchmark[]; metrics: PerfMetrics }>('/insights', { performance: performance ? 1 : 0 }); }
   dismissInsight(id: string, days = 30) { return this.post(`/insights/${encodeURIComponent(id)}/dismiss`, { days }); }
   rebalance(newMoney: number, allowSell: boolean) { return this.get<RebalancePlan>('/rebalance', { new_money: newMoney, allow_sell: allowSell ? 1 : 0 }); }
+  pulse() { return this.get<Pulse>('/pulse'); }
+  income() { return this.get<Income>('/income'); }
+  instrumentHistory(id: number) { return this.get<PriceHistory>(`/instruments/${id}/history`); }
   completeReview() { return this.post<{ lastReviewDate: string }>('/review/complete'); }
 
   // ledger

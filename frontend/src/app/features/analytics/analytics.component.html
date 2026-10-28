@@ -24,6 +24,7 @@
       <button [class.on]="tab() === 'growth'" (click)="tab.set('growth')">Growth</button>
       <button [class.on]="tab() === 'returns'" (click)="tab.set('returns')">Returns</button>
       <button [class.on]="tab() === 'risk'" (click)="tab.set('risk')">Risk</button>
+      <button [class.on]="tab() === 'income'" (click)="loadIncome()">Passive income</button>
     </div>
 
     <div [class.loading-fade]="loading()" style="display:flex;flex-direction:column;gap:20px">
@@ -79,6 +80,36 @@
               </div>
             </div>
           </section>
+        }
+        @case ('income') {
+          @if (income(); as inc) {
+            <section class="kpis" style="--kpi-cols:3">
+              <div class="kpi"><span class="chip green sm"><app-icon name="coins" [size]="15" /></span><span class="label">Last 12 months</span><span class="value pos">{{ inc.last_12m | inr }}</span><span class="meta">dividends + interest</span></div>
+              <div class="kpi"><span class="chip violet sm"><app-icon name="calendar" [size]="15" /></span><span class="label">Monthly average</span><span class="value">{{ inc.monthly_avg | inr }}</span><span class="meta">without selling anything</span></div>
+              <div class="kpi"><span class="chip amber sm"><app-icon name="trend" [size]="15" /></span><span class="label">Top dividend payer</span><span class="value" style="font-size:18px">{{ inc.top_payers.length ? inc.top_payers[0].name : '—' }}</span><span class="meta">{{ inc.top_payers[0] ? (inc.top_payers[0].amount | inr) + ' in 12 months' : '' }}</span></div>
+            </section>
+            <section class="grid grid-3">
+              <div class="card span-2">
+                <div class="card-head"><h2>Income by month</h2><span class="hint">Hover a bar for the split</span></div>
+                <app-bar-chart [bars]="incomeBars()" [height]="240" [yFormat]="inrc" [tipFormat]="inrFull" posColor="var(--s3)" ariaLabel="Passive income by month" />
+              </div>
+              <div class="card">
+                <div class="card-head"><h2>Where it comes from</h2></div>
+                <div class="bars">
+                  @for (x of incomeSplit(); track x.label) {
+                    <div class="bar-row"><span class="row" style="gap:8px"><i class="swatch" [style.background]="x.color"></i>{{ x.label }}</span>
+                      <div class="track"><span [style.width.%]="x.value / (inc.last_12m || 1) * 100" [style.background]="x.color"></span></div><span class="num right">{{ x.value | inrc }}</span></div>
+                  }
+                </div>
+                @if (inc.top_payers.length) {
+                  <div class="section-title" style="margin:18px 0 8px">Top dividend payers</div>
+                  @for (t of inc.top_payers; track t.instrument_id) {
+                    <a class="row" [routerLink]="['/holding', t.instrument_id]" style="justify-content:space-between;padding:6px 0;color:var(--text)"><span class="ellipsis">{{ t.name }}</span><span class="num">{{ t.amount | inr }}</span></a>
+                  }
+                }
+              </div>
+            </section>
+          } @else { <div class="card"><div class="skeleton" style="height:240px"></div></div> }
         }
         @case ('risk') {
           <section class="kpis">

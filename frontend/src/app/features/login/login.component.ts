@@ -3,6 +3,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { AuthService } from '../../core/auth.service';
 import { errorMessage } from '../../core/http';
 import { IconComponent } from '../../shared/icon.component';
+import { MandalaComponent } from '../../shared/motifs';
 
 declare global { interface Window { google?: any; } }
 
@@ -11,12 +12,15 @@ const CLIENT_ID = '264259769121-grmgud6svdqkbi2o58rsoqmjg6f04cka.apps.googleuser
 @Component({
   selector: 'app-login',
   standalone: true,
-  imports: [IconComponent],
+  imports: [IconComponent, MandalaComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="wrap">
+      <app-mandala class="m1" [size]="520" />
+      <app-mandala class="m2" [size]="380" />
       <div class="panel">
-        <span class="logo"><app-icon name="trend" [size]="24" /></span>
+        <span class="logo"><app-icon name="lotus" [size]="28" /></span>
+        <div class="namaste">Namaste</div>
         <h1>Investment Tracker</h1>
         <p class="text-2">Every holding in one place — returns, tax, goals and what to do next.</p>
         @if (reason()) { <div class="notice warn"><app-icon name="info" [size]="16" /> {{ reason() }}</div> }
@@ -37,7 +41,11 @@ const CLIENT_ID = '264259769121-grmgud6svdqkbi2o58rsoqmjg6f04cka.apps.googleuser
   styles: [`
     .wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px 16px; background: radial-gradient(1200px 600px at 10% 0%, #6366f1 0%, transparent 60%), radial-gradient(900px 600px at 100% 100%, #7c3aed 0%, transparent 55%), #1e1b4b; }
     .panel { width: 100%; max-width: 420px; background: var(--surface); border-radius: 20px; box-shadow: 0 30px 80px rgba(15, 23, 42, .45); padding: 36px 30px; display: flex; flex-direction: column; gap: 14px; align-items: center; text-align: center; }
-    .logo { display: inline-flex; width: 52px; height: 52px; border-radius: 14px; background: var(--hero); box-shadow: 0 10px 24px rgba(79, 70, 229, .35); color: #fff; align-items: center; justify-content: center; }
+    .m1 { position: fixed; left: -160px; top: -160px; color: rgba(253, 230, 138, .12); }
+    .m2 { position: fixed; right: -120px; bottom: -120px; color: rgba(244, 114, 182, .14); }
+    .namaste { font-size: 12px; font-weight: 600; letter-spacing: .2em; text-transform: uppercase; color: #d97706; margin-bottom: -8px; }
+    .panel { position: relative; z-index: 1; }
+    .logo { display: inline-flex; width: 56px; height: 56px; border-radius: 16px; background: linear-gradient(135deg, #f59e0b, #ec4899 55%, #8b5cf6); box-shadow: 0 10px 24px rgba(236, 72, 153, .35); color: #fff; align-items: center; justify-content: center; }
     .gbtn { min-height: 44px; display: flex; justify-content: center; }
     .notice { text-align: left; width: 100%; }
     .points { list-style: none; padding: 14px 0 0; margin: 0; border-top: 1px solid var(--border); width: 100%; display: grid; gap: 8px; text-align: left; font-size: 13px; color: var(--text-2); }

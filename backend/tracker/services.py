@@ -7,6 +7,8 @@ from datetime import date, datetime, timezone
 from . import domain as d
 from . import prices as px
 from .analytics import goals as goals_mod
+from .analytics.calendar import build_calendar
+from .analytics.health import health_score
 from .analytics.history import build_history
 from .analytics.insights import build_insights
 from .analytics.portfolio import compute_portfolio, to_date
@@ -144,3 +146,61 @@ class Services:
         if not targets:
             return {"rows": [], "error": "Set a target allocation first"}
         return goals_mod.rebalance_plan(port["segments"], targets, new_money, allow_sell)
+
+    def pulse(self, scope: str | None, settings: dict) -> dict:
+        """Health score + money calendar for the overview."""
+        res = self.insights(scope, settings)
+        return {"health": health_score(res["portfolio"], res["tax"], res["performance"]),
+                "calendar": build_calendar(res["portfolio"], res["tax"], res["goals"])}
+
+    def income(self, scope: str | None, months: int = 24) -> dict:
+        """Passive income (dividends, P2P interest, FD interest) per month."""
+        from collections import defaultdict
+        data = self.ledger.load(scope)
+        inst = {i["id"]: i for i in data["instruments"]}
+        by_month: dict[str, dict] = defaultdict(lambda: {"dividends": 0.0, "p2p_interest": 0.0, "fd_interest": 0.0})
+        for t in data["transactions"]:
+            m = str(t["date"])[:7]
+            amt = float(t["amount"] or 0)
+            if t["type"] == d.DIVIDEND:
+                by_month[m]["dividends"] += amt
+            elif t["type"] == d.REPAYMENT:
+                by_month[m]["p2p_interest"] += amt - float(t["principal"] or 0)
+            elif t["type"] == d.INTEREST:
+                by_month[m]["fd_interest"] += amt
+            elif t["type"] == d.MATURITY:
+                by_month[m]["fd_interest"] += amt - float(t["principal"] or 0)
+        today = date.today()
+        keys = []
+        y, mo = today.year, today.month
+        for _ in range(months):
+            keys.append(f"{y}-{mo:02d}")
+            mo -= 1
+            if mo == 0:
+                y, mo = y - 1, 12
+        keys.reverse()
+        rows = [{"month": k, **{kk: round(v, 2) for kk, v in by_month.get(k, {"dividends": 0.0, "p2p_interest": 0.0, "fd_interest": 0.0}).items()}} for k in keys]
+        for r in rows:
+            r["total"] = round(r["dividends"] + r["p2p_interest"] + r["fd_interest"], 2)
+        last12 = rows[-12:]
+        by_holding: dict[int, float] = defaultdict(float)
+        for t in data["transactions"]:
+            if t["type"] == d.DIVIDEND and str(t["date"])[:7] >= last12[0]["month"]:
+                by_holding[t["instrument_id"]] += float(t["amount"] or 0)
+        top = sorted(by_holding.items(), key=lambda kv: -kv[1])[:6]
+        return {"months": rows, "last_12m": round(sum(r["total"] for r in last12), 2),
+                "monthly_avg": round(sum(r["total"] for r in last12) / 12, 2),
+                "top_payers": [{"instrument_id": i, "name": inst[i]["name"], "amount": round(a, 2)} for i, a in top if i in inst]}
+
+    def instrument_history(self, scope: str | None, iid: int) -> dict:
+        from datetime import timedelta
+        inst = self.ledger.instrument(iid, scope)
+        txns = [t for t in self.ledger.load(scope)["transactions"] if t["instrument_id"] == iid]
+        if not inst.get("symbol") or not txns:
+            return {"symbol": inst.get("symbol"), "currency": inst.get("currency"), "points": [], "trades": []}
+        start = min(to_date(t["date"]) for t in txns) - timedelta(days=30)
+        pts = px.ensure_history(self.ledger.db, [inst["symbol"]], start).get(inst["symbol"], [])
+        trades = [{"date": t["date"], "type": t["type"], "quantity": t["quantity"], "amount": t["amount"],
+                   "price": (float(t["amount_fc"] or t["amount"]) / float(t["quantity"])) if t["quantity"] else None}
+                  for t in txns if t["type"] in (d.BUY, d.SELL)]
+        return {"symbol": inst["symbol"], "currency": inst.get("currency"), "points": pts, "trades": trades}

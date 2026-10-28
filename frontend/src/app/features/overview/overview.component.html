@@ -2,7 +2,7 @@
   <div class="page-head">
     <div>
       <h1>{{ greeting() }}</h1>
-      @if (p()) { <p class="sub">Here's how your money is doing · {{ p()!.as_of | dt }}</p> }
+      @if (p()) { <p class="sub">Your wealth stands at <b class="words">{{ words(p()!.totals.value) }}</b> · {{ p()!.as_of | dt }}</p> }
     </div>
   </div>
 
@@ -21,8 +21,10 @@
     </div>
   } @else {
     @let tt = t()!;
+    @if (festival(); as f) { <app-festival-strip [event]="f" [theme]="pulse()?.calendar?.theme ?? null" /> }
     <!-- Hero banner -->
     <section class="banner">
+      <app-mandala class="b-mandala" [size]="300" />
       <div class="b-main">
         <span class="b-label">Net worth</span>
         <span class="b-value">{{ tt.value | inr }}</span>
@@ -105,6 +107,13 @@
         @if (hasTargets()) { <p class="small muted" style="margin-top:10px">Right column: points above (+) or below (−) your target.</p> }
       </section>
     </div>
+
+    @if (pulse(); as pl) {
+      <div class="pulse-grid">
+        <app-health-card [health]="pl.health" />
+        <app-money-calendar [events]="pl.calendar.events" />
+      </div>
+    }
 
     @if (insights().length) {
       <section class="card">

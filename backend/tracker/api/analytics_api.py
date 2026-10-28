@@ -57,6 +57,21 @@ def insights():
                     "metrics": (res["performance"] or {}).get("metrics", {})})
 
 
+@bp.get("/pulse")
+def pulse():
+    return jsonify(S().pulse(g.scope, S().settings()))
+
+
+@bp.get("/income")
+def income():
+    return jsonify(S().income(g.scope))
+
+
+@bp.get("/instruments/<int:iid>/history")
+def instrument_history(iid):
+    return jsonify(S().instrument_history(g.scope, iid))
+
+
 @bp.post("/insights/<path:iid>/dismiss")
 @write_required
 def dismiss(iid):

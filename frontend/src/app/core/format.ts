@@ -24,6 +24,16 @@ export function inrCompact(v: number | null | undefined, signed = false): string
   return `${sign}₹${s}`;
 }
 
+/** ₹3.09 lakh / ₹1.25 crore — the way amounts are said in India. */
+export function inrWords(v: number | null | undefined): string {
+  if (v === null || v === undefined || isNaN(v)) return '—';
+  const a = Math.abs(v), sign = v < 0 ? '-' : '';
+  if (a >= 1e7) return `${sign}₹${(a / 1e7).toFixed(2)} crore`;
+  if (a >= 1e5) return `${sign}₹${(a / 1e5).toFixed(2)} lakh`;
+  if (a >= 1e3) return `${sign}₹${(a / 1e3).toFixed(1)} thousand`;
+  return `${sign}₹${a.toFixed(0)}`;
+}
+
 export function pct(v: number | null | undefined, decimals = 1, signed = true): string {
   if (v === null || v === undefined || isNaN(v)) return '—';
   const sign = signed && v > 0 ? '+' : '';

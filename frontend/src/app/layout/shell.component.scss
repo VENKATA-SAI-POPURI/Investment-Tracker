@@ -7,12 +7,16 @@
 .layout { display: flex; min-height: 100vh; }
 .sidebar {
   width: var(--sidebar-w); flex: none; position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column;
-  background: var(--nav-bg); padding: 18px 14px; z-index: 70; color: #c7cbe6;
+  background: var(--nav-bg); padding: 18px 14px; z-index: 70; color: #c7cbe6; overflow: hidden;
 }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 650; font-size: 15.5px; color: #fff; padding: 4px 8px 26px; text-decoration: none; letter-spacing: -0.01em; }
 .brand:hover { text-decoration: none; }
-.logo { display: inline-flex; width: 32px; height: 32px; border-radius: 10px; align-items: center; justify-content: center;
-  background: linear-gradient(135deg, #818cf8, #a78bfa); color: #fff; box-shadow: 0 6px 16px rgba(129, 140, 248, .4); }
+.logo { display: inline-flex; width: 36px; height: 36px; border-radius: 11px; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, #f59e0b, #ec4899 55%, #8b5cf6); color: #fff; box-shadow: 0 6px 18px rgba(236, 72, 153, .35); }
+.brand-text { display: flex; flex-direction: column; line-height: 1.15; }
+.brand-text small { font-size: 10.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: #fbbf24; }
+.side-mandala { position: absolute; left: -90px; bottom: 40px; color: rgba(165, 180, 252, .07); }
+.sidebar > nav, .sidebar > .brand, .sidebar > .me { position: relative; z-index: 1; }
 nav { flex: 1; display: flex; flex-direction: column; gap: 3px; }
 .nav { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 10px; color: #b4b9d9; font-weight: 500; font-size: 13.5px; text-decoration: none; transition: background .15s, color .15s; }
 .nav app-icon { color: #8a90b8; transition: color .15s; }

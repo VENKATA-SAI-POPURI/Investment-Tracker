@@ -36,6 +36,9 @@ export interface LineSeries { key: string; label: string; color: string; values:
           <path [attr.d]="linePath(s)" fill="none" [attr.stroke]="s.color" [attr.stroke-width]="s.muted ? 1.5 : 2.25"
                 stroke-linejoin="round" stroke-linecap="round" [attr.opacity]="s.muted ? 0.8 : 1" />
         }
+        @for (m of markerPts(); track $index) {
+          <circle [attr.cx]="m.x" [attr.cy]="m.y" r="5.5" [attr.fill]="m.kind === 'buy' ? '#059669' : '#dc2626'" stroke="var(--surface)" stroke-width="2"><title>{{ m.title }}</title></circle>
+        }
         @if (endLabel(); as e) {
           <circle [attr.cx]="e.x" [attr.cy]="e.y" r="4" [attr.fill]="e.color" stroke="var(--surface)" stroke-width="2" />
         }
@@ -79,6 +82,7 @@ export class LineChartComponent {
   tipFormat = input<((v: number) => string) | null>(null);
   ariaLabel = input('Line chart');
   zeroBased = input(false);
+  markers = input<{ i: number; kind: 'buy' | 'sell'; title: string }[]>([]);
 
   readonly padL = 64; readonly padR = 12; readonly padT = 10; readonly padB = 26;
   w = observeWidth(inject(ElementRef));
@@ -146,6 +150,12 @@ export class LineChartComponent {
     const base = this.y(Math.max(this.yMin(), Math.min(0, this.yMax())));
     return `M${this.x(pts[0][0])},${base}` + pts.map(([i, v]) => `L${this.x(i)},${this.y(v!)}`).join('') + `L${this.x(pts[pts.length - 1][0])},${base}Z`;
   }
+  markerPts = computed(() => {
+    const s = this.series()[0];
+    if (!s) return [];
+    return this.markers().filter(m => s.values[m.i] !== null && s.values[m.i] !== undefined)
+      .map(m => ({ ...m, x: this.x(m.i), y: this.y(s.values[m.i]!) }));
+  });
   endLabel = computed(() => {
     const s = this.series().find(x => !x.muted) ?? this.series()[0];
     if (!s) return null;

@@ -3,14 +3,16 @@ import { Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
-import { FORMAT_PIPES, inr, inrCompact } from '../../core/format';
+import { FORMAT_PIPES, inr, inrCompact, inrWords } from '../../core/format';
 import { errorMessage } from '../../core/http';
-import { Insight, Performance, SEGMENT_COLOR } from '../../core/models';
+import { Insight, Performance, Pulse, SEGMENT_COLOR } from '../../core/models';
 import { StoreService } from '../../core/store.service';
 import { TxnDialogService } from '../../core/txn-dialog.service';
 import { DonutChartComponent, Slice } from '../../shared/charts/donut-chart.component';
 import { LineChartComponent, LineSeries } from '../../shared/charts/line-chart.component';
 import { IconComponent } from '../../shared/icon.component';
+import { MandalaComponent } from '../../shared/motifs';
+import { FestivalStripComponent, HealthCardComponent, MoneyCalendarComponent } from './pulse.components';
 
 const SEGMENT_META: Record<string, { label: string; icon: string; route: string }> = {
   'Equity (India)': { label: 'Indian stocks', icon: 'trend', route: '/holdings/equity' },
@@ -25,7 +27,7 @@ const SEV_ICON: Record<string, string> = { critical: 'alert', warning: 'alert', 
 @Component({
   selector: 'app-overview',
   standalone: true,
-  imports: [RouterLink, IconComponent, LineChartComponent, DonutChartComponent, ...FORMAT_PIPES],
+  imports: [RouterLink, IconComponent, LineChartComponent, DonutChartComponent, MandalaComponent, FestivalStripComponent, HealthCardComponent, MoneyCalendarComponent, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './overview.component.html',
   styleUrl: './overview.component.scss',
@@ -43,6 +45,8 @@ export class OverviewComponent {
   perfLoading = signal(false);
   perfError = signal<string | null>(null);
   insights = signal<Insight[]>([]);
+  pulse = signal<Pulse | null>(null);
+  words = inrWords;
   sevIcon = SEV_ICON;
   inrc = (v: number) => inrCompact(v);
   inrFull = (v: number) => inr(v);
@@ -51,9 +55,13 @@ export class OverviewComponent {
   t = computed(() => this.p()?.totals);
   isEmpty = computed(() => !!this.p() && this.p()!.positions.length === 0);
   greeting = computed(() => {
-    const h = new Date().getHours();
     const name = (this.auth.viewAs()?.name || this.auth.user()?.name || '').split(' ')[0];
-    return `${h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'}${name ? ', ' + name : ''}`;
+    return `Namaste${name ? ', ' + name : ''}`;
+  });
+  festival = computed(() => {
+    const c = this.pulse()?.calendar;
+    const f = c?.next_festival;
+    return f && (f.days <= 21 || c?.theme) ? f : null;
   });
   gainPct = computed(() => {
     const t = this.t();
@@ -122,6 +130,9 @@ export class OverviewComponent {
     try {
       const r = await firstValueFrom(this.api.insights(false));
       this.insights.set(r.insights.filter(i => i.severity !== 'positive').slice(0, 3));
+    } catch { /* optional on the home screen */ }
+    try {
+      this.pulse.set(await firstValueFrom(this.api.pulse()));
     } catch { /* optional on the home screen */ }
   }
 

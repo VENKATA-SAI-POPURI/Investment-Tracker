@@ -275,3 +275,11 @@ export interface Settings {
 
 export interface SymbolHit { symbol: string; name: string; exchange: string; type: string; source: string; }
 export interface AllowlistUser { email: string; added_date: string; role: Role; name: string | null; picture: string | null; last_login: string | null; }
+
+export interface HealthComponent { key: string; label: string; weight: number; score: number; note: string; }
+export interface Health { score: number; grade: string; components: HealthComponent[]; focus: { key: string; label: string; note: string }; }
+export interface CalendarEvent { date: string; key: string; title: string; kind: 'festival' | 'national' | 'tax' | 'fy' | 'personal'; note: string; link: string | null; days: number; }
+export interface Pulse { health: Health; calendar: { events: CalendarEvent[]; theme: string | null; next_festival: CalendarEvent | null }; }
+export interface IncomeMonth { month: string; dividends: number; p2p_interest: number; fd_interest: number; total: number; }
+export interface Income { months: IncomeMonth[]; last_12m: number; monthly_avg: number; top_payers: { instrument_id: number; name: string; amount: number }[]; }
+export interface PriceHistory { symbol: string | null; currency: string | null; points: [string, number][]; trades: { date: string; type: 'BUY' | 'SELL'; quantity: number; amount: number; price: number | null }[]; }

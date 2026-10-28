@@ -97,3 +97,22 @@ def test_rebalance_new_money_only_goes_to_underweight():
     rows = {r["segment"]: r for r in plan["rows"]}
     assert rows["A"]["action"] == "hold" and rows["B"]["amount"] == pytest.approx(20000)
     assert plan["money_to_fix_without_selling"] == pytest.approx(40000)
+
+
+def test_calendar_gold_nudge_and_theme():
+    from tracker.analytics.calendar import build_calendar
+    port = {"totals": {"value": 100000}, "positions": [],
+            "segments": [{"segment": d.SEG_COMMODITY, "value": 5000, "pct": 5.0, "target": 10},
+                         {"segment": d.SEG_EQ_IN, "value": 95000, "pct": 95.0, "target": 90}]}
+    cal = build_calendar(port, None, [], today=date(2026, 11, 3))
+    dhanteras = next(e for e in cal["events"] if e["key"] == "dhanteras")
+    assert "₹5,000" in dhanteras["note"] and cal["theme"] == "diwali"
+
+
+def test_health_score_bounds():
+    from tracker.analytics.health import health_score
+    inst = [I(1, d.EQUITY, "A", last_price=12.0, sector="IT"), I(2, d.MUTUAL_FUND, "F", last_price=11.0, category="Equity")]
+    txns = [T(1, 1, "2025-01-01", d.BUY, 10, 100), T(2, 2, "2025-01-01", d.BUY, 10, 100)]
+    port = compute_portfolio(inst, txns, None, today=date(2025, 6, 1))
+    h = health_score(port, None, None)
+    assert 0 <= h["score"] <= 100 and len(h["components"]) == 5 and h["focus"]["label"]

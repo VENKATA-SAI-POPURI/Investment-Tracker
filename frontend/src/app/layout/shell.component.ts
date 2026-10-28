@@ -8,6 +8,7 @@ import { StoreService } from '../core/store.service';
 import { TxnDialogService } from '../core/txn-dialog.service';
 import { IconComponent } from '../shared/icon.component';
 import { TxnFormComponent } from '../shared/txn-form.component';
+import { MandalaComponent } from '../shared/motifs';
 
 interface NavItem { path: string; label: string; icon: string; match: string[]; }
 
@@ -25,7 +26,7 @@ export const NAV: NavItem[] = [
 @Component({
   selector: 'app-shell',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, IconComponent, TxnFormComponent],
+  imports: [RouterOutlet, RouterLink, IconComponent, TxnFormComponent, MandalaComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './shell.component.html',
   styleUrl: './shell.component.scss',
