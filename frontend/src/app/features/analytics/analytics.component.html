@@ -1,0 +1,154 @@
+<div class="page">
+  <div class="page-head">
+    <h1>Performance</h1>
+    <div class="row wrap">
+      <select class="input" style="width:auto;height:30px;font-size:12.5px" [ngModel]="segment()" (ngModelChange)="segment.set($event)" aria-label="Segment">
+        <option value="">Whole portfolio</option>@for (s of segments; track s) { <option [value]="s">{{ s }}</option> }
+      </select>
+      <div class="seg">@for (r of ranges; track r) { <button [class.on]="range() === r" (click)="range.set(r)">{{ r }}</button> }</div>
+    </div>
+  </div>
+
+  @if (error()) { <div class="notice bad"><app-icon name="alert" [size]="16" /> {{ error() }}</div> }
+
+  @if (m(); as m) {
+    <section class="kpis" [class.loading-fade]="loading()">
+      <div class="kpi"><span class="chip violet sm"><app-icon name="chart" [size]="15" /></span><span class="label">Annual return (XIRR)</span><span class="value" [class]="m.xirr | sign">{{ m.xirr | pct }}</span><span class="meta">since {{ m.start | dt }}</span></div>
+      <div class="kpi"><span class="chip green sm"><app-icon name="trend" [size]="15" /></span><span class="label">Gain in period</span><span class="value" [class]="m.gain | sign">{{ m.gain | inr: 0 : true }}</span><span class="meta">after {{ m.net_flows | inrc }} added</span></div>
+      <div class="kpi"><span class="chip indigo sm"><app-icon name="scale" [size]="15" /></span><span class="label">vs {{ activeBench()?.label || 'index' }}</span>
+        <span class="value" [class]="activeBench()?.excess_xirr | sign">{{ activeBench()?.excess_xirr | pct }}</span><span class="meta">a year, same cash flows</span></div>
+      <div class="kpi"><span class="chip amber sm"><app-icon name="arrowDown" [size]="15" /></span><span class="label">Worst fall</span><span class="value">{{ m.max_drawdown | pct }}</span><span class="meta">now {{ m.current_drawdown | pct }} from peak</span></div>
+    </section>
+
+    <div class="tabs">
+      <button [class.on]="tab() === 'growth'" (click)="tab.set('growth')">Growth</button>
+      <button [class.on]="tab() === 'returns'" (click)="tab.set('returns')">Returns</button>
+      <button [class.on]="tab() === 'risk'" (click)="tab.set('risk')">Risk</button>
+      <button [class.on]="tab() === 'income'" (click)="loadIncome()">Passive income</button>
+    </div>
+
+    <div [class.loading-fade]="loading()" style="display:flex;flex-direction:column;gap:20px">
+      @switch (tab()) {
+        @case ('growth') {
+          <section class="card">
+            <div class="card-head">
+              <div><h2>Your portfolio vs the same money in an index</h2>
+                <span class="hint">Each deposit and withdrawal is mirrored into the index on the same day</span></div>
+              @if (benchOptions().length) {
+                <select class="input" style="width:auto;height:30px;font-size:12.5px" [ngModel]="bench()" (ngModelChange)="bench.set($event)" aria-label="Benchmark">
+                  @for (b of benchOptions(); track b.key) { <option [value]="b.key">{{ b.label }}</option> }
+                </select>
+              }
+            </div>
+            @if (labels().length > 1) {
+              <app-line-chart [labels]="labels()" [series]="valueSeries()" [height]="300" [yFormat]="inrc" [tipFormat]="inrFull" ariaLabel="Portfolio value versus benchmark" />
+            } @else { <p class="muted">Not enough history in this range.</p> }
+          </section>
+          <section class="card flush">
+            <table class="table">
+              <thead><tr><th>Compared with</th><th class="num">Their XIRR</th><th class="num">Difference</th><th class="num hide-sm">Would be worth</th></tr></thead>
+              <tbody>
+                @for (b of benchOptions(); track b.key) {
+                  <tr><td>{{ b.label }}</td><td class="num">{{ b.xirr | pct }}</td>
+                    <td class="num" [class]="b.excess_xirr | sign">{{ b.excess_xirr | pct }}</td><td class="num hide-sm">{{ b.end_value | inr }}</td></tr>
+                }
+              </tbody>
+            </table>
+          </section>
+        }
+        @case ('returns') {
+          <section class="grid grid-2">
+            <div class="card">
+              <div class="card-head"><div><h2>Growth of ₹100</h2><span class="hint">Time-weighted · {{ m.twr | pct }} in this range{{ m.twr_annualised !== null ? ', ' + (m.twr_annualised | pct) + ' a year' : '' }}</span></div></div>
+              @if (labels().length > 1) {
+                <app-line-chart [labels]="labels()" [series]="indexSeries()" [height]="240" [yFormat]="idxFmt" [tipFormat]="idxTip" ariaLabel="Growth of 100 rupees" />
+              }
+            </div>
+            <div class="card">
+              <div class="card-head"><h2>Monthly returns</h2><span class="hint">% · blue gain, red loss</span></div>
+              <div class="table-wrap">
+                <table class="heat">
+                  <thead><tr><th></th>@for (mo of months; track mo) { <th>{{ mo.slice(0, 1) }}</th> }<th>Year</th></tr></thead>
+                  <tbody>
+                    @for (r of heat(); track r.year) {
+                      <tr><td class="year">{{ r.year }}</td>
+                        @for (v of r.vals; track $index) { <td [style.background]="heatBg(v)" [title]="months[$index] + ' ' + r.year + ': ' + (v === null ? '—' : (v | pct))">{{ v === null ? '' : v.toFixed(0) }}</td> }
+                        <td [style.background]="heatBg(r.total)"><b>{{ r.total === null ? '' : r.total.toFixed(1) }}</b></td></tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        }
+        @case ('income') {
+          @if (income(); as inc) {
+            <section class="kpis" style="--kpi-cols:3">
+              <div class="kpi"><span class="chip green sm"><app-icon name="coins" [size]="15" /></span><span class="label">Last 12 months</span><span class="value pos">{{ inc.last_12m | inr }}</span><span class="meta">dividends + interest</span></div>
+              <div class="kpi"><span class="chip violet sm"><app-icon name="calendar" [size]="15" /></span><span class="label">Monthly average</span><span class="value">{{ inc.monthly_avg | inr }}</span><span class="meta">without selling anything</span></div>
+              <div class="kpi"><span class="chip amber sm"><app-icon name="trend" [size]="15" /></span><span class="label">Top dividend payer</span><span class="value" style="font-size:18px">{{ inc.top_payers.length ? inc.top_payers[0].name : '—' }}</span><span class="meta">{{ inc.top_payers[0] ? (inc.top_payers[0].amount | inr) + ' in 12 months' : '' }}</span></div>
+            </section>
+            <section class="grid grid-3">
+              <div class="card span-2">
+                <div class="card-head"><h2>Income by month</h2><span class="hint">Hover a bar for the split</span></div>
+                <app-bar-chart [bars]="incomeBars()" [height]="240" [yFormat]="inrc" [tipFormat]="inrFull" posColor="var(--s3)" ariaLabel="Passive income by month" />
+              </div>
+              <div class="card">
+                <div class="card-head"><h2>Where it comes from</h2></div>
+                <div class="bars">
+                  @for (x of incomeSplit(); track x.label) {
+                    <div class="bar-row"><span class="row" style="gap:8px"><i class="swatch" [style.background]="x.color"></i>{{ x.label }}</span>
+                      <div class="track"><span [style.width.%]="x.value / (inc.last_12m || 1) * 100" [style.background]="x.color"></span></div><span class="num right">{{ x.value | inrc }}</span></div>
+                  }
+                </div>
+                @if (inc.top_payers.length) {
+                  <div class="section-title" style="margin:18px 0 8px">Top dividend payers</div>
+                  @for (t of inc.top_payers; track t.instrument_id) {
+                    <a class="row" [routerLink]="['/holding', t.instrument_id]" style="justify-content:space-between;padding:6px 0;color:var(--text)"><span class="ellipsis">{{ t.name }}</span><span class="num">{{ t.amount | inr }}</span></a>
+                  }
+                }
+              </div>
+            </section>
+          } @else { <div class="card"><div class="skeleton" style="height:240px"></div></div> }
+        }
+        @case ('risk') {
+          <section class="kpis">
+            <div class="kpi"><span class="chip blue sm"><app-icon name="chart" [size]="15" /></span><span class="label">Volatility</span><span class="value">{{ m.volatility | pct: 1 : false }}</span><span class="meta">annualised</span></div>
+            <div class="kpi"><span class="chip indigo sm"><app-icon name="scale" [size]="15" /></span><span class="label">Sharpe ratio</span><span class="value">{{ m.sharpe ?? '—' }}</span><span class="meta">vs 6.5% risk-free</span></div>
+            <div class="kpi"><span class="chip violet sm"><app-icon name="pie" [size]="15" /></span><span class="label">Top 5 holdings</span><span class="value">{{ top5() | pct: 0 : false }}</span><span class="meta">of the portfolio</span></div>
+            <div class="kpi"><span class="chip amber sm"><app-icon name="globe" [size]="15" /></span><span class="label">In US dollars</span><span class="value">{{ usdShare() | pct: 0 : false }}</span><span class="meta">currency exposure</span></div>
+          </section>
+          <section class="grid grid-3">
+            <div class="card">
+              <div class="card-head"><h2>Largest holdings</h2></div>
+              <div class="bars">
+                @for (r of top(); track r.id) {
+                  <a class="bar-row" [routerLink]="['/holding', r.id]" style="color:var(--text)"><span class="ellipsis">{{ r.key }}</span>
+                    <div class="track"><span [style.width.%]="r.pct / maxPct(top()) * 100"></span></div><span class="num right">{{ r.pct | pct: 1 : false }}</span></a>
+                }
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-head"><h2>Stock sectors</h2></div>
+              <div class="bars">
+                @for (r of sectors(); track r.key) {
+                  <div class="bar-row" [title]="(r.value | inr)"><span class="ellipsis">{{ r.key }}</span><div class="track"><span [style.width.%]="r.pct / maxPct(sectors()) * 100"></span></div><span class="num right">{{ r.pct | pct: 0 : false }}</span></div>
+                } @empty { <p class="muted small">No stocks in this view.</p> }
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-head"><h2>Company size</h2></div>
+              <div class="bars">
+                @for (r of caps(); track r.key) {
+                  <div class="bar-row"><span class="ellipsis">{{ r.key }}</span><div class="track"><span [style.width.%]="r.pct / maxPct(caps()) * 100"></span></div><span class="num right">{{ r.pct | pct: 0 : false }}</span></div>
+                } @empty { <p class="muted small">No stocks in this view.</p> }
+              </div>
+            </div>
+          </section>
+        }
+      }
+    </div>
+  } @else if (!error()) {
+    <div class="card"><div class="skeleton" style="height:300px"></div></div>
+  }
+</div>

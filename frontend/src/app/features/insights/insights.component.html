@@ -1,0 +1,85 @@
+<div class="page">
+  <div class="page-head">
+    <div><h1>Insights</h1><p class="sub">{{ counts().warning }} need attention · {{ counts().info }} suggestions</p></div>
+    @if (auth.canWrite()) { <button class="btn sm" (click)="markReviewed()"><app-icon name="checkCircle" [size]="15" /> Mark review done</button> }
+  </div>
+
+  <section class="card" style="padding-top:8px;padding-bottom:8px" [class.loading-fade]="loading() && items().length">
+    @if (categories().length > 1) {
+      <div class="tabs" style="margin-bottom:4px">
+        <button [class.on]="!category()" (click)="category.set('')">All</button>
+        @for (c of categories(); track c) { <button [class.on]="category() === c" (click)="category.set(c)">{{ c | titlecase }}</button> }
+      </div>
+    }
+    @for (i of shown(); track i.id) {
+      <app-insight-card [insight]="i" [dismissable]="auth.canWrite() && i.severity !== 'positive'" (dismiss)="dismiss($event)" />
+    } @empty {
+      @if (!loading()) { <div class="empty"><app-icon name="checkCircle" [size]="26" /><h3>Nothing needs attention</h3><p>Allocation is within targets and no tax or risk flags were found.</p></div> }
+      @else { <div class="skeleton" style="height:120px;margin:12px 0"></div> }
+    }
+  </section>
+
+  <section class="card" id="rebalance">
+    <div class="card-head">
+      <div><h2>Rebalancing planner</h2><span class="hint">How to get back to your target allocation</span></div>
+      <div class="row wrap">
+        <label class="small text-2" for="rb-money">New money</label>
+        <input id="rb-money" class="input num" type="number" min="0" step="1000" style="width:140px" [ngModel]="newMoney()" (ngModelChange)="newMoney.set($event)" />
+        <label class="check small"><input type="checkbox" [ngModel]="allowSell()" (ngModelChange)="allowSell.set($event)" /> Allow selling</label>
+        <button class="btn primary sm" (click)="loadPlan()">Plan</button>
+      </div>
+    </div>
+    @if (plan(); as pl) {
+      @if (pl.error) { <div class="notice warn">{{ pl.error }} — set targets in <a routerLink="/settings">Settings</a>.</div> }
+      @else {
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>Segment</th><th class="num">Value</th><th class="num">Now</th><th class="num">Target</th><th>Action</th><th class="num">After</th></tr></thead>
+            <tbody>
+              @for (r of pl.rows; track r.segment) {
+                <tr>
+                  <td><span class="row"><i class="swatch" [style.background]="colorOf(r.segment)"></i>{{ r.segment }}</span></td>
+                  <td class="num">{{ r.current | inr }}</td><td class="num">{{ r.current_pct | pct: 1 : false }}</td><td class="num">{{ r.target_pct | pct: 1 : false }}</td>
+                  <td>@switch (r.action) {
+                      @case ('buy') { <span class="badge good"><app-icon name="arrowUp" [size]="12" /> Add {{ r.amount | inr }}</span> }
+                      @case ('sell') { <span class="badge bad"><app-icon name="arrowDown" [size]="12" /> Trim {{ r.amount | inr }}</span> }
+                      @default { <span class="badge">Hold</span> } }</td>
+                  <td class="num">{{ r.after_pct | pct: 1 : false }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        <p class="small text-2" style="margin-top:10px">
+          @if (!pl.allow_sell) {
+            Without selling (no tax), you'd need about <b>{{ pl.money_to_fix_without_selling | inr }}</b> of new money to reach every target exactly.
+          } @else { Selling may trigger capital-gains tax — check the Tax page for long-term lots and harvested losses first. }
+        </p>
+      }
+    }
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <div><h2>AI portfolio analyst</h2><span class="hint">Explains the numbers above in plain language</span></div>
+      @if (ai()?.enabled) { <button class="btn primary" (click)="analyze()" [disabled]="analyzing()"><app-icon name="sparkle" [size]="16" /> {{ analyzing() ? 'Analysing…' : analysis() ? 'Re-run analysis' : 'Analyse my portfolio' }}</button> }
+    </div>
+    @if (ai() && !ai()!.enabled) {
+      <div class="notice"><app-icon name="info" [size]="16" /> AI is off. Set <code>GROQ_API_KEY</code> or <code>GEMINI_API_KEY</code> on the server to enable it. Everything else on this page works without it.</div>
+    } @else {
+      @if (analysis()) { <div class="md" [innerHTML]="analysis() | markdown"></div><div class="divider" style="margin:16px 0"></div> }
+      <div class="chat">
+        @for (m of chat(); track $index) { <div class="msg md" [class]="m.role" [innerHTML]="m.content | markdown"></div> }
+        @if (sending()) { <div class="msg assistant muted">Thinking…</div> }
+      </div>
+      @if (!chat().length) {
+        <div class="row wrap" style="margin:8px 0">@for (s of suggestions; track s) { <button class="btn sm" (click)="send(s)">{{ s }}</button> }</div>
+      }
+      <form class="input-group" style="margin-top:10px" (ngSubmit)="send()">
+        <input class="input" name="draft" [(ngModel)]="draft" placeholder="Ask about your portfolio…" aria-label="Ask the AI analyst" />
+        <button class="btn primary" type="submit" [disabled]="sending()"><app-icon name="send" [size]="15" /></button>
+      </form>
+      <p class="small muted" style="margin-top:8px">{{ ai()?.disclaimer }}</p>
+    }
+  </section>
+</div>

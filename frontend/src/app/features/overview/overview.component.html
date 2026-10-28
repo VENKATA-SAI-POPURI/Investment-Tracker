@@ -1,0 +1,139 @@
+<div class="page" [class.loading-fade]="store.loading() && !!p()">
+  <div class="page-head">
+    <div>
+      <h1>{{ greeting() }}</h1>
+      @if (p()) { <p class="sub">Your wealth stands at <b class="words">{{ words(p()!.totals.value) }}</b> · {{ p()!.as_of | dt }}</p> }
+    </div>
+  </div>
+
+  @if (!p()) {
+    <div class="banner"><div class="skeleton" style="height:120px;opacity:.25"></div></div>
+    <div class="card"><div class="skeleton" style="height:280px"></div></div>
+  } @else if (isEmpty()) {
+    <div class="card empty">
+      <span class="chip indigo" style="width:56px;height:56px;border-radius:16px"><app-icon name="layers" [size]="26" /></span>
+      <h3>Add your first investment</h3>
+      <p>Record a purchase, or import a CSV or broker tradebook from Activity.</p>
+      @if (auth.canWrite()) {
+        <div class="row"><button class="btn primary" (click)="dialog.add()"><app-icon name="plus" [size]="16" /> Add transaction</button>
+          <a class="btn" routerLink="/transactions">Import</a></div>
+      }
+    </div>
+  } @else {
+    @let tt = t()!;
+    @if (festival(); as f) { <app-festival-strip [event]="f" [theme]="pulse()?.calendar?.theme ?? null" /> }
+    <!-- Hero banner -->
+    <section class="banner">
+      <app-mandala class="b-mandala" [size]="300" />
+      <div class="b-main">
+        <span class="b-label">Net worth</span>
+        <span class="b-value">{{ tt.value | inr }}</span>
+        @if (tt.day_change) {
+          <span class="b-pill" [class.down]="tt.day_change < 0">
+            <app-icon [name]="tt.day_change > 0 ? 'arrowUp' : 'arrowDown'" [size]="13" />
+            {{ tt.day_change | inr: 0 : true }} ({{ tt.day_change_pct | pct: 2 }}) today
+          </span>
+        } @else { <span class="b-pill">No change today</span> }
+      </div>
+      @if (spark(); as sp) {
+        <svg class="b-spark" viewBox="0 0 240 64" preserveAspectRatio="none" aria-hidden="true">
+          <defs><linearGradient id="sparkFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".28" /><stop offset="1" stop-color="#fff" stop-opacity="0" /></linearGradient></defs>
+          <path [attr.d]="sp.area" fill="url(#sparkFill)" />
+          <path [attr.d]="sp.line" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" />
+        </svg>
+      }
+      <div class="b-stats">
+        <div><span>Invested</span><b>{{ tt.cost | inr }}</b><small>cost of what you hold</small></div>
+        <div><span>Total gain</span><b [class.up]="tt.total_gain > 0" [class.down]="tt.total_gain < 0">{{ tt.total_gain | inr: 0 : true }}</b><small>{{ gainPct() | pct }} overall</small></div>
+        <div><span>Annual return</span><b [class.up]="(tt.xirr ?? 0) > 0" [class.down]="(tt.xirr ?? 0) < 0">{{ tt.xirr | pct }}</b><small>XIRR</small></div>
+      </div>
+    </section>
+
+    @if (story(); as st) {
+      <div class="sec-head"><h2>What stands out</h2><span>Drawn from your full history</span></div>
+      <app-takeaways [items]="st.takeaways" />
+    }
+
+    <div class="main-grid">
+      <section class="card">
+        <div class="card-head">
+          <div><h2>Value over time</h2>
+            @if (perf(); as pf) { <span class="hint">{{ pf.metrics.gain >= 0 ? 'Up' : 'Down' }} <b [class]="pf.metrics.gain | sign">{{ (pf.metrics.gain < 0 ? -pf.metrics.gain : pf.metrics.gain) | inr }}</b> in this period</span> }
+          </div>
+          <div class="row wrap">
+            @if (hasBench()) { <button class="cmp" [class.on]="compare()" (click)="compare.set(!compare())" [attr.aria-pressed]="compare()"><i></i>vs Nifty 50</button> }
+            <div class="seg">@for (r of ranges; track r) { <button [class.on]="range() === r" (click)="range.set(r)">{{ r }}</button> }</div>
+          </div>
+        </div>
+        @if (perf(); as pf) {
+          <div [class.loading-fade]="perfLoading()">
+            @if (pf.series.length > 1) {
+              <app-line-chart [labels]="labels()" [series]="series()" [height]="300" [yFormat]="inrc" [tipFormat]="inrFull" ariaLabel="Portfolio value and money invested over time" />
+            } @else { <p class="muted">Not enough history yet.</p> }
+          </div>
+        } @else if (perfError()) {
+          <p class="muted small">History unavailable right now. {{ perfError() }}</p>
+        } @else { <div class="skeleton" style="height:300px"></div> }
+      </section>
+
+      <section class="card">
+        <div class="card-head"><h2>Where your money is</h2><a routerLink="/insights" fragment="rebalance" class="small">Rebalance →</a></div>
+        <div class="donut-wrap">
+          <app-donut-chart [slices]="slices()" [size]="168" [centerTop]="inrc(tt.value)" centerBottom="total" [valueFormat]="inrFull" ariaLabel="Allocation by asset class" />
+        </div>
+        <div class="legend-list">
+          @for (a of assets(); track a.segment) {
+            <div class="l-row" (click)="go(a.route)">
+              <i class="swatch" [style.background]="a.color"></i>
+              <span class="l-name"><app-icon [name]="a.icon" [size]="14" />{{ a.label }}</span>
+              <span class="l-val">{{ a.value | inrc }}</span>
+              <span class="l-pct">{{ a.pct | pct: 1 : false }}</span>
+              @if (a.target !== null) {
+                <span class="l-tgt" [class.over]="(a.drift ?? 0) >= 2.5" [class.under]="(a.drift ?? 0) <= -2.5" [title]="'Target ' + a.target + '%'">
+                  {{ (a.drift ?? 0) > 0 ? '+' : '' }}{{ (a.drift ?? 0).toFixed(1) }}
+                </span>
+              }
+            </div>
+          }
+        </div>
+        @if (hasTargets()) { <p class="small muted" style="margin-top:10px">Right column: points above (+) or below (−) your target.</p> }
+      </section>
+    </div>
+
+    @if (story(); as st) {
+      <div class="sec-head"><h2>Analysis</h2><span>Why your portfolio looks the way it does</span></div>
+      <div class="duo">
+        <app-drivers [data]="st.attribution" />
+        @if (st.market) { <app-market [data]="st.market" /> }
+      </div>
+      <div class="duo">
+        <app-rhythm [data]="st.rhythm" />
+        <app-milestones [data]="st.milestones" />
+      </div>
+    }
+
+    @if (pulse(); as pl) {
+      <div class="sec-head"><h2>Health &amp; calendar</h2><span>How well-built the portfolio is, and what's coming up</span></div>
+      <div class="pulse-grid">
+        <app-health-card [health]="pl.health" />
+        <app-money-calendar [events]="pl.calendar.events" />
+      </div>
+    }
+
+    @if (insights().length) {
+      <section class="card">
+        <div class="card-head" style="margin-bottom:4px"><h2>Needs attention</h2><a routerLink="/insights" class="small">All insights →</a></div>
+        <div class="alerts">
+          @for (i of insights(); track i.id) {
+            <a class="alert" [routerLink]="link(i)" [fragment]="frag(i)" [class]="i.severity">
+              <span class="ic"><app-icon [name]="sevIcon[i.severity]" [size]="17" /></span>
+              <span class="t">{{ i.title }}</span>
+              <span class="d">{{ i.detail }}</span>
+              <span class="go">Review <app-icon name="chevronRight" [size]="14" /></span>
+            </a>
+          }
+        </div>
+      </section>
+    }
+  }
+</div>

@@ -1,0 +1,88 @@
+<div class="page">
+  <div>
+    <div class="page-head" style="margin-bottom:12px">
+      <h1>Holdings</h1>
+      <div class="row">
+        <button class="btn ghost sm" (click)="export()"><app-icon name="download" [size]="15" /> Export</button>
+        @if (auth.canWrite()) { <button class="btn sm" (click)="add()"><app-icon name="plus" [size]="15" /> Add {{ title().toLowerCase() }}</button> }
+      </div>
+    </div>
+    <app-section-tabs group="holdings" [current]="'/holdings/' + assetClass()" />
+  </div>
+
+  <section class="kpis">
+    <div class="kpi"><span class="chip blue sm"><app-icon name="wallet" [size]="15" /></span><span class="label">Value</span><span class="value">{{ totals().value | inr }}</span><span class="meta">{{ totals().weight | pct: 1 : false }} of portfolio</span></div>
+    <div class="kpi"><span class="chip green sm"><app-icon name="trend" [size]="15" /></span><span class="label">Unrealized</span><span class="value" [class]="totals().unrealized | sign">{{ totals().unrealized | inr: 0 : true }}</span><span class="meta">{{ totals().unrealizedPct | pct }} on {{ totals().cost | inrc }}</span></div>
+    <div class="kpi"><span class="chip amber sm"><app-icon name="calendar" [size]="15" /></span><span class="label">Today</span><span class="value" [class]="totals().day | sign">{{ totals().day ? (totals().day | inr: 0 : true) : '—' }}</span><span class="meta">price change</span></div>
+    <div class="kpi"><span class="chip violet sm"><app-icon name="checkCircle" [size]="15" /></span><span class="label">Realized + dividends</span><span class="value" [class]="totals().realized | sign">{{ totals().realized | inr: 0 : true }}</span><span class="meta">all time</span></div>
+  </section>
+
+  <section class="card flush">
+    <div class="card-head" style="padding-bottom:14px">
+      <input class="input" style="max-width:260px" placeholder="Search" [ngModel]="q()" (ngModelChange)="q.set($event)" aria-label="Search holdings" />
+      <div class="row wrap">
+        @if (hasUsd()) {
+          <div class="seg">
+            <button [class.on]="market() === 'all'" (click)="market.set('all')">All</button>
+            <button [class.on]="market() === 'India'" (click)="market.set('India')">India</button>
+            <button [class.on]="market() === 'USA'" (click)="market.set('USA')">US</button>
+          </div>
+        }
+        <label class="check small muted"><input type="checkbox" [ngModel]="showClosed()" (ngModelChange)="showClosed.set($event)" /> Closed</label>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr>
+          <th class="sortable" (click)="sort.toggle('name')">Name{{ sort.arrow('name') }}</th>
+          <th class="num sortable" (click)="sort.toggle('value')">Value{{ sort.arrow('value') }}</th>
+          <th class="num sortable" (click)="sort.toggle('unrealized_pct')">Return{{ sort.arrow('unrealized_pct') }}</th>
+          <th class="num sortable hide-sm" (click)="sort.toggle('day_change')">Today{{ sort.arrow('day_change') }}</th>
+          <th class="num sortable hide-sm" (click)="sort.toggle('weight')">Weight{{ sort.arrow('weight') }}</th>
+        </tr></thead>
+        <tbody>
+          @for (p of rows(); track p.id) {
+            <tr class="clickable" (click)="openRow(p)" [class.muted]="!p.is_open">
+              <td class="name-cell">
+                <div class="row" style="gap:12px">
+                  <span class="avatar-letter" [style.background]="tint(p.segment)" [style.color]="color(p.segment)">{{ p.name.slice(0, 1) }}</span>
+                  <div style="min-width:0">
+                    <div class="ellipsis" style="font-weight:500">{{ p.name }}</div>
+                    <div class="sub">{{ p.quantity | qty }} units · avg {{ p.avg_cost | inr: 2 }}@if (!p.has_price && p.is_open) { · <span style="color:var(--warn)">no price</span> }</div>
+                  </div>
+                </div>
+              </td>
+              <td class="num">{{ p.value | inr }}<div class="sub">@if (p.has_price) { {{ p.currency === 'USD' ? (p.price | usd) : (p.price | inr: 2) }} }</div></td>
+              <td class="num" [class]="p.unrealized | sign">{{ p.has_price ? (p.unrealized | inr: 0 : true) : '—' }}<div class="sub">{{ p.unrealized_pct | pct }}</div></td>
+              <td class="num hide-sm" [class]="p.day_change | sign">{{ p.day_change ? (p.day_change | inr: 0 : true) : '—' }}</td>
+              <td class="num hide-sm">{{ p.weight | pct: 1 : false }}</td>
+            </tr>
+          } @empty {
+            <tr><td colspan="5"><div class="empty"><h3>Nothing here yet</h3>
+              @if (auth.canWrite()) { <button class="btn primary" (click)="add()"><app-icon name="plus" [size]="16" /> Add {{ title().toLowerCase() }}</button> }</div></td></tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  @if (groups().length > 1) {
+    <details class="more">
+      <summary>Breakdown by {{ groupLabel() }}</summary>
+      <section class="card" style="margin-top:10px">
+        <div class="card-head">
+          <div class="seg">@for (o of groupOptions(); track o[0]) { <button [class.on]="groupBy() === o[0]" (click)="groupBy.set(o[0])">{{ o[1] }}</button> }</div>
+        </div>
+        <div class="bars">
+          @for (g of groups(); track g.key) {
+            <div class="bar-row" [title]="(g.value | inr) + ' · ' + g.count + ' holdings'">
+              <span class="ellipsis">{{ g.key }}</span>
+              <div class="track"><span [style.width.%]="(g.pct / maxGroup()) * 100"></span></div>
+              <span class="num right">{{ g.pct | pct: 1 : false }}</span>
+            </div>
+          }
+        </div>
+      </section>
+    </details>
+  }
+</div>
