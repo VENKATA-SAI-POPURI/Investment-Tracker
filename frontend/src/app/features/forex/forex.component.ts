@@ -10,26 +10,28 @@ import { StoreService } from '../../core/store.service';
 import { ToastService } from '../../core/toast.service';
 import { TxnDialogService } from '../../core/txn-dialog.service';
 import { IconComponent } from '../../shared/icon.component';
+import { SectionTabsComponent } from '../../shared/section-tabs.component';
 import { ConfirmService } from '../../shared/ui';
 
 @Component({
   selector: 'app-forex',
   standalone: true,
-  imports: [RouterLink, IconComponent, ...FORMAT_PIPES],
+  imports: [RouterLink, IconComponent, SectionTabsComponent, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page">
       <div class="page-head">
-        <div><h1>USD wallet</h1><p class="sub">Money moved to your US broker and how the rupee has affected it</p></div>
-        @if (auth.canWrite()) { <button class="btn primary" (click)="dialog.add('forex')"><app-icon name="plus" [size]="16" /> Transfer</button> }
+        <h1>Holdings</h1>
+        @if (auth.canWrite()) { <button class="btn sm" (click)="dialog.add('forex')"><app-icon name="plus" [size]="15" /> Transfer</button> }
       </div>
-      <section class="grid grid-4">
-        <div class="card stat"><span class="label">Uninvested balance</span><span class="value">{{ w()?.balance_usd | usd }}</span><span class="meta">{{ w()?.value | inr }}</span></div>
-        <div class="card stat"><span class="label">Your average rate</span><span class="value">{{ w()?.avg_rate ? '₹' + w()!.avg_rate!.toFixed(2) : '—' }}</span>
+      <app-section-tabs group="holdings" current="/forex" style="margin-top:-12px" />
+      <section class="kpis">
+        <div class="kpi"><span class="label">Uninvested balance</span><span class="value">{{ w()?.balance_usd | usd }}</span><span class="meta">{{ w()?.value | inr }}</span></div>
+        <div class="kpi"><span class="label">Your average rate</span><span class="value">{{ w()?.avg_rate ? '₹' + w()!.avg_rate!.toFixed(2) : '—' }}</span>
           <span class="meta">today ₹{{ (store.portfolio()?.usd_inr ?? 0).toFixed(2) }}</span></div>
-        <div class="card stat"><span class="label">Currency gain on US stocks</span><span class="value" [class]="us().fx | sign">{{ us().fx | inr: 0 : true }}</span>
+        <div class="kpi"><span class="label">Currency gain on US stocks</span><span class="value" [class]="us().fx | sign">{{ us().fx | inr: 0 : true }}</span>
           <span class="meta">stock move {{ us().stock | inr: 0 : true }}</span></div>
-        <div class="card stat"><span class="label">Gain on withdrawals</span><span class="value" [class]="w()?.realized | sign">{{ w()?.realized | inr: 0 : true }}</span>
+        <div class="kpi"><span class="label">Gain on withdrawals</span><span class="value" [class]="w()?.realized | sign">{{ w()?.realized | inr: 0 : true }}</span>
           <span class="meta">vs your average deposit rate</span></div>
       </section>
       <section class="grid grid-2">

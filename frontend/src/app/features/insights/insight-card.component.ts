@@ -4,38 +4,45 @@ import { Insight } from '../../core/models';
 import { IconComponent } from '../../shared/icon.component';
 
 const SEV = {
-  critical: { icon: 'alert', label: 'Critical', color: 'var(--status-critical)' },
-  warning: { icon: 'alert', label: 'Attention', color: 'var(--status-warning)' },
-  info: { icon: 'info', label: 'Suggestion', color: 'var(--accent)' },
-  positive: { icon: 'checkCircle', label: 'Going well', color: 'var(--status-good)' },
+  critical: { icon: 'alert', label: 'Needs attention', tone: 'warn' },
+  warning: { icon: 'alert', label: 'Needs attention', tone: 'warn' },
+  info: { icon: 'info', label: 'Suggestion', tone: 'info' },
+  positive: { icon: 'checkCircle', label: 'Going well', tone: 'good' },
 };
 
+/** One insight as a list row: icon · title, detail, suggestion · open / hide. */
 @Component({
   selector: 'app-insight-card',
   standalone: true,
   imports: [RouterLink, IconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <article class="ins" [style.--sev]="sev().color">
-      <div class="top">
-        <span class="sev"><app-icon [name]="sev().icon" [size]="15" /> {{ sev().label }}</span>
-        <span class="cat">{{ insight().category }}</span>
+    <article class="ins">
+      <span class="ic" [class]="sev().tone" [title]="sev().label"><app-icon [name]="sev().icon" [size]="17" /></span>
+      <div class="body">
+        <div class="t">{{ insight().title }}</div>
+        <div class="d">{{ insight().detail }}</div>
+        @if (!compact() && insight().action) { <div class="a">{{ insight().action }}</div> }
+      </div>
+      <div class="acts">
+        @if (insight().link) { <a [routerLink]="path()" [fragment]="fragment()" class="btn ghost sm">Open</a> }
         @if (dismissable()) {
           <button class="btn ghost icon sm" (click)="dismiss.emit(insight().id)" title="Hide for 30 days" aria-label="Hide for 30 days"><app-icon name="close" [size]="14" /></button>
         }
       </div>
-      <h3>{{ insight().title }}</h3>
-      <p class="text-2 small">{{ insight().detail }}</p>
-      @if (!compact() && insight().action) { <p class="small act"><b>Suggested:</b> {{ insight().action }}</p> }
-      @if (insight().link) { <a [routerLink]="path()" [fragment]="fragment()" class="small">Open →</a> }
     </article>`,
   styles: [`
-    .ins { border: 1px solid var(--border); border-left: 3px solid var(--sev); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; background: var(--surface); height: 100%; }
-    .top { display: flex; align-items: center; gap: 8px; }
-    .sev { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--text-2); }
-    .sev app-icon { color: var(--sev); }
-    .cat { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); flex: 1; }
-    .act { color: var(--text); }
+    .ins { display: flex; gap: 14px; align-items: flex-start; padding: 14px 0; border-bottom: 1px solid var(--border); }
+    :host(:last-child) .ins { border-bottom: 0; }
+    .ic { flex: none; margin-top: 1px; }
+    .ic.warn { color: var(--warn); }
+    .ic.info { color: var(--accent); }
+    .ic.good { color: var(--pos); }
+    .body { flex: 1; min-width: 0; }
+    .t { font-weight: 500; font-size: 13.5px; }
+    .d { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+    .a { color: var(--text-2); font-size: 12.5px; margin-top: 4px; }
+    .acts { display: flex; gap: 2px; flex: none; }
   `],
 })
 export class InsightCardComponent {

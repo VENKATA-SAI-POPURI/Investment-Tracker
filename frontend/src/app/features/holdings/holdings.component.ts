@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AuthService } from '../../core/auth.service';
@@ -7,6 +7,7 @@ import { AssetClass, CLASS_LABEL, Position } from '../../core/models';
 import { StoreService } from '../../core/store.service';
 import { TxnDialogService } from '../../core/txn-dialog.service';
 import { IconComponent } from '../../shared/icon.component';
+import { SectionTabsComponent } from '../../shared/section-tabs.component';
 import { SortState } from '../../shared/ui';
 
 interface Group { key: string; value: number; pct: number; count: number; }
@@ -14,14 +15,14 @@ interface Group { key: string; value: number; pct: number; count: number; }
 @Component({
   selector: 'app-holdings',
   standalone: true,
-  imports: [FormsModule, IconComponent, ...FORMAT_PIPES],
+  imports: [FormsModule, IconComponent, SectionTabsComponent, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './holdings.component.html',
   styles: [`
-    .bars { display: grid; gap: 10px; }
-    .bar-row { display: grid; grid-template-columns: minmax(90px, 160px) 1fr 70px; gap: 10px; align-items: center; font-size: 13px; }
-    .track { height: 10px; background: var(--surface-2); border-radius: 0 4px 4px 0; overflow: hidden; }
-    .track > span { display: block; height: 100%; background: var(--s1); border-radius: 0 4px 4px 0; }
+    .bars { display: grid; gap: 10px; max-width: 640px; }
+    .bar-row { display: grid; grid-template-columns: minmax(90px, 200px) 1fr 60px; gap: 12px; align-items: center; font-size: 13px; }
+    .track { height: 6px; background: var(--surface-hover); border-radius: 0 3px 3px 0; overflow: hidden; }
+    .track > span { display: block; height: 100%; background: var(--s1); border-radius: 0 3px 3px 0; }
   `],
 })
 export class HoldingsComponent {
@@ -35,6 +36,7 @@ export class HoldingsComponent {
   showClosed = signal(false);
   market = signal<'all' | 'India' | 'USA'>('all');
   groupBy = signal<string>('sector');
+  private resetGroup = effect(() => this.groupBy.set(this.groupOptions()[0][0]));
   sort = new SortState<Position>('value');
 
   title = computed(() => CLASS_LABEL[this.assetClass()] ?? 'Holdings');
@@ -72,6 +74,7 @@ export class HoldingsComponent {
     }
     return [...map.values()].map(g => ({ ...g, pct: (g.value / total) * 100 })).sort((a, b) => b.value - a.value);
   });
+  groupLabel = computed(() => (this.groupOptions().find(o => o[0] === this.groupBy())?.[1] ?? '').toLowerCase());
   maxGroup = computed(() => Math.max(...this.groups().map(g => g.pct), 1));
   hasUsd = computed(() => this.all().some(p => p.market === 'USA'));
 

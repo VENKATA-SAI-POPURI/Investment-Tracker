@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
+import { TitleCasePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
@@ -16,7 +17,7 @@ import { InsightCardComponent } from './insight-card.component';
 @Component({
   selector: 'app-insights',
   standalone: true,
-  imports: [FormsModule, RouterLink, IconComponent, InsightCardComponent, MarkdownPipe, ...FORMAT_PIPES],
+  imports: [FormsModule, TitleCasePipe, RouterLink, IconComponent, InsightCardComponent, MarkdownPipe, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './insights.component.html',
   styles: [`

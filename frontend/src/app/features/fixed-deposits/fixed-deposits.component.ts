@@ -11,24 +11,26 @@ import { StoreService } from '../../core/store.service';
 import { ToastService } from '../../core/toast.service';
 import { TxnDialogService } from '../../core/txn-dialog.service';
 import { IconComponent } from '../../shared/icon.component';
+import { SectionTabsComponent } from '../../shared/section-tabs.component';
 import { ModalComponent } from '../../shared/ui';
 
 @Component({
   selector: 'app-fixed-deposits',
   standalone: true,
-  imports: [FormsModule, RouterLink, IconComponent, ModalComponent, ...FORMAT_PIPES],
+  imports: [FormsModule, RouterLink, IconComponent, SectionTabsComponent, ModalComponent, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page">
       <div class="page-head">
-        <div><h1>Fixed deposits</h1><p class="sub">Values include interest accrued so far (quarterly compounding)</p></div>
-        @if (auth.canWrite()) { <button class="btn primary" (click)="dialog.add('fixed_deposit')"><app-icon name="plus" [size]="16" /> New FD</button> }
+        <h1>Holdings</h1>
+        @if (auth.canWrite()) { <button class="btn sm" (click)="dialog.add('fixed_deposit')"><app-icon name="plus" [size]="15" /> New FD</button> }
       </div>
-      <section class="grid grid-4">
-        <div class="card stat"><span class="label">Active deposits</span><span class="value">{{ stats().principal | inr }}</span><span class="meta">{{ active().length }} FDs</span></div>
-        <div class="card stat"><span class="label">Interest accrued</span><span class="value pos">{{ stats().accrued | inr }}</span></div>
-        <div class="card stat"><span class="label">Value today</span><span class="value">{{ stats().value | inr }}</span></div>
-        <div class="card stat"><span class="label">Next maturity</span><span class="value">{{ stats().next ? (stats().next!.maturity_date | dt) : '—' }}</span>
+      <app-section-tabs group="holdings" current="/fixed-deposits" style="margin-top:-12px" />
+      <section class="kpis">
+        <div class="kpi"><span class="label">Active deposits</span><span class="value">{{ stats().principal | inr }}</span><span class="meta">{{ active().length }} FDs</span></div>
+        <div class="kpi"><span class="label">Interest accrued</span><span class="value pos">{{ stats().accrued | inr }}</span></div>
+        <div class="kpi"><span class="label">Value today</span><span class="value">{{ stats().value | inr }}</span></div>
+        <div class="kpi"><span class="label">Next maturity</span><span class="value">{{ stats().next ? (stats().next!.maturity_date | dt) : '—' }}</span>
           <span class="meta">{{ stats().next ? stats().next!.name + ' · ' + stats().next!.days_to_maturity + ' days' : '' }}</span></div>
       </section>
       <section class="card flush">

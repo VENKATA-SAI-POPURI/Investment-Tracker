@@ -1,131 +1,129 @@
 <div class="page">
   <div class="page-head">
-    <div><h1>Tax</h1><p class="sub">Capital gains on FIFO lots, income and ways to pay less — an estimate for planning</p></div>
-    <div class="row wrap">
-      @if (r(); as r) {
-        <select class="input" style="width:auto" [ngModel]="r.fy" (ngModelChange)="fy.set($event)" aria-label="Financial year">
+    <div><h1>Tax</h1><p class="sub">Estimate for planning — check with a tax professional before filing</p></div>
+    @if (r(); as r) {
+      <div class="row">
+        <select class="input" style="width:auto;height:30px;font-size:12.5px" [ngModel]="r.fy" (ngModelChange)="fy.set($event)" aria-label="Financial year">
           @for (y of r.years; track y) { <option [value]="y">{{ y }}</option> }
         </select>
-        <button class="btn" (click)="export()" [disabled]="!r.realized.length"><app-icon name="download" [size]="16" /> Export</button>
-      }
-    </div>
+        <button class="btn ghost sm" (click)="export()" [disabled]="!r.realized.length"><app-icon name="download" [size]="15" /> Export</button>
+      </div>
+    }
   </div>
   @if (error()) { <div class="notice bad">{{ error() }}</div> }
 
   @if (r(); as r) {
-    <div [class.loading-fade]="loading()" style="display:flex;flex-direction:column;gap:16px">
-      <section class="grid grid-4">
-        <div class="card stat"><span class="label">Net realized gains</span><span class="value" [class]="r.total_realized | sign">{{ r.total_realized | inr: 0 : true }}</span>
-          <span class="meta">ST {{ gainsByTerm()['STCG'] | inr: 0 : true }} · LT {{ gainsByTerm()['LTCG'] | inr: 0 : true }}</span></div>
-        <div class="card stat"><span class="label">Estimated tax</span><span class="value">{{ r.estimate.total | inr }}</span>
-          <span class="meta">at {{ r.slab_rate }}% slab · <a routerLink="/settings">change</a></span></div>
-        <div class="card stat"><span class="label">Equity LTCG exemption left</span><span class="value">{{ r.equity_exemption.remaining | inr }}</span>
-          <span class="meta">of {{ r.equity_exemption.limit | inr }} for {{ r.fy }}</span></div>
-        <div class="card stat"><span class="label">Other income</span><span class="value">{{ r.income_total | inr }}</span><span class="meta">dividends + interest, taxed at slab</span></div>
-      </section>
+    <section class="kpis" [class.loading-fade]="loading()">
+      <div class="kpi"><span class="label">Capital gains</span><span class="value" [class]="r.total_realized | sign">{{ r.total_realized | inr: 0 : true }}</span>
+        <span class="meta">short {{ gainsByTerm()['STCG'] | inrc: true }} · long {{ gainsByTerm()['LTCG'] | inrc: true }}</span></div>
+      <div class="kpi"><span class="label">Estimated tax</span><span class="value">{{ r.estimate.total | inr }}</span>
+        <span class="meta">at {{ r.slab_rate }}% slab · <a routerLink="/settings">change</a></span></div>
+      <div class="kpi"><span class="label">Tax-free LTCG left</span><span class="value">{{ r.equity_exemption.remaining | inr }}</span><span class="meta">of ₹1.25L this year</span></div>
+      <div class="kpi"><span class="label">Dividends & interest</span><span class="value">{{ r.income_total | inr }}</span><span class="meta">taxed at your slab</span></div>
+    </section>
 
-      @if (isCurrentFy()) {
-        @let o = r.opportunities;
-        <section class="grid grid-3">
-          <div class="card">
-            <div class="card-head"><h2>Book gains tax-free</h2><app-icon name="sparkle" [size]="18" /></div>
-            @if (o.ltcg_harvest.suggested_booking > 0) {
-              <p><b class="pos">{{ o.ltcg_harvest.suggested_booking | inr }}</b> of long-term equity gains can be booked before 31 March without tax.</p>
-              <p class="small text-2" style="margin-top:6px">Sell and buy back the same units to raise your cost basis — saves about {{ o.ltcg_harvest.future_tax_saved | inr }} of future tax.</p>
-              <ul class="small" style="margin:10px 0 0;padding-left:18px">
-                @for (l of o.ltcg_harvest.lots.slice(0, 5); track l.instrument_id + l.date) { <li>{{ l.name }} · {{ l.qty | qty }} units from {{ l.date | dt }} · <span class="pos">{{ l.gain | inr: 0 : true }}</span></li> }
-              </ul>
-            } @else {
-              <p class="text-2 small">No long-term equity gains available to harvest right now (unrealized LT gains: {{ o.ltcg_harvest.unrealized_lt_equity_gain | inr }}).</p>
-            }
-          </div>
-          <div class="card">
-            <div class="card-head"><h2>Harvest losses</h2><span class="hint">{{ o.loss_harvest_total | inr }} available</span></div>
-            @if (o.loss_harvest.length) {
-              @if (o.loss_harvest_offsettable > 0) { <p class="small">Booking losses could offset <b>{{ o.loss_harvest_offsettable | inr }}</b> of this year's gains.</p> }
-              <table class="table" style="margin-top:8px">
-                <thead><tr><th>Holding</th><th class="num">Short-term</th><th class="num">Long-term</th></tr></thead>
-                <tbody>
-                  @for (h of o.loss_harvest.slice(0, 6); track h.instrument_id) {
-                    <tr><td class="name-cell"><a [routerLink]="['/holding', h.instrument_id]">{{ h.name }}</a></td>
-                      <td class="num neg">{{ h.st_loss ? '-' + (h.st_loss | inr) : '—' }}</td><td class="num neg">{{ h.lt_loss ? '-' + (h.lt_loss | inr) : '—' }}</td></tr>
-                  }
-                </tbody>
-              </table>
-              <p class="small muted" style="margin-top:8px">Short-term losses offset any gain; long-term losses only long-term gains. Unused losses carry forward 8 years if you file on time.</p>
-            } @else { <p class="text-2 small">Nothing is below cost — no losses to harvest.</p> }
-          </div>
-          <div class="card">
-            <div class="card-head"><h2>Wait before selling</h2></div>
-            @if (o.upcoming_long_term.length) {
-              <table class="table">
-                <thead><tr><th>Holding</th><th class="num">Days</th><th class="num">Saves</th></tr></thead>
-                <tbody>
-                  @for (l of o.upcoming_long_term.slice(0, 6); track l.instrument_id + l.date) {
-                    <tr><td class="name-cell">{{ l.name }}<div class="sub">bought {{ l.date | dt }}</div></td><td class="num">{{ l.days_to_lt }}</td><td class="num pos">{{ l.tax_saving | inr }}</td></tr>
-                  }
-                </tbody>
-              </table>
-              <p class="small muted" style="margin-top:8px">These lots become long-term within 90 days; selling after that is taxed at the lower rate.</p>
-            } @else { <p class="text-2 small">No profitable lots are about to turn long-term.</p> }
-          </div>
-        </section>
-      }
+    <div class="tabs">
+      @if (isCurrentFy()) { <button [class.on]="tab() === 'save'" (click)="tab.set('save')">Ways to save</button> }
+      <button [class.on]="tab() === 'gains'" (click)="tab.set('gains')">Realized gains <span class="muted">{{ r.realized.length }}</span></button>
+      <button [class.on]="tab() === 'estimate'" (click)="tab.set('estimate')">Tax estimate</button>
+    </div>
 
-      <section class="grid grid-3">
-        <div class="card">
-          <div class="card-head"><h2>Tax estimate</h2><span class="hint">{{ r.fy }}</span></div>
-          <table class="table">
-            <tbody>
-              @for (l of r.tax_lines; track $index) {
-                <tr><td>{{ l.group === 'LT' ? 'Long-term' : 'Short-term' }} at {{ l.rate }}%{{ l.slab ? ' (slab)' : '' }}<div class="sub">on {{ l.taxable | inr }}</div></td><td class="num">{{ l.tax | inr }}</td></tr>
-              }
-              @if (r.income_total) { <tr><td>Income at {{ r.slab_rate }}%<div class="sub">on {{ r.income_total | inr }}</div></td><td class="num">{{ r.estimate.income_tax | inr }}</td></tr> }
-              <tr><td>Cess 4%</td><td class="num">{{ r.estimate.cess | inr }}</td></tr>
-            </tbody>
-            <tfoot><tr><td>Total</td><td class="num">{{ r.estimate.total | inr }}</td></tr></tfoot>
-          </table>
-          @if (r.set_off.st_loss || r.set_off.lt_loss) {
-            <p class="small text-2" style="margin-top:10px">Losses set off: ST {{ r.set_off.st_loss | inr }}, LT {{ r.set_off.lt_loss | inr }}.
-              @if (r.set_off.carry_forward_st || r.set_off.carry_forward_lt) { Carry forward: ST {{ r.set_off.carry_forward_st | inr }}, LT {{ r.set_off.carry_forward_lt | inr }}. }</p>
-          }
-          @if (incomeRows().length) {
-            <div class="divider" style="margin:12px 0"></div>
-            <dl class="kv">@for (i of incomeRows(); track i[0]) { <dt>{{ incomeLabel[i[0]] ?? i[0] }}</dt><dd>{{ i[1] | inr }}</dd> }</dl>
-          }
-        </div>
-
-        <div class="card flush span-2">
-          <div class="card-head">
-            <h2>Realized lots</h2>
-            <div class="seg">
-              @for (t of ['', 'STCG', 'LTCG', 'Intraday']; track t) { <button [class.on]="termFilter() === t" (click)="termFilter.set(t)">{{ t || 'All' }}</button> }
+    <div [class.loading-fade]="loading()" style="display:flex;flex-direction:column;gap:20px">
+      @switch (activeTab()) {
+        @case ('save') {
+          @let o = r.opportunities;
+          <section class="grid grid-3">
+            <div class="card">
+              <div class="section-title">Book gains tax-free</div>
+              @if (o.ltcg_harvest.suggested_booking > 0) {
+                <div class="hero-value pos" style="font-size:26px;margin:8px 0 4px">{{ o.ltcg_harvest.suggested_booking | inr }}</div>
+                <p class="small text-2">of long-term equity gains can be sold and bought back before 31 March without tax, saving about {{ o.ltcg_harvest.future_tax_saved | inr }} later.</p>
+                <details class="more" style="margin-top:10px"><summary>Which lots</summary>
+                  <ul class="small text-2" style="margin:6px 0 0;padding-left:18px">
+                    @for (l of o.ltcg_harvest.lots.slice(0, 6); track l.instrument_id + l.date) { <li>{{ l.name }} · {{ l.qty | qty }} units ({{ l.date | dt }}) · {{ l.gain | inr: 0 : true }}</li> }
+                  </ul>
+                </details>
+              } @else { <p class="small muted" style="margin-top:8px">Nothing to harvest right now.</p> }
             </div>
-          </div>
-          <div class="table-wrap" style="max-height:480px">
-            <table class="table">
-              <thead><tr><th>Holding</th><th>Bought → sold</th><th class="num">Units</th><th class="num">Cost</th><th class="num">Proceeds</th><th class="num">Gain</th><th>Term</th></tr></thead>
-              <tbody>
-                @for (l of lots(); track $index) {
-                  <tr>
-                    <td class="name-cell">{{ l.name }}<div class="sub">{{ taxLabel[l.tax_class] ?? l.tax_class }}</div></td>
-                    <td class="nowrap">{{ l.buy_date | dt: false }} → {{ l.sell_date | dt }}<div class="sub">{{ l.holding_days }} days</div></td>
-                    <td class="num">{{ l.qty | qty }}</td><td class="num">{{ l.cost | inr }}</td><td class="num">{{ l.proceeds | inr }}</td>
-                    <td class="num" [class]="l.gain | sign">{{ l.gain | inr: 0 : true }}</td>
-                    <td><span class="badge" [class.good]="l.term === 'LTCG'" [class.warn]="l.term === 'Intraday'">{{ l.term }}</span>
-                      <div class="sub">{{ l.rate === null ? 'slab' : (l.rate * 100) + '%' }}</div></td>
-                  </tr>
-                } @empty { <tr><td colspan="7"><div class="empty">No sales in {{ r.fy }}.</div></td></tr> }
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </section>
-
-      <div class="notice"><app-icon name="info" [size]="16" />
-        <span class="small">Rules applied: listed equity &amp; equity funds — long-term after 12 months, 12.5% above ₹1.25L (20% short-term); foreign stocks — long-term after 24 months;
-          gold/silver ETFs — long-term after 12 months at 12.5%; debt funds and short-term non-equity gains at your slab rate. Sales before 23 Jul 2024 use the older rates.
-          Surcharge, grandfathering and carried-forward losses from earlier years are not included. Check with a tax professional before filing.</span></div>
+            <div class="card">
+              <div class="section-title">Offset gains with losses</div>
+              @if (o.loss_harvest.length) {
+                <div class="hero-value" style="font-size:26px;margin:8px 0 4px">{{ o.loss_harvest_offsettable | inr }}</div>
+                <p class="small text-2">of this year's gains can be cancelled by selling holdings that are below cost ({{ o.loss_harvest_total | inr }} of losses available).</p>
+                <details class="more" style="margin-top:10px"><summary>Which holdings</summary>
+                  <table class="table" style="margin-top:6px">
+                    <tbody>
+                      @for (h of o.loss_harvest.slice(0, 6); track h.instrument_id) {
+                        <tr><td class="name-cell"><a [routerLink]="['/holding', h.instrument_id]">{{ h.name }}</a></td><td class="num neg">-{{ h.st_loss + h.lt_loss | inr }}</td></tr>
+                      }
+                    </tbody>
+                  </table>
+                </details>
+              } @else { <p class="small muted" style="margin-top:8px">No holdings are below cost.</p> }
+            </div>
+            <div class="card">
+              <div class="section-title">Wait before selling</div>
+              @if (o.upcoming_long_term.length) {
+                @for (l of o.upcoming_long_term.slice(0, 4); track l.instrument_id + l.date) {
+                  <div class="row" style="justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
+                    <span class="small">{{ l.name }}<br><span class="muted">{{ l.days_to_lt }} days to long-term</span></span>
+                    <span class="small pos nowrap">saves {{ l.tax_saving | inr }}</span>
+                  </div>
+                }
+              } @else { <p class="small muted" style="margin-top:8px">No profitable lots turn long-term in the next 90 days.</p> }
+            </div>
+          </section>
+        }
+        @case ('gains') {
+          <section class="card flush">
+            <div class="card-head" style="padding-bottom:12px">
+              <div class="seg">@for (t of ['', 'STCG', 'LTCG', 'Intraday']; track t) { <button [class.on]="termFilter() === t" (click)="termFilter.set(t)">{{ t || 'All' }}</button> }</div>
+            </div>
+            <div class="table-wrap" style="max-height:560px">
+              <table class="table">
+                <thead><tr><th>Holding</th><th class="hide-sm">Held</th><th class="num hide-sm">Cost</th><th class="num hide-sm">Sold for</th><th class="num">Gain</th><th>Type</th></tr></thead>
+                <tbody>
+                  @for (l of lots(); track $index) {
+                    <tr>
+                      <td class="name-cell">{{ l.name }}<div class="sub">sold {{ l.sell_date | dt }}</div></td>
+                      <td class="hide-sm">{{ l.holding_days }} days</td>
+                      <td class="num hide-sm">{{ l.cost | inr }}</td><td class="num hide-sm">{{ l.proceeds | inr }}</td>
+                      <td class="num" [class]="l.gain | sign">{{ l.gain | inr: 0 : true }}</td>
+                      <td><span class="badge" [class.good]="l.term === 'LTCG'">{{ l.term === 'LTCG' ? 'Long-term' : l.term === 'STCG' ? 'Short-term' : l.term }}</span></td>
+                    </tr>
+                  } @empty { <tr><td colspan="6"><div class="empty">No sales in {{ r.fy }}.</div></td></tr> }
+                </tbody>
+              </table>
+            </div>
+          </section>
+        }
+        @case ('estimate') {
+          <section class="grid grid-2">
+            <div class="card flush">
+              <table class="table">
+                <tbody>
+                  @for (l of r.tax_lines; track $index) {
+                    <tr><td>{{ l.group === 'LT' ? 'Long-term gains' : 'Short-term gains' }} at {{ l.rate }}%{{ l.slab ? ' (slab)' : '' }}<div class="sub">on {{ l.taxable | inr }}</div></td><td class="num">{{ l.tax | inr }}</td></tr>
+                  }
+                  @if (r.income_total) { <tr><td>Dividends & interest at {{ r.slab_rate }}%<div class="sub">on {{ r.income_total | inr }}</div></td><td class="num">{{ r.estimate.income_tax | inr }}</td></tr> }
+                  <tr><td>Cess 4%</td><td class="num">{{ r.estimate.cess | inr }}</td></tr>
+                </tbody>
+                <tfoot><tr><td>Estimated total</td><td class="num">{{ r.estimate.total | inr }}</td></tr></tfoot>
+              </table>
+            </div>
+            <div class="card">
+              <dl class="kv">
+                <dt>Equity exemption used</dt><dd>{{ r.equity_exemption.used | inr }} of {{ r.equity_exemption.limit | inr }}</dd>
+                <dt>Short-term losses set off</dt><dd>{{ r.set_off.st_loss | inr }}</dd>
+                <dt>Long-term losses set off</dt><dd>{{ r.set_off.lt_loss | inr }}</dd>
+                @for (i of incomeRows(); track i[0]) { <dt>{{ incomeLabel[i[0]] ?? i[0] }}</dt><dd>{{ i[1] | inr }}</dd> }
+              </dl>
+              <p class="small muted" style="margin-top:14px">Equity: long-term after 12 months, 12.5% above ₹1.25L, 20% short-term. Foreign stocks: long-term after 24 months.
+                Gold/silver ETFs: long-term after 12 months at 12.5%. Debt funds and other short-term gains at your slab. Surcharge and earlier years' losses are not included.</p>
+            </div>
+          </section>
+        }
+      }
     </div>
   } @else if (!error()) {
     <div class="card"><div class="skeleton" style="height:240px"></div></div>

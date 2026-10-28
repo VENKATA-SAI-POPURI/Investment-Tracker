@@ -29,6 +29,7 @@ export class TaxComponent {
   loading = signal(false);
   error = signal<string | null>(null);
   termFilter = signal('');
+  tab = signal<'save' | 'gains' | 'estimate'>('save');
   taxLabel = TAX_LABEL;
   incomeLabel = INCOME_LABEL;
 
@@ -40,7 +41,8 @@ export class TaxComponent {
     for (const l of this.r()?.realized ?? []) out[l.term] = (out[l.term] ?? 0) + l.gain;
     return out;
   });
-  isCurrentFy = computed(() => this.r() && this.r()!.years[0] === this.r()!.fy);
+  isCurrentFy = computed(() => !!this.r() && this.r()!.years[0] === this.r()!.fy);
+  activeTab = computed(() => this.tab() === 'save' && !this.isCurrentFy() ? 'gains' : this.tab());
 
   constructor() {
     effect(() => {

@@ -10,6 +10,7 @@ import { StoreService } from '../../core/store.service';
 import { ToastService } from '../../core/toast.service';
 import { Bar, BarChartComponent } from '../../shared/charts/bar-chart.component';
 import { IconComponent } from '../../shared/icon.component';
+import { SectionTabsComponent } from '../../shared/section-tabs.component';
 import { ConfirmService, ModalComponent } from '../../shared/ui';
 
 const CATEGORIES = ['Equity/Commodity', 'Equity USA', 'Mutual Funds', 'P2P', 'Fixed Deposits', 'Other'];
@@ -17,22 +18,23 @@ const CATEGORIES = ['Equity/Commodity', 'Equity USA', 'Mutual Funds', 'P2P', 'Fi
 @Component({
   selector: 'app-cash-flows',
   standalone: true,
-  imports: [FormsModule, IconComponent, ModalComponent, BarChartComponent, ...FORMAT_PIPES],
+  imports: [FormsModule, IconComponent, SectionTabsComponent, ModalComponent, BarChartComponent, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page">
       <div class="page-head">
-        <div><h1>Cash flows</h1><p class="sub">Money you moved into and out of your investments</p></div>
-        @if (auth.canWrite()) { <button class="btn primary" (click)="startAdd()"><app-icon name="plus" [size]="16" /> Add entry</button> }
+        <h1>Activity</h1>
+        @if (auth.canWrite()) { <button class="btn sm" (click)="startAdd()"><app-icon name="plus" [size]="15" /> Add entry</button> }
       </div>
-      <div class="tabs">
+      <app-section-tabs group="activity" current="/cash-flows" style="margin-top:-12px" />
+      <div class="seg" style="align-self:flex-start">
         <button [class.on]="account() === 'capital'" (click)="account.set('capital')">Contributions</button>
         <button [class.on]="account() === 'p2p_escrow'" (click)="account.set('p2p_escrow')">P2P escrow</button>
       </div>
-      <section class="grid grid-3">
-        <div class="card stat"><span class="label">{{ account() === 'capital' ? 'Deposited' : 'In' }}</span><span class="value">{{ sums().in | inr }}</span></div>
-        <div class="card stat"><span class="label">{{ account() === 'capital' ? 'Withdrawn' : 'Out' }}</span><span class="value">{{ sums().out | inr }}</span></div>
-        <div class="card stat"><span class="label">{{ account() === 'capital' ? 'Net contributed' : 'Balance' }}</span><span class="value">{{ sums().in - sums().out | inr }}</span></div>
+      <section class="kpis" style="--kpi-cols:3">
+        <div class="kpi"><span class="label">{{ account() === 'capital' ? 'Deposited' : 'In' }}</span><span class="value">{{ sums().in | inr }}</span></div>
+        <div class="kpi"><span class="label">{{ account() === 'capital' ? 'Withdrawn' : 'Out' }}</span><span class="value">{{ sums().out | inr }}</span></div>
+        <div class="kpi"><span class="label">{{ account() === 'capital' ? 'Net contributed' : 'Balance' }}</span><span class="value">{{ sums().in - sums().out | inr }}</span></div>
       </section>
       @if (bars().length > 1) {
         <section class="card">

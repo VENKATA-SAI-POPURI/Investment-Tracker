@@ -11,6 +11,7 @@ import { StoreService } from '../../core/store.service';
 import { ToastService } from '../../core/toast.service';
 import { TxnDialogService } from '../../core/txn-dialog.service';
 import { IconComponent } from '../../shared/icon.component';
+import { SectionTabsComponent } from '../../shared/section-tabs.component';
 import { ConfirmService, ModalComponent } from '../../shared/ui';
 
 const TEMPLATE = 'date,type,asset_class,name,symbol,quantity,amount,amount_usd,market,sector,market_cap,category,notes\n'
@@ -20,7 +21,7 @@ const TEMPLATE = 'date,type,asset_class,name,symbol,quantity,amount,amount_usd,m
 @Component({
   selector: 'app-transactions',
   standalone: true,
-  imports: [FormsModule, RouterLink, IconComponent, ModalComponent, ...FORMAT_PIPES],
+  imports: [FormsModule, RouterLink, IconComponent, SectionTabsComponent, ModalComponent, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './transactions.component.html',
 })

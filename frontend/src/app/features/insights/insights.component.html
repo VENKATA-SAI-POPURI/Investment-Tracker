@@ -1,22 +1,21 @@
 <div class="page">
   <div class="page-head">
-    <div><h1>Insights</h1><p class="sub">{{ counts().warning }} need attention · {{ counts().info }} suggestions · {{ counts().positive }} going well</p></div>
-    @if (auth.canWrite()) { <button class="btn" (click)="markReviewed()"><app-icon name="checkCircle" [size]="16" /> Mark review done</button> }
+    <div><h1>Insights</h1><p class="sub">{{ counts().warning }} need attention · {{ counts().info }} suggestions</p></div>
+    @if (auth.canWrite()) { <button class="btn sm" (click)="markReviewed()"><app-icon name="checkCircle" [size]="15" /> Mark review done</button> }
   </div>
 
-  @if (categories().length > 1) {
-    <div class="seg" style="align-self:flex-start">
-      <button [class.on]="!category()" (click)="category.set('')">All</button>
-      @for (c of categories(); track c) { <button [class.on]="category() === c" (click)="category.set(c)">{{ c }}</button> }
-    </div>
-  }
-
-  <section class="grid grid-2" [class.loading-fade]="loading() && items().length">
+  <section class="card" style="padding-top:8px;padding-bottom:8px" [class.loading-fade]="loading() && items().length">
+    @if (categories().length > 1) {
+      <div class="tabs" style="margin-bottom:4px">
+        <button [class.on]="!category()" (click)="category.set('')">All</button>
+        @for (c of categories(); track c) { <button [class.on]="category() === c" (click)="category.set(c)">{{ c | titlecase }}</button> }
+      </div>
+    }
     @for (i of shown(); track i.id) {
       <app-insight-card [insight]="i" [dismissable]="auth.canWrite() && i.severity !== 'positive'" (dismiss)="dismiss($event)" />
     } @empty {
-      @if (!loading()) { <div class="card empty span-2"><app-icon name="checkCircle" [size]="28" /><h3>Nothing needs attention</h3><p>Your portfolio is within targets and no tax or risk flags were found.</p></div> }
-      @else { @for (k of [1, 2, 3, 4]; track k) { <div class="card"><div class="skeleton" style="height:70px"></div></div> } }
+      @if (!loading()) { <div class="empty"><app-icon name="checkCircle" [size]="26" /><h3>Nothing needs attention</h3><p>Allocation is within targets and no tax or risk flags were found.</p></div> }
+      @else { <div class="skeleton" style="height:120px;margin:12px 0"></div> }
     }
   </section>
 

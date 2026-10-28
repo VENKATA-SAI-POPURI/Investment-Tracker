@@ -1,14 +1,12 @@
 <div class="page">
   <div class="page-head">
-    <div><h1>Transactions</h1><p class="sub">{{ filtered().length }} of {{ all().length }} · out {{ sums().out | inr }} · in {{ sums().in | inr }}</p></div>
+    <h1>Activity</h1>
     <div class="row wrap">
-      <button class="btn" (click)="export()"><app-icon name="download" [size]="16" /> Export</button>
-      @if (auth.canWrite()) {
-        <button class="btn" (click)="importing.set(true)"><app-icon name="upload" [size]="16" /> Import CSV</button>
-        <button class="btn primary" (click)="dialog.add()"><app-icon name="plus" [size]="16" /> Add</button>
-      }
+      <button class="btn ghost sm" (click)="export()"><app-icon name="download" [size]="15" /> Export</button>
+      @if (auth.canWrite()) { <button class="btn sm" (click)="importing.set(true)"><app-icon name="upload" [size]="15" /> Import CSV</button> }
     </div>
   </div>
+  <app-section-tabs group="activity" current="/transactions" style="margin-top:-12px" />
 
   <div class="row wrap">
     <input class="input" style="max-width:240px" placeholder="Search name or notes" [ngModel]="q()" (ngModelChange)="q.set($event)" aria-label="Search" />
@@ -22,6 +20,8 @@
     <span class="muted">→</span>
     <input class="input" type="date" style="width:auto" [ngModel]="to()" (ngModelChange)="to.set($event)" aria-label="To" />
     @if (q() || cls() || type() || from() || to()) { <button class="btn ghost sm" (click)="clear()">Clear</button> }
+    <span class="spacer"></span>
+    <span class="small muted">{{ filtered().length }} of {{ all().length }} · out {{ sums().out | inr }} · in {{ sums().in | inr }}</span>
   </div>
 
   <section class="card flush" [class.loading-fade]="loading() && all().length">

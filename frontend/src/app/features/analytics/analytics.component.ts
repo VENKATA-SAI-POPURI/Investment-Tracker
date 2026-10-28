@@ -5,7 +5,7 @@ import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { FORMAT_PIPES, inr, inrCompact } from '../../core/format';
 import { errorMessage } from '../../core/http';
-import { Performance, SEGMENTS } from '../../core/models';
+import { Benchmark, Performance, SEGMENTS } from '../../core/models';
 import { StoreService } from '../../core/store.service';
 import { LineChartComponent, LineSeries } from '../../shared/charts/line-chart.component';
 import { IconComponent } from '../../shared/icon.component';
@@ -21,12 +21,12 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
   styles: [`
     .heat { border-collapse: separate; border-spacing: 2px; width: 100%; font-size: 12px; }
     .heat th { color: var(--muted); font-weight: 500; padding: 4px 1px; text-align: center; font-size: 11px; }
-    .heat td { text-align: center; padding: 6px 1px; border-radius: 4px; font-variant-numeric: tabular-nums; color: var(--text); min-width: 30px; font-size: 11.5px; }
+    .heat td { text-align: center; padding: 7px 1px; border-radius: 3px; font-variant-numeric: tabular-nums; color: var(--text); min-width: 26px; font-size: 11.5px; }
     .heat td.year { text-align: left; color: var(--text-2); font-weight: 600; background: none; }
-    .bars { display: grid; gap: 8px; }
-    .bar-row { display: grid; grid-template-columns: minmax(90px, 170px) 1fr 56px; gap: 10px; align-items: center; font-size: 13px; }
-    .track { height: 10px; background: var(--surface-2); border-radius: 0 4px 4px 0; overflow: hidden; }
-    .track > span { display: block; height: 100%; border-radius: 0 4px 4px 0; background: var(--s1); }
+    .bars { display: grid; gap: 10px; }
+    .bar-row { display: grid; grid-template-columns: minmax(80px, 150px) 1fr 50px; gap: 10px; align-items: center; font-size: 13px; }
+    .track { height: 6px; background: var(--surface-hover); border-radius: 0 3px 3px 0; overflow: hidden; }
+    .track > span { display: block; height: 100%; border-radius: 0 3px 3px 0; background: var(--s1); }
   `],
 })
 export class AnalyticsComponent {
@@ -38,6 +38,7 @@ export class AnalyticsComponent {
   range = signal('1Y');
   segment = signal('');
   bench = signal('NIFTY50');
+  tab = signal<'growth' | 'returns' | 'risk'>('growth');
   perf = signal<Performance | null>(null);
   loading = signal(false);
   error = signal<string | null>(null);
@@ -49,7 +50,7 @@ export class AnalyticsComponent {
 
   m = computed(() => this.perf()?.metrics);
   benchOptions = computed(() => this.perf()?.benchmarks ?? []);
-  activeBench = computed(() => this.benchOptions().find(b => b.key === this.bench()) ?? this.benchOptions()[0]);
+  activeBench = computed<Benchmark | undefined>(() => this.benchOptions().find(b => b.key === this.bench()) ?? this.benchOptions()[0]);
   labels = computed(() => this.perf()?.series.map(p => p.date) ?? []);
   valueSeries = computed<LineSeries[]>(() => {
     const s = this.perf()?.series ?? [];
@@ -97,7 +98,7 @@ export class AnalyticsComponent {
   }
   sectors = computed(() => this.group('sector', p => p.asset_class === 'equity'));
   caps = computed(() => this.group('market_cap', p => p.asset_class === 'equity'));
-  currency = computed(() => this.group('currency').map(g => ({ ...g, key: g.key === 'USD' ? 'US dollar' : 'Indian rupee' })));
+  usdShare = computed(() => this.group('currency').find(g => g.key === 'USD')?.pct ?? 0);
   maxPct = (rows: { pct: number }[]) => Math.max(...rows.map(r => r.pct), 1);
 
   constructor() {

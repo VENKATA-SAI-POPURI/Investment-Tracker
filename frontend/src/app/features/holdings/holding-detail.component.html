@@ -28,25 +28,25 @@
       }
     </div>
 
-    <section class="grid grid-4">
-      <div class="card stat"><span class="label">Current value</span><span class="value">{{ p.value | inr }}</span>
+    <section class="kpis">
+      <div class="kpi"><span class="label">Current value</span><span class="value">{{ p.value | inr }}</span>
         <span class="meta">{{ p.weight | pct: 1 : false }} of portfolio</span></div>
       @if (tradable()) {
-        <div class="card stat"><span class="label">Holding</span><span class="value">{{ p.quantity | qty }} units</span>
+        <div class="kpi"><span class="label">Holding</span><span class="value">{{ p.quantity | qty }} units</span>
           <span class="meta">avg {{ p.avg_cost | inr: 2 }}{{ p.avg_cost_fc ? ' ($' + p.avg_cost_fc + ')' : '' }}</span></div>
-        <div class="card stat"><span class="label">Price</span>
+        <div class="kpi"><span class="label">Price</span>
           <span class="value">@if (p.has_price) { {{ p.currency === 'USD' ? (p.price | usd) : (p.price | inr: 2) }} } @else { — }</span>
           <span class="meta" [class]="p.day_change | sign">{{ p.day_change ? (p.day_change | inr: 0 : true) + ' today' : (p.price_at ? 'as of ' + (p.price_at | dt) : 'valued at cost') }}</span></div>
-        <div class="card stat"><span class="label">Unrealized</span><span class="value" [class]="p.unrealized | sign">{{ p.has_price ? (p.unrealized | inr: 0 : true) : '—' }}</span>
+        <div class="kpi"><span class="label">Unrealized</span><span class="value" [class]="p.unrealized | sign">{{ p.has_price ? (p.unrealized | inr: 0 : true) : '—' }}</span>
           <span class="meta">{{ p.unrealized_pct | pct }} on {{ p.cost | inr }}</span></div>
       } @else if (p.asset_class === 'p2p') {
-        <div class="card stat"><span class="label">Lent</span><span class="value">{{ p.invested | inr }}</span><span class="meta">{{ p.rate ? p.rate + '% · ' : '' }}{{ p.tenure_months }} months</span></div>
-        <div class="card stat"><span class="label">Principal back</span><span class="value">{{ p.principal_repaid | inr }}</span><span class="meta">{{ p.outstanding | inr }} outstanding</span></div>
-        <div class="card stat"><span class="label">Interest earned</span><span class="value pos">{{ p.interest | inr: 2 }}</span><span class="meta">fees {{ p.fees | inr: 2 }}</span></div>
+        <div class="kpi"><span class="label">Lent</span><span class="value">{{ p.invested | inr }}</span><span class="meta">{{ p.rate ? p.rate + '% · ' : '' }}{{ p.tenure_months }} months</span></div>
+        <div class="kpi"><span class="label">Principal back</span><span class="value">{{ p.principal_repaid | inr }}</span><span class="meta">{{ p.outstanding | inr }} outstanding</span></div>
+        <div class="kpi"><span class="label">Interest earned</span><span class="value pos">{{ p.interest | inr: 2 }}</span><span class="meta">fees {{ p.fees | inr: 2 }}</span></div>
       } @else if (p.asset_class === 'fixed_deposit') {
-        <div class="card stat"><span class="label">Deposit</span><span class="value">{{ p.invested | inr }}</span><span class="meta">{{ p.rate }}% a year</span></div>
-        <div class="card stat"><span class="label">Interest accrued</span><span class="value pos">{{ p.accrued_interest | inr }}</span></div>
-        <div class="card stat"><span class="label">Matures</span><span class="value">{{ p.maturity_date | dt }}</span><span class="meta">{{ p.maturity_value | inr }} expected</span></div>
+        <div class="kpi"><span class="label">Deposit</span><span class="value">{{ p.invested | inr }}</span><span class="meta">{{ p.rate }}% a year</span></div>
+        <div class="kpi"><span class="label">Interest accrued</span><span class="value pos">{{ p.accrued_interest | inr }}</span></div>
+        <div class="kpi"><span class="label">Matures</span><span class="value">{{ p.maturity_date | dt }}</span><span class="meta">{{ p.maturity_value | inr }} expected</span></div>
       }
     </section>
 

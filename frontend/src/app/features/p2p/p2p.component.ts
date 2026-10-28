@@ -12,6 +12,7 @@ import { StoreService } from '../../core/store.service';
 import { ToastService } from '../../core/toast.service';
 import { TxnDialogService } from '../../core/txn-dialog.service';
 import { IconComponent } from '../../shared/icon.component';
+import { SectionTabsComponent } from '../../shared/section-tabs.component';
 import { ModalComponent, SortState } from '../../shared/ui';
 
 type Tab = 'active' | 'overdue' | 'closed' | 'defaulted' | 'all';
@@ -19,7 +20,7 @@ type Tab = 'active' | 'overdue' | 'closed' | 'defaulted' | 'all';
 @Component({
   selector: 'app-p2p',
   standalone: true,
-  imports: [FormsModule, TitleCasePipe, IconComponent, ModalComponent, ...FORMAT_PIPES],
+  imports: [FormsModule, TitleCasePipe, IconComponent, SectionTabsComponent, ModalComponent, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './p2p.component.html',
 })

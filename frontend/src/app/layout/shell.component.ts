@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
-import { ActivatedRoute, NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { NavigationEnd, Router, RouterLink, RouterOutlet } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { filter, map } from 'rxjs';
+import { filter, map, startWith } from 'rxjs';
 import { AuthService } from '../core/auth.service';
 import { relTime } from '../core/format';
 import { StoreService } from '../core/store.service';
@@ -10,12 +10,23 @@ import { TxnDialogService } from '../core/txn-dialog.service';
 import { IconComponent } from '../shared/icon.component';
 import { TxnFormComponent } from '../shared/txn-form.component';
 
-interface NavItem { path: string; label: string; icon: string; exact?: boolean; }
+interface NavItem { path: string; label: string; icon: string; match: string[]; }
+
+export const NAV: NavItem[] = [
+  { path: '/', label: 'Overview', icon: 'home', match: [] },
+  { path: '/holdings/equity', label: 'Holdings', icon: 'layers', match: ['/holdings', '/holding/', '/p2p', '/fixed-deposits', '/forex'] },
+  { path: '/transactions', label: 'Activity', icon: 'list', match: ['/transactions', '/cash-flows'] },
+  { path: '/analytics', label: 'Performance', icon: 'chart', match: ['/analytics'] },
+  { path: '/tax', label: 'Tax', icon: 'receipt', match: ['/tax'] },
+  { path: '/goals', label: 'Goals', icon: 'target', match: ['/goals'] },
+  { path: '/insights', label: 'Insights', icon: 'bulb', match: ['/insights'] },
+  { path: '/settings', label: 'Settings', icon: 'settings', match: ['/settings'] },
+];
 
 @Component({
   selector: 'app-shell',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, IconComponent, TxnFormComponent],
+  imports: [RouterOutlet, RouterLink, IconComponent, TxnFormComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './shell.component.html',
   styleUrl: './shell.component.scss',
@@ -26,52 +37,27 @@ export class ShellComponent {
   theme = inject(ThemeService);
   dialog = inject(TxnDialogService);
   private router = inject(Router);
-  private route = inject(ActivatedRoute);
 
-  moreOpen = signal(false);
+  nav = NAV;
+  mobileNav = [NAV[0], NAV[1], NAV[6]];
   menuOpen = signal(false);
 
-  groups: { title: string; items: NavItem[] }[] = [
-    { title: '', items: [{ path: '/', label: 'Overview', icon: 'home', exact: true }] },
-    { title: 'Holdings', items: [
-      { path: '/holdings/equity', label: 'Stocks', icon: 'trend' },
-      { path: '/holdings/mutual_fund', label: 'Mutual funds', icon: 'layers' },
-      { path: '/holdings/commodity', label: 'Commodities', icon: 'coins' },
-      { path: '/p2p', label: 'P2P lending', icon: 'users' },
-      { path: '/fixed-deposits', label: 'Fixed deposits', icon: 'bank' },
-      { path: '/forex', label: 'USD wallet', icon: 'globe' },
-    ] },
-    { title: 'Activity', items: [
-      { path: '/transactions', label: 'Transactions', icon: 'list' },
-      { path: '/cash-flows', label: 'Cash flows', icon: 'wallet' },
-    ] },
-    { title: 'Analysis', items: [
-      { path: '/analytics', label: 'Performance', icon: 'chart' },
-      { path: '/tax', label: 'Tax', icon: 'receipt' },
-      { path: '/goals', label: 'Goals', icon: 'target' },
-      { path: '/insights', label: 'Insights', icon: 'bulb' },
-    ] },
-    { title: '', items: [{ path: '/settings', label: 'Settings', icon: 'settings' }] },
-  ];
-
-  private title$ = this.router.events.pipe(
+  url = toSignal(this.router.events.pipe(
     filter(e => e instanceof NavigationEnd),
-    map(() => {
-      let r = this.route.firstChild;
-      while (r?.firstChild) r = r.firstChild;
-      return (r?.snapshot.data['title'] as string) ?? '';
-    }),
-  );
-  title = toSignal(this.title$, { initialValue: '' });
+    map(e => (e as NavigationEnd).urlAfterRedirects.split(/[?#]/)[0]),
+    startWith(this.router.url.split(/[?#]/)[0]),
+  ), { initialValue: '/' });
 
+  active = (item: NavItem) => {
+    const u = this.url();
+    return item.match.length ? item.match.some(m => u.startsWith(m)) : u === '/';
+  };
+  title = computed(() => this.nav.find(n => this.active(n))?.label ?? '');
   pricesAge = computed(() => relTime(this.store.portfolio()?.prices.last_refresh));
   themeIcon = computed(() => ({ system: 'monitor', light: 'sun', dark: 'moon' })[this.theme.mode()]);
   initials = computed(() => (this.auth.user()?.name || this.auth.user()?.email || '?').slice(0, 1).toUpperCase());
 
   constructor() {
-    this.router.events.pipe(filter(e => e instanceof NavigationEnd)).subscribe(() => {
-      this.moreOpen.set(false);
-      this.menuOpen.set(false);
-    });
+    this.router.events.pipe(filter(e => e instanceof NavigationEnd)).subscribe(() => this.menuOpen.set(false));
   }
 }

@@ -1,165 +1,99 @@
 <div class="page" [class.loading-fade]="store.loading() && !!p()">
-  @if (!p()) {
-    <div class="hero">
-      @for (i of [1, 2, 3, 4]; track i) { <div class="card"><div class="skeleton" style="height:14px;width:40%"></div><div class="skeleton" style="height:28px;margin-top:10px"></div></div> }
+  <div class="page-head">
+    <div>
+      <h1>{{ greeting() }}</h1>
+      @if (p()) { <p class="sub">Your portfolio as of {{ p()!.as_of | dt }}</p> }
     </div>
-    <div class="card"><div class="skeleton" style="height:260px"></div></div>
+  </div>
+
+  @if (!p()) {
+    <div class="kpis">@for (i of [1, 2, 3, 4]; track i) { <div class="kpi"><div class="skeleton" style="height:12px;width:50%"></div><div class="skeleton" style="height:26px;margin-top:8px"></div></div> }</div>
+    <div class="card"><div class="skeleton" style="height:280px"></div></div>
   } @else if (isEmpty()) {
     <div class="card empty">
-      <app-icon name="layers" [size]="32" />
-      <h3>Start by adding an investment</h3>
-      <p>Record a purchase, or import a CSV / broker tradebook from the Transactions page.</p>
+      <app-icon name="layers" [size]="30" />
+      <h3>Add your first investment</h3>
+      <p>Record a purchase, or import a CSV or broker tradebook from Activity.</p>
       @if (auth.canWrite()) {
-        <div class="row"><button class="btn primary" (click)="dialog.add()"><app-icon name="plus" /> Add transaction</button>
-        <a class="btn" routerLink="/transactions">Import CSV</a></div>
+        <div class="row"><button class="btn primary" (click)="dialog.add()"><app-icon name="plus" [size]="16" /> Add transaction</button>
+          <a class="btn" routerLink="/transactions">Import</a></div>
       }
     </div>
   } @else {
     @let tt = t()!;
-    <section class="hero">
-      <div class="card main">
-        <span class="text-2 small">Net worth</span>
-        <span class="hero-value">{{ tt.value | inr }}</span>
-        <span class="small" [class]="tt.day_change | sign">
-          @if (tt.day_change) { {{ tt.day_change | inr: 0 : true }} ({{ tt.day_change_pct | pct: 2 }}) today } @else { <span class="muted">No price change today</span> }
+    <section class="kpis">
+      <div class="kpi hero">
+        <span class="label">Net worth</span>
+        <span class="value">{{ tt.value | inr }}</span>
+        <span class="meta" [class]="tt.day_change | sign">
+          @if (tt.day_change) { {{ tt.day_change | inr: 0 : true }} ({{ tt.day_change_pct | pct: 2 }}) today } @else { No change today }
         </span>
       </div>
-      <div class="card">
-        <span class="text-2 small">Unrealized gain</span>
-        <span class="stat-value" style="font-size:22px;font-weight:600" [class]="tt.unrealized | sign">{{ tt.unrealized | inr: 0 : true }}</span>
-        <span class="small muted">{{ tt.unrealized_pct | pct }} on {{ tt.cost | inrc }} cost</span>
+      <div class="kpi">
+        <span class="label">Invested</span>
+        <span class="value">{{ tt.cost | inr }}</span>
+        <span class="meta">cost of what you hold</span>
       </div>
-      <div class="card">
-        <span class="text-2 small">Total gain (all time)</span>
-        <span style="font-size:22px;font-weight:600" [class]="tt.total_gain | sign">{{ tt.total_gain | inr: 0 : true }}</span>
-        <span class="small muted">Realized {{ tt.realized | inrc: true }} · income {{ tt.income | inrc }}</span>
+      <div class="kpi">
+        <span class="label">Total gain</span>
+        <span class="value" [class]="tt.total_gain | sign">{{ tt.total_gain | inr: 0 : true }}</span>
+        <span class="meta">Unrealized {{ tt.unrealized | inrc: true }}</span>
       </div>
-      <div class="card">
-        <span class="text-2 small">Annual return (XIRR)</span>
-        <span style="font-size:22px;font-weight:600" [class]="tt.xirr | sign">{{ tt.xirr | pct }}</span>
-        <span class="small muted">Money-weighted, all holdings</span>
+      <div class="kpi">
+        <span class="label">Annual return</span>
+        <span class="value" [class]="tt.xirr | sign">{{ tt.xirr | pct }}</span>
+        <span class="meta">XIRR, all holdings</span>
       </div>
     </section>
 
-    @if (tt.missing_prices.length) {
-      <div class="notice warn"><app-icon name="alert" [size]="16" />
-        <span>{{ tt.missing_prices.length }} {{ tt.missing_prices.length === 1 ? 'holding has' : 'holdings have' }} no price and {{ tt.missing_prices.length === 1 ? 'is' : 'are' }} valued at cost: {{ tt.missing_prices.join(', ') }}.
-          <a routerLink="/settings" fragment="prices">Add tickers</a></span></div>
-    }
-
-    <section class="grid grid-3">
-      <div class="card span-2">
+    <div class="main-grid">
+      <section class="card">
         <div class="card-head">
-          <div><h2>Portfolio value</h2><span class="hint">Market value vs. money you put in</span></div>
+          <h2>Value over time</h2>
           <div class="seg">@for (r of ranges; track r) { <button [class.on]="range() === r" (click)="range.set(r)">{{ r }}</button> }</div>
         </div>
         @if (perf(); as pf) {
           <div [class.loading-fade]="perfLoading()">
             @if (pf.series.length > 1) {
-              <app-line-chart [labels]="chartLabels()" [series]="chartSeries()" [height]="250" [yFormat]="inrc" [tipFormat]="inrFn" ariaLabel="Portfolio value over time" />
-              <div class="row wrap small" style="margin-top:10px;gap:16px">
-                <span class="text-2">Gain in period <b [class]="pf.metrics.gain | sign">{{ pf.metrics.gain | inr: 0 : true }}</b></span>
-                <span class="text-2">Time-weighted <b [class]="pf.metrics.twr | sign">{{ pf.metrics.twr | pct }}</b></span>
-                @for (b of pf.benchmarks.slice(0, 2); track b.key) {
-                  <span class="text-2">{{ b.label }} same flows <b [class]="b.xirr | sign">{{ b.xirr | pct }}</b> a year</span>
-                }
-                <a routerLink="/analytics" class="spacer right">Full analysis →</a>
+              <app-line-chart [labels]="labels()" [series]="series()" [height]="260" [yFormat]="inrc" [tipFormat]="inrFull" ariaLabel="Portfolio value and money invested over time" />
+              <div class="row small" style="margin-top:12px;justify-content:space-between">
+                <span class="muted">Gain in period <span [class]="pf.metrics.gain | sign">{{ pf.metrics.gain | inr: 0 : true }}</span></span>
+                <a routerLink="/analytics">Performance details →</a>
               </div>
             } @else { <p class="muted">Not enough history yet.</p> }
           </div>
         } @else if (perfError()) {
-          <div class="notice warn"><app-icon name="alert" [size]="16" /> Performance history unavailable: {{ perfError() }}</div>
-        } @else { <div class="skeleton" style="height:250px"></div> }
-      </div>
+          <p class="muted small">History unavailable right now. {{ perfError() }}</p>
+        } @else { <div class="skeleton" style="height:260px"></div> }
+      </section>
 
-      <div class="card">
-        <div class="card-head"><h2>Allocation</h2><a routerLink="/insights" fragment="rebalance" class="small">Rebalance →</a></div>
-        <div class="alloc">
-          <app-donut-chart [slices]="slices()" [size]="150" [centerTop]="inrc(tt.value)" centerBottom="total" [valueFormat]="inrFn" (pick)="goSegment($event)" />
-        </div>
-        <table class="table" style="margin-top:12px">
-          <thead><tr><th>Segment</th><th class="num">Now</th><th class="num">Target</th><th class="hide-sm"></th></tr></thead>
-          <tbody>
-            @for (s of segments(); track s.segment) {
-              <tr class="clickable" (click)="goSegment(s.segment)">
-                <td><span class="row"><i class="swatch" [style.background]="colorOf(s.segment)"></i>{{ s.segment }}</span></td>
-                <td class="num">{{ s.pct | pct: 1 : false }}</td>
-                <td class="num muted">{{ s.target !== null ? s.target + '%' : '—' }}</td>
-                <td class="hide-sm"><div class="drift" [title]="'Drift ' + fmtPct(s.drift)"><span [style]="driftStyle(s.drift)"></span></div></td>
-              </tr>
-            }
-          </tbody>
-        </table>
-      </div>
-    </section>
+      <section class="card">
+        <div class="card-head"><h2>Allocation</h2><a routerLink="/insights" fragment="rebalance" class="small">Rebalance</a></div>
+        @for (a of allocation(); track a.segment) {
+          <div class="alloc-row" (click)="open(a.segment)" role="link" tabindex="0" (keydown.enter)="open(a.segment)">
+            <span class="name"><i class="swatch" [style.background]="a.color"></i>{{ a.segment }}</span>
+            <span class="pct">{{ a.pct | pct: 1 : false }}@if (a.target !== null) { <small>/ {{ a.target }}%</small> }</span>
+            <div class="meter" [title]="a.target !== null ? 'Target ' + a.target + '%' : ''">
+              <span [style.width.%]="a.pct" [style.background]="a.color"></span>
+              @if (a.target !== null) { <i [style.left.%]="a.target"></i> }
+            </div>
+          </div>
+        }
+        <p class="small muted" style="margin-top:12px">Bar = current share · tick = your target</p>
+      </section>
+    </div>
 
     @if (insights().length) {
       <section class="card">
-        <div class="card-head"><h2>What needs attention</h2><a routerLink="/insights" class="small">All insights →</a></div>
-        <div class="grid grid-2">
-          @for (i of insights(); track i.id) { <app-insight-card [insight]="i" [compact]="true" /> }
-        </div>
+        <div class="card-head" style="margin-bottom:4px"><h2>Needs attention</h2><a routerLink="/insights" class="small">All insights</a></div>
+        @for (i of insights(); track i.id) {
+          <a class="alert-row" [routerLink]="link(i)" [fragment]="frag(i)">
+            <span class="ic" [class]="i.severity"><app-icon [name]="sevIcon[i.severity]" [size]="17" /></span>
+            <span><div class="t">{{ i.title }}</div><div class="d">{{ i.detail }}</div></span>
+            <span class="go"><app-icon name="chevronRight" [size]="16" /></span>
+          </a>
+        }
       </section>
     }
-
-    <section class="card flush">
-      <div class="card-head"><h2>By segment</h2><span class="hint">Click a row to see holdings</span></div>
-      <div class="table-wrap">
-        <table class="table">
-          <thead><tr>
-            <th>Segment</th><th class="num">Value</th><th class="num hide-sm">Cost</th><th class="num">Unrealized</th>
-            <th class="num hide-sm">Realized + income</th><th class="num">XIRR</th><th class="num hide-sm">Today</th>
-          </tr></thead>
-          <tbody>
-            @for (s of segments(); track s.segment) {
-              <tr class="clickable" (click)="goSegment(s.segment)">
-                <td><span class="row"><i class="swatch" [style.background]="colorOf(s.segment)"></i>{{ s.segment }}</span><span class="sub">{{ s.open_count }} open</span></td>
-                <td class="num">{{ s.value | inr }}</td>
-                <td class="num hide-sm">{{ s.cost | inr }}</td>
-                <td class="num" [class]="s.unrealized | sign">{{ s.unrealized | inr: 0 : true }}<div class="sub">{{ s.unrealized_pct | pct }}</div></td>
-                <td class="num hide-sm" [class]="(s.realized + s.income) | sign">{{ s.realized + s.income | inr: 0 : true }}</td>
-                <td class="num" [class]="s.xirr | sign">{{ s.xirr | pct }}</td>
-                <td class="num hide-sm" [class]="s.day_change | sign">{{ s.day_change ? (s.day_change | inr: 0 : true) : '—' }}</td>
-              </tr>
-            }
-          </tbody>
-          <tfoot><tr>
-            <td>Total</td><td class="num">{{ tt.value | inr }}</td><td class="num hide-sm">{{ tt.cost | inr }}</td>
-            <td class="num" [class]="tt.unrealized | sign">{{ tt.unrealized | inr: 0 : true }}</td>
-            <td class="num hide-sm" [class]="(tt.realized + tt.income) | sign">{{ tt.realized + tt.income | inr: 0 : true }}</td>
-            <td class="num" [class]="tt.xirr | sign">{{ tt.xirr | pct }}</td>
-            <td class="num hide-sm" [class]="tt.day_change | sign">{{ tt.day_change | inr: 0 : true }}</td>
-          </tr></tfoot>
-        </table>
-      </div>
-    </section>
-
-    <section class="grid grid-3">
-      <div class="card">
-        <div class="card-head"><h2>Today's movers</h2></div>
-        @for (m of movers(); track m.id) {
-          <a class="mover" [routerLink]="['/holding', m.id]">
-            <span class="ellipsis" style="color:var(--text)">{{ m.name }}</span>
-            <span class="num nowrap" [class]="m.day_change | sign">{{ m.day_change | inr: 0 : true }}</span>
-          </a>
-        } @empty { <p class="muted small">No price moves recorded today.</p> }
-      </div>
-      <div class="card">
-        <div class="card-head"><h2>Best performers</h2><span class="hint">Unrealized %</span></div>
-        @for (m of best(); track m.id) {
-          <a class="mover" [routerLink]="['/holding', m.id]"><span class="ellipsis" style="color:var(--text)">{{ m.name }}</span><span class="num" [class]="m.unrealized_pct | sign">{{ m.unrealized_pct | pct }}</span></a>
-        } @empty { <p class="muted small">Add tickers to see performance.</p> }
-      </div>
-      <div class="card">
-        <div class="card-head"><h2>Laggards</h2><span class="hint">Unrealized %</span></div>
-        @for (m of worst(); track m.id) {
-          <a class="mover" [routerLink]="['/holding', m.id]"><span class="ellipsis" style="color:var(--text)">{{ m.name }}</span><span class="num" [class]="m.unrealized_pct | sign">{{ m.unrealized_pct | pct }}</span></a>
-        } @empty { <p class="muted small">Nothing below cost.</p> }
-      </div>
-    </section>
-
-    <p class="small muted">
-      Contributions (from cash flows): {{ p()!.contributions.net | inr }} net in · USD/INR {{ p()!.usd_inr ?? '—' }} · Values as of {{ p()!.as_of | dt }}
-    </p>
   }
 </div>
