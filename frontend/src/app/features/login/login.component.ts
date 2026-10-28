@@ -39,13 +39,13 @@ const CLIENT_ID = '264259769121-grmgud6svdqkbi2o58rsoqmjg6f04cka.apps.googleuser
       </div>
     </div>`,
   styles: [`
-    .wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px 16px; background: radial-gradient(1200px 600px at 10% 0%, #6366f1 0%, transparent 60%), radial-gradient(900px 600px at 100% 100%, #7c3aed 0%, transparent 55%), #1e1b4b; }
-    .panel { width: 100%; max-width: 420px; background: var(--surface); border-radius: 20px; box-shadow: 0 30px 80px rgba(15, 23, 42, .45); padding: 36px 30px; display: flex; flex-direction: column; gap: 14px; align-items: center; text-align: center; }
-    .m1 { position: fixed; left: -160px; top: -160px; color: rgba(253, 230, 138, .12); }
-    .m2 { position: fixed; right: -120px; bottom: -120px; color: rgba(244, 114, 182, .14); }
-    .namaste { font-size: 12px; font-weight: 600; letter-spacing: .2em; text-transform: uppercase; color: #d97706; margin-bottom: -8px; }
+    .wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px 16px; background: radial-gradient(900px 520px at 15% 0%, rgba(63, 60, 187, .35) 0%, transparent 65%), var(--hero); }
+    .panel { width: 100%; max-width: 420px; background: var(--surface); border-radius: 16px; box-shadow: 0 30px 80px rgba(5, 10, 30, .45); padding: 36px 30px; display: flex; flex-direction: column; gap: 14px; align-items: center; text-align: center; }
+    .m1 { position: fixed; left: -160px; top: -160px; color: rgba(217, 164, 65, .10); }
+    .m2 { position: fixed; right: -120px; bottom: -120px; color: rgba(217, 164, 65, .08); }
+    .namaste { font-size: 12px; font-weight: 600; letter-spacing: .2em; text-transform: uppercase; color: var(--gold); margin-bottom: -8px; }
     .panel { position: relative; z-index: 1; }
-    .logo { display: inline-flex; width: 56px; height: 56px; border-radius: 16px; background: linear-gradient(135deg, #f59e0b, #ec4899 55%, #8b5cf6); box-shadow: 0 10px 24px rgba(236, 72, 153, .35); color: #fff; align-items: center; justify-content: center; }
+    .logo { display: inline-flex; width: 56px; height: 56px; border-radius: 14px; background: linear-gradient(145deg, #e3b350, #b7862c); color: var(--ink); align-items: center; justify-content: center; }
     .gbtn { min-height: 44px; display: flex; justify-content: center; }
     .notice { text-align: left; width: 100%; }
     .points { list-style: none; padding: 14px 0 0; margin: 0; border-top: 1px solid var(--border); width: 100%; display: grid; gap: 8px; text-align: left; font-size: 13px; color: var(--text-2); }
