@@ -48,11 +48,21 @@
     </section>
   } @empty {
     @if (!loading()) {
-      <div class="card empty">
-        <app-icon name="target" [size]="32" />
-        <h3>No goals yet</h3>
-        <p>Retirement, a house, a child's education — set a target, link part of your portfolio and see the SIP you need.</p>
-        @if (auth.canWrite()) { <button class="btn primary" (click)="startAdd()"><app-icon name="plus" /> Create a goal</button> }
+      <div class="card start">
+        <span class="lotus"><app-icon name="target" [size]="24" /></span>
+        <h3>Give your money a purpose</h3>
+        <p>Pick a goal to start with. Link part of your portfolio to it and see the monthly SIP you need and your chance of getting there.</p>
+        <div class="presets">
+          @for (g of presets; track g.name) {
+            <button class="preset" (click)="startAdd(g)" [disabled]="!auth.canWrite()">
+              <span class="chip sm"><app-icon [name]="g.icon" [size]="15" /></span>
+              <b>{{ g.name }}</b>
+              <span class="amt">{{ g.amount | inrc }} in {{ g.years }} year{{ g.years > 1 ? 's' : '' }}</span>
+              <small>{{ g.note }}</small>
+            </button>
+          }
+        </div>
+        @if (auth.canWrite()) { <button class="btn" style="margin-top:20px" (click)="startAdd()"><app-icon name="plus" [size]="15" /> Start from scratch</button> }
       </div>
     }
   }

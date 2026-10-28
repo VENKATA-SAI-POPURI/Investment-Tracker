@@ -68,12 +68,12 @@
         @if (perf(); as pf) {
           <div [class.loading-fade]="perfLoading()">
             @if (pf.series.length > 1) {
-              <app-line-chart [labels]="labels()" [series]="series()" [height]="300" [yFormat]="inrc" [tipFormat]="inrFull" ariaLabel="Portfolio value and money invested over time" />
+              <app-line-chart [labels]="labels()" [series]="series()" [height]="340" [yFormat]="inrc" [tipFormat]="inrFull" ariaLabel="Portfolio value and money invested over time" />
             } @else { <p class="muted">Not enough history yet.</p> }
           </div>
         } @else if (perfError()) {
           <p class="muted small">History unavailable right now. {{ perfError() }}</p>
-        } @else { <div class="skeleton" style="height:300px"></div> }
+        } @else { <div class="skeleton" style="height:340px"></div> }
       </section>
 
       <section class="card">
@@ -85,7 +85,7 @@
           @for (a of assets(); track a.segment) {
             <div class="l-row" (click)="go(a.route)">
               <i class="swatch" [style.background]="a.color"></i>
-              <span class="l-name"><app-icon [name]="a.icon" [size]="14" />{{ a.label }}</span>
+              <span class="l-name">{{ a.label }}</span>
               <span class="l-val">{{ a.value | inrc }}</span>
               <span class="l-pct">{{ a.pct | pct: 1 : false }}</span>
               @if (a.target !== null) {
@@ -115,8 +115,8 @@
     @if (pulse(); as pl) {
       <div class="sec-head"><h2>Health &amp; calendar</h2><span>How well-built the portfolio is, and what's coming up</span></div>
       <div class="pulse-grid">
-        <app-health-card [health]="pl.health" />
         <app-money-calendar [events]="pl.calendar.events" />
+        <app-health-card [health]="pl.health" />
       </div>
     }
 

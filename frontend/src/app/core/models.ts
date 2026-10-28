@@ -25,6 +25,11 @@ export const SEGMENT_META: Record<string, { label: string; icon: string; route: 
   'Fixed Deposits': { label: 'Fixed deposits', icon: 'bank', route: '/fixed-deposits' },
 };
 
+/** Accent per asset class, matching the segment slots. */
+export const CLASS_COLOR: Record<AssetClass, string> = {
+  equity: 'var(--s1)', mutual_fund: 'var(--s3)', commodity: 'var(--s4)', p2p: 'var(--s5)', fixed_deposit: 'var(--s6)', cash: 'var(--s2)',
+};
+
 export const CLASS_LABEL: Record<AssetClass, string> = {
   equity: 'Stocks', mutual_fund: 'Mutual funds', commodity: 'Commodities', p2p: 'P2P lending',
   fixed_deposit: 'Fixed deposits', cash: 'USD wallet',

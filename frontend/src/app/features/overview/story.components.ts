@@ -43,12 +43,10 @@ function route(link: string | null) {
     </section>`,
   styles: [`
     .tk { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; }
-    .tile { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 16px 16px 15px; border-radius: 16px; overflow: hidden;
+    .tile { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 16px 16px 15px; border-radius: 12px; overflow: hidden;
       background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); color: var(--text); text-decoration: none;
       transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease; }
-    .tile::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--c); }
-    .tile:hover { text-decoration: none; transform: translateY(-2px); box-shadow: 0 10px 24px rgba(15, 23, 42, .08);
-      border-color: color-mix(in srgb, var(--c) 30%, var(--border)); }
+    .tile:hover { text-decoration: none; border-color: var(--border-strong); box-shadow: var(--shadow-md); }
     .top { display: flex; align-items: center; gap: 8px; }
     .lbl { font-size: 12.5px; color: var(--muted); font-weight: 500; }
     .val { font-size: 17px; font-weight: 650; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -74,7 +72,7 @@ export class TakeawaysComponent {
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @let a = data();
-    <section class="card">
+    <section class="card fill">
       <div class="card-head">
         <div class="row" style="gap:10px"><span class="chip green sm"><app-icon name="sparkle" [size]="15" /></span>
           <div><h2>What drove your returns</h2><span class="hint">All-time gain {{ a.total | inr: 0 : true }}, including booked profits and income</span></div></div>
@@ -101,13 +99,14 @@ export class TakeawaysComponent {
           </a>
         }
       </div>
-      <div class="mix">
+      <div class="mix push">
         <span><small>Unrealised</small><b [class]="a.unrealized | sign">{{ a.unrealized | inrc: true }}</b></span>
         <span><small>Booked</small><b [class]="a.realized | sign">{{ a.realized | inrc: true }}</b></span>
         <span><small>Dividends &amp; interest</small><b [class]="a.income | sign">{{ a.income | inrc: true }}</b></span>
       </div>
     </section>`,
   styles: [DIVERGING + `
+    :host { display: block; }
     .split { display: flex; gap: 2px; height: 10px; border-radius: 999px; overflow: hidden; background: var(--grid); }
     .sg { background: var(--pos); } .sl { background: var(--neg); opacity: .85; }
     .split-legend { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--text-2); margin: 8px 0 14px; flex-wrap: wrap; }
@@ -149,10 +148,10 @@ export class DriversComponent {
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @let m = data();
-    <section class="card">
+    <section class="card fill">
       <div class="card-head">
         <div class="row" style="gap:10px"><span class="chip indigo sm"><app-icon name="scale" [size]="15" /></span>
-          <div><h2>You vs the market</h2><span class="hint">Same money, same dates{{ m.since ? ', since ' + (m.since | dt) : '' }}</span></div></div>
+          <div><h2>You vs the market</h2><span class="hint">Same money, same dates</span></div></div>
         <a routerLink="/analytics" class="small">Compare →</a>
       </div>
       <div class="you">
@@ -160,29 +159,32 @@ export class DriversComponent {
         <span><small>Your portfolio today</small><b>{{ m.value | inr }}</b></span>
         <span class="x"><small>Annual return</small><b [class]="m.you | sign">{{ m.you | pct }}</b></span>
       </div>
-      <p class="verdict">You're ahead of <b>{{ beaten() }} of {{ m.rows.length }}</b> alternatives.</p>
+      <p class="verdict">{{ m.since ? 'Since ' + (m.since | dt) + ', you' : 'You' }}'re ahead of <b>{{ beaten() }} of {{ m.rows.length }}</b> alternatives.</p>
       @for (r of rows(); track r.key) {
         <div class="mr">
           <span class="lb"><b>{{ r.label }}</b><small>would be {{ r.end_value | inrc }} · {{ r.xirr | pct }} a year</small></span>
+          <span class="amt" [class]="r.diff_value | sign">{{ r.diff_value | inrc: true }}</span>
           <span class="dv">
             <span>@if (r.diff_value < 0) { <i class="l" [style.width.%]="r.w"></i> }</span>
             <span>@if (r.diff_value > 0) { <i class="g" [style.width.%]="r.w"></i> }</span>
           </span>
-          <span class="amt" [class]="r.diff_value | sign">{{ r.diff_value | inrc: true }}</span>
         </div>
       }
-      <p class="foot">Right of the line: you have more than that index would have given you. Left: the index would have done better.</p>
+      <p class="foot push">Right of the line: you have more than that index would have given you. Left: the index would have done better.</p>
     </section>`,
   styles: [DIVERGING + `
-    .you { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 12px; background: linear-gradient(120deg, #eef0ff, #f6efff); }
+    :host { display: block; }
+    .you { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border); }
     .you span { display: flex; flex-direction: column; gap: 1px; }
     .you small { font-size: 11.5px; color: var(--muted); }
     .you b { font-size: 17px; font-weight: 650; font-variant-numeric: tabular-nums; }
     .you .x { margin-left: auto; text-align: right; }
-    .lotus { width: 36px; height: 36px; border-radius: 11px; align-items: center; justify-content: center; color: #fff;
-      background: linear-gradient(135deg, #f59e0b, #ec4899 55%, #8b5cf6); }
+    .lotus { width: 36px; height: 36px; border-radius: 10px; align-items: center; justify-content: center; color: #fff;
+      background: linear-gradient(145deg, #e3b350, #b7862c); }
     .verdict { font-size: 13px; color: var(--text-2); margin: 14px 0 4px; }
-    .mr { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.2fr) 64px; gap: 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); }
+    .mr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--border); }
+    .mr .dv { grid-column: 1 / -1; height: 12px; }
+    .mr .dv i { height: 8px; }
     .mr:last-of-type { border-bottom: 0; }
     .lb { display: flex; flex-direction: column; min-width: 0; }
     .lb b { font-size: 13px; font-weight: 600; }
@@ -209,7 +211,7 @@ export class MarketComponent {
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @let r = data();
-    <section class="card">
+    <section class="card fill">
       <div class="card-head">
         <div class="row" style="gap:10px"><span class="chip amber sm"><app-icon name="diya" [size]="15" /></span>
           <div><h2>Investing rhythm</h2><span class="hint">One diya lit for every month you invested · last 12 months</span></div></div>
@@ -237,12 +239,13 @@ export class MarketComponent {
       </div>
     </section>`,
   styles: [`
+    :host { display: block; }
     .lamps { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 4px; margin-bottom: 14px; }
     .lamp { display: flex; flex-direction: column; align-items: center; gap: 3px; color: #cbd2e1; }
     .lamp small { font-size: 10.5px; color: var(--muted); }
-    .lamp.lit { color: #ea8a0c; filter: drop-shadow(0 0 6px rgba(251, 191, 36, .75)); }
-    .lamp.lit small { color: #b45309; font-weight: 600; }
-    .bars { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 6px; height: 110px; }
+    .lamp.lit { color: var(--gold-2); filter: drop-shadow(0 0 5px rgba(217, 164, 65, .55)); }
+    .lamp.lit small { color: var(--gold); font-weight: 600; }
+    .bars { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 6px; flex: 1; min-height: 120px; }
     .col { display: grid; grid-template-rows: 3fr 1fr; }
     .up { display: flex; align-items: flex-end; justify-content: center; border-bottom: 1.5px solid var(--axis); }
     .dn { display: flex; align-items: flex-start; justify-content: center; }
@@ -282,7 +285,7 @@ const LADDER_ICON = (amount: number) => amount >= 1e7 ? 'lotus' : 'target';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @let m = data();
-    <section class="card">
+    <section class="card fill">
       <div class="card-head">
         <div class="row" style="gap:10px"><span class="chip violet sm"><app-icon name="lotus" [size]="15" /></span>
           <div><h2>Road to ₹1 crore</h2><span class="hint">Your next lakh and crore milestones</span></div></div>
@@ -306,26 +309,27 @@ const LADDER_ICON = (amount: number) => amount >= 1e7 ? 'lotus' : 'target';
           </li>
         }
       </ol>
-      <p class="foot">Assumes {{ m.assumed_return }}% a year — the planning return for your current mix. Markets don't move in straight lines; treat dates as a guide.</p>
+      <p class="foot push">Assumes {{ m.assumed_return }}% a year — the planning return for your current mix. Markets don't move in straight lines; treat dates as a guide.</p>
     </section>`,
   styles: [`
+    :host { display: block; }
     .prog { margin-bottom: 16px; }
     .pl { display: flex; justify-content: space-between; align-items: baseline; font-size: 11.5px; color: var(--muted); margin-bottom: 6px; }
     .pl b { font-size: 12.5px; color: var(--text); font-weight: 600; }
     .track { height: 10px; border-radius: 999px; background: var(--grid); overflow: hidden; }
-    .track span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #f59e0b, #ec4899 60%, #8b5cf6); }
-    .sip { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 12px; background: var(--surface-2); font-size: 12.5px; color: var(--text-2); }
+    .track span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--gold-2), var(--gold)); }
+    .sip { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border); font-size: 12.5px; color: var(--text-2); }
     .sip b { color: var(--text); font-size: 14px; }
     .sip input { width: 100%; accent-color: var(--primary); }
     .ladder { list-style: none; margin: 14px 0 0; padding: 0; position: relative; }
-    .ladder::before { content: ''; position: absolute; left: 13px; top: 14px; bottom: 14px; width: 2px; background: linear-gradient(#c7cbff, #f5c2e0); }
+    .ladder::before { content: ''; position: absolute; left: 13px; top: 14px; bottom: 14px; width: 2px; background: var(--border); }
     .ladder li { position: relative; display: grid; grid-template-columns: 28px 1fr auto; gap: 10px; align-items: center; padding: 7px 0; }
-    .dot { width: 28px; height: 28px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: #eef0ff; color: #4f46e5; border: 2px solid var(--surface); }
+    .dot { width: 28px; height: 28px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--surface); color: var(--primary); border: 1.5px solid var(--border-strong); }
     .lab { font-weight: 600; font-size: 13.5px; }
-    .lab em { font-style: normal; font-size: 11px; font-weight: 600; margin-left: 6px; padding: 2px 8px; border-radius: 999px; background: #fff1e0; color: #c2410c; }
+    .lab em { font-style: normal; font-size: 11px; font-weight: 600; margin-left: 6px; padding: 2px 8px; border-radius: 999px; background: var(--gold-soft); color: var(--gold); }
     .when { text-align: right; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; display: flex; flex-direction: column; }
     .when small { font-size: 11.5px; color: var(--muted); font-weight: 500; }
-    .crore .dot { background: linear-gradient(135deg, #f59e0b, #ec4899 55%, #8b5cf6); color: #fff; }
+    .crore .dot { background: linear-gradient(145deg, #e3b350, #b7862c); border-color: transparent; color: #fff; }
     .foot { font-size: 11.5px; color: var(--muted); margin-top: 10px; }
   `],
 })

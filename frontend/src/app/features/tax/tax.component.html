@@ -22,6 +22,27 @@
       <div class="kpi"><span class="chip amber sm"><app-icon name="coins" [size]="15" /></span><span class="label">Dividends & interest</span><span class="value">{{ r.income_total | inr }}</span><span class="meta">taxed at your slab</span></div>
     </section>
 
+    <section class="grid grid-2">
+      <div class="card">
+        <div class="card-head"><div><h2>Tax-free long-term gains</h2><span class="hint">Equity LTCG allowance for {{ r.fy }}</span></div></div>
+        <div class="row" style="justify-content:space-between;margin-bottom:8px">
+          <span class="small text-2"><b class="num" style="font-size:18px;color:var(--text)">{{ r.equity_exemption.used | inr }}</b> used</span>
+          <span class="small muted">of {{ r.equity_exemption.limit | inr }}</span>
+        </div>
+        <div class="meter"><i [style.width.%]="r.equity_exemption.limit ? r.equity_exemption.used / r.equity_exemption.limit * 100 : 0"></i></div>
+        <p class="small muted" style="margin-top:12px">{{ r.equity_exemption.remaining | inr }} of long-term equity gains can still be booked this year without tax.</p>
+      </div>
+      <div class="card">
+        <div class="card-head"><div><h2>Where your tax comes from</h2><span class="hint">Estimated {{ r.estimate.total | inr }} including {{ r.estimate.cess | inr }} cess</span></div></div>
+        @for (l of taxLines(); track l.label) {
+          <div class="tl">
+            <div class="row" style="justify-content:space-between"><span class="small">{{ l.label }} <span class="muted">· {{ l.rate }}</span></span><b class="small num">{{ l.tax | inr }}</b></div>
+            <div class="meter thin"><i [style.width.%]="l.share" style="background:var(--primary)"></i></div>
+          </div>
+        } @empty { <p class="small muted">No tax due on gains or income so far this year.</p> }
+      </div>
+    </section>
+
     <div class="tabs">
       @if (isCurrentFy()) { <button [class.on]="tab() === 'save'" (click)="tab.set('save')">Ways to save</button> }
       <button [class.on]="tab() === 'gains'" (click)="tab.set('gains')">Realized gains <span class="muted">{{ r.realized.length }}</span></button>

@@ -34,10 +34,10 @@ const SEV = {
   styles: [`
     .ins { display: flex; gap: 14px; align-items: center; padding: 14px 0; border-bottom: 1px solid var(--border); }
     :host(:last-child) .ins { border-bottom: 0; }
-    .ic { flex: none; width: 36px; height: 36px; border-radius: 11px; display: inline-flex; align-items: center; justify-content: center; }
-    .ic.warn { background: #fff4e0; color: #d97706; }
-    .ic.info { background: #eef0ff; color: #4f46e5; }
-    .ic.good { background: #e7f8f1; color: #059669; }
+    .ic { flex: none; width: 36px; height: 36px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; }
+    .ic.warn { background: #fbf3e2; color: #a86f12; }
+    .ic.info { background: #eef0fd; color: var(--primary); }
+    .ic.good { background: var(--pos-soft); color: var(--pos); }
     .body { flex: 1; min-width: 0; }
     .t { font-weight: 500; font-size: 13.5px; }
     .d { color: var(--muted); font-size: 12.5px; margin-top: 2px; }

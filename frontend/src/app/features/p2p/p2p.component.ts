@@ -59,6 +59,17 @@ export class P2pComponent {
       avgRate: rates.length ? rates.reduce((a, b) => a + b, 0) / rates.length : null,
     };
   });
+  /** Lent money split into what came back, what is still out, and what is at risk. */
+  split = computed(() => {
+    const s = this.stats();
+    const repaid = Math.max(s.lent - s.outstanding - s.atRisk, 0);
+    const total = repaid + s.outstanding + s.atRisk || 1;
+    return [
+      { key: 'repaid', label: 'Principal repaid', value: repaid, pct: repaid / total * 100, color: 'var(--pos)' },
+      { key: 'out', label: 'Still outstanding', value: s.outstanding, pct: s.outstanding / total * 100, color: 'var(--primary)' },
+      { key: 'risk', label: 'At risk', value: s.atRisk, pct: s.atRisk / total * 100, color: 'var(--neg)' },
+    ];
+  });
   counts = computed(() => ({
     active: this.loans().filter(p => p.status === 'active').length,
     overdue: this.stats().overdue,

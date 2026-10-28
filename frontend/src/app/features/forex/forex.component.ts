@@ -26,15 +26,15 @@ import { ConfirmService } from '../../shared/ui';
       </div>
       <app-section-tabs group="holdings" current="/forex" style="margin-top:-12px" />
       <section class="kpis">
-        <div class="kpi"><span class="label">Uninvested balance</span><span class="value">{{ w()?.balance_usd | usd }}</span><span class="meta">{{ w()?.value | inr }}</span></div>
-        <div class="kpi"><span class="label">Your average rate</span><span class="value">{{ w()?.avg_rate ? '₹' + w()!.avg_rate!.toFixed(2) : '—' }}</span>
+        <div class="kpi"><span class="chip blue sm"><app-icon name="wallet" [size]="15" /></span><span class="label">Uninvested balance</span><span class="value">{{ w()?.balance_usd | usd }}</span><span class="meta">{{ w()?.value | inr }}</span></div>
+        <div class="kpi"><span class="chip violet sm"><app-icon name="scale" [size]="15" /></span><span class="label">Your average rate</span><span class="value">{{ w()?.avg_rate ? '₹' + w()!.avg_rate!.toFixed(2) : '—' }}</span>
           <span class="meta">today ₹{{ (store.portfolio()?.usd_inr ?? 0).toFixed(2) }}</span></div>
-        <div class="kpi"><span class="label">Currency gain on US stocks</span><span class="value" [class]="us().fx | sign">{{ us().fx | inr: 0 : true }}</span>
+        <div class="kpi"><span class="chip green sm"><app-icon name="globe" [size]="15" /></span><span class="label">Currency gain on US stocks</span><span class="value" [class]="us().fx | sign">{{ us().fx | inr: 0 : true }}</span>
           <span class="meta">stock move {{ us().stock | inr: 0 : true }}</span></div>
-        <div class="kpi"><span class="label">Gain on withdrawals</span><span class="value" [class]="w()?.realized | sign">{{ w()?.realized | inr: 0 : true }}</span>
+        <div class="kpi"><span class="chip amber sm"><app-icon name="coins" [size]="15" /></span><span class="label">Gain on withdrawals</span><span class="value" [class]="w()?.realized | sign">{{ w()?.realized | inr: 0 : true }}</span>
           <span class="meta">vs your average deposit rate</span></div>
       </section>
-      <section class="grid grid-2">
+      <section class="grid grid-3 top">
         <div class="card">
           <div class="card-head"><h2>Totals</h2></div>
           <dl class="kv">
@@ -47,7 +47,7 @@ import { ConfirmService } from '../../shared/ui';
           <p class="small muted" style="margin-top:12px">The currency gain is how much more your US cost basis is worth in rupees today than when you paid for it.
             <a routerLink="/holdings/equity">See US holdings →</a></p>
         </div>
-        <div class="card flush">
+        <div class="card flush span-2">
           <div class="card-head"><h2>Transfers</h2></div>
           <div class="table-wrap">
             <table class="table">

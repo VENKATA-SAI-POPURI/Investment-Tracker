@@ -8,23 +8,28 @@
   </div>
   <app-section-tabs group="activity" current="/transactions" style="margin-top:-12px" />
 
-  <div class="row wrap">
-    <input class="input" style="max-width:240px" placeholder="Search name or notes" [ngModel]="q()" (ngModelChange)="q.set($event)" aria-label="Search" />
-    <select class="input" style="width:auto" [ngModel]="cls()" (ngModelChange)="cls.set($event)" aria-label="Asset class">
-      <option value="">All holdings</option>@for (c of classes; track c[0]) { <option [value]="c[0]">{{ c[1] }}</option> }
-    </select>
-    <select class="input" style="width:auto" [ngModel]="type()" (ngModelChange)="type.set($event)" aria-label="Type">
-      <option value="">All types</option>@for (t of types; track t[0]) { <option [value]="t[0]">{{ t[1] }}</option> }
-    </select>
-    <input class="input" type="date" style="width:auto" [ngModel]="from()" (ngModelChange)="from.set($event)" aria-label="From" />
-    <span class="muted">→</span>
-    <input class="input" type="date" style="width:auto" [ngModel]="to()" (ngModelChange)="to.set($event)" aria-label="To" />
-    @if (q() || cls() || type() || from() || to()) { <button class="btn ghost sm" (click)="clear()">Clear</button> }
-    <span class="spacer"></span>
-    <span class="small muted">{{ filtered().length }} of {{ all().length }} · out {{ sums().out | inr }} · in {{ sums().in | inr }}</span>
-  </div>
+  <section class="kpis">
+    <div class="kpi"><span class="label">Transactions</span><span class="value">{{ filtered().length }}</span><span class="meta">of {{ all().length }} recorded</span></div>
+    <div class="kpi"><span class="label">Money out</span><span class="value">{{ sums().out | inr }}</span><span class="meta">purchases, lending, USD transfers</span></div>
+    <div class="kpi"><span class="label">Money in</span><span class="value">{{ sums().in | inr }}</span><span class="meta">sales, repayments, income</span></div>
+    <div class="kpi"><span class="label">Net put to work</span><span class="value">{{ sums().out - sums().in | inr }}</span><span class="meta">for the filters applied</span></div>
+  </section>
 
   <section class="card flush" [class.loading-fade]="loading() && all().length">
+    <div class="card-head filters">
+      <input class="input" style="max-width:240px" placeholder="Search name or notes" [ngModel]="q()" (ngModelChange)="q.set($event)" aria-label="Search" />
+      <select class="input" style="width:auto" [ngModel]="cls()" (ngModelChange)="cls.set($event)" aria-label="Asset class">
+        <option value="">All holdings</option>@for (c of classes; track c[0]) { <option [value]="c[0]">{{ c[1] }}</option> }
+      </select>
+      <select class="input" style="width:auto" [ngModel]="type()" (ngModelChange)="type.set($event)" aria-label="Type">
+        <option value="">All types</option>@for (t of types; track t[0]) { <option [value]="t[0]">{{ t[1] }}</option> }
+      </select>
+      <input class="input" type="date" style="width:auto" [ngModel]="from()" (ngModelChange)="from.set($event)" aria-label="From" />
+      <span class="muted">→</span>
+      <input class="input" type="date" style="width:auto" [ngModel]="to()" (ngModelChange)="to.set($event)" aria-label="To" />
+      @if (q() || cls() || type() || from() || to()) { <button class="btn ghost sm" (click)="clear()">Clear</button> }
+    </div>
+
     <div class="table-wrap">
       <table class="table">
         <thead><tr><th>Date</th><th>Holding</th><th>Type</th><th class="num">Quantity</th><th class="num">Amount</th><th class="hide-sm">Notes</th><th class="hide-sm">Source</th>@if (auth.canWrite()) { <th></th> }</tr></thead>
@@ -33,7 +38,7 @@
             <tr>
               <td class="nowrap">{{ t.date | dt }}</td>
               <td class="name-cell"><a [routerLink]="['/holding', t.instrument_id]">{{ t.instrument_name }}</a><div class="sub">{{ classLabel[t.asset_class!] }}</div></td>
-              <td><span class="badge" [class.good]="['SELL', 'DIVIDEND', 'REPAYMENT', 'MATURITY', 'INTEREST'].includes(t.type)">{{ txnLabel[t.type] }}</span></td>
+              <td><span class="badge" [attr.data-type]="t.type">{{ txnLabel[t.type] }}</span></td>
               <td class="num">{{ t.quantity | qty }}</td>
               <td class="num">{{ t.amount | inr: 2 }}@if (t.amount_fc) { <div class="sub">{{ t.amount_fc | usd }}</div> }</td>
               <td class="hide-sm small muted ellipsis" style="max-width:220px" [title]="t.notes ?? ''">{{ t.notes }}</td>
