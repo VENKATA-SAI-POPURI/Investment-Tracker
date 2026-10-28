@@ -48,7 +48,11 @@
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
 body {
-  background: var(--bg);
+  background:
+    radial-gradient(900px 420px at 88% -120px, rgba(124, 58, 237, .10), transparent 70%),
+    radial-gradient(700px 380px at 30% -160px, rgba(79, 70, 229, .09), transparent 70%),
+    var(--bg);
+  background-attachment: fixed;
   color: var(--text);
   font: 14px/1.5 var(--font);
   font-feature-settings: "cv11", "ss01";
@@ -57,7 +61,7 @@ body {
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 h1, h2, h3, h4 { margin: 0; font-weight: 600; letter-spacing: -0.015em; }
-h1 { font-size: 22px; }
+h1 { font-size: 24px; font-weight: 700; letter-spacing: -0.025em; }
 h2 { font-size: 15px; }
 h3 { font-size: 14px; }
 p { margin: 0; }
@@ -111,6 +115,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .kpi .value { font-size: 22px; font-weight: 650; letter-spacing: -0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kpi .meta { font-size: 12.5px; color: var(--muted); }
 .kpi .chip { position: absolute; top: 16px; right: 16px; }
+.kpi:has(.chip) .label { padding-right: 36px; }
 .kpi.hero { background: var(--hero); border: 0; color: #fff; box-shadow: 0 10px 30px rgba(79, 70, 229, .28); }
 .kpi.hero .label, .kpi.hero .meta { color: rgba(255, 255, 255, .78); }
 .kpi.hero .value { font-size: 30px; }

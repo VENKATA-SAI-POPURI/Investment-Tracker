@@ -2,16 +2,16 @@
   <div class="page-head">
     <div>
       <h1>{{ greeting() }}</h1>
-      @if (p()) { <p class="sub">Your portfolio as of {{ p()!.as_of | dt }}</p> }
+      @if (p()) { <p class="sub">Here's how your money is doing · {{ p()!.as_of | dt }}</p> }
     </div>
   </div>
 
   @if (!p()) {
-    <div class="kpis">@for (i of [1, 2, 3, 4]; track i) { <div class="kpi"><div class="skeleton" style="height:12px;width:50%"></div><div class="skeleton" style="height:26px;margin-top:8px"></div></div> }</div>
+    <div class="banner"><div class="skeleton" style="height:120px;opacity:.25"></div></div>
     <div class="card"><div class="skeleton" style="height:280px"></div></div>
   } @else if (isEmpty()) {
     <div class="card empty">
-      <app-icon name="layers" [size]="30" />
+      <span class="chip indigo" style="width:56px;height:56px;border-radius:16px"><app-icon name="layers" [size]="26" /></span>
       <h3>Add your first investment</h3>
       <p>Record a purchase, or import a CSV or broker tradebook from Activity.</p>
       @if (auth.canWrite()) {
@@ -21,83 +21,104 @@
     </div>
   } @else {
     @let tt = t()!;
-    <section class="kpis">
-      <div class="kpi hero">
-        <span class="label">Net worth</span>
-        <span class="value">{{ tt.value | inr }}</span>
-        <span class="meta">
-          @if (tt.day_change) {
-            <span class="pill"><app-icon [name]="tt.day_change > 0 ? 'arrowUp' : 'arrowDown'" [size]="12" /> {{ tt.day_change | inr: 0 : true }} · {{ tt.day_change_pct | pct: 2 }}</span> today
-          } @else { No change today }
-        </span>
+    <!-- Hero banner -->
+    <section class="banner">
+      <div class="b-main">
+        <span class="b-label">Net worth</span>
+        <span class="b-value">{{ tt.value | inr }}</span>
+        @if (tt.day_change) {
+          <span class="b-pill" [class.down]="tt.day_change < 0">
+            <app-icon [name]="tt.day_change > 0 ? 'arrowUp' : 'arrowDown'" [size]="13" />
+            {{ tt.day_change | inr: 0 : true }} ({{ tt.day_change_pct | pct: 2 }}) today
+          </span>
+        } @else { <span class="b-pill">No change today</span> }
       </div>
-      <div class="kpi">
-        <span class="chip blue"><app-icon name="wallet" [size]="17" /></span>
-        <span class="label">Invested</span>
-        <span class="value">{{ tt.cost | inr }}</span>
-        <span class="meta">cost of what you hold</span>
+      @if (spark(); as sp) {
+        <svg class="b-spark" viewBox="0 0 240 64" preserveAspectRatio="none" aria-hidden="true">
+          <defs><linearGradient id="sparkFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".28" /><stop offset="1" stop-color="#fff" stop-opacity="0" /></linearGradient></defs>
+          <path [attr.d]="sp.area" fill="url(#sparkFill)" />
+          <path [attr.d]="sp.line" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" />
+        </svg>
+      }
+      <div class="b-stats">
+        <div><span>Invested</span><b>{{ tt.cost | inr }}</b><small>cost of what you hold</small></div>
+        <div><span>Total gain</span><b [class.up]="tt.total_gain > 0" [class.down]="tt.total_gain < 0">{{ tt.total_gain | inr: 0 : true }}</b><small>{{ gainPct() | pct }} overall</small></div>
+        <div><span>Annual return</span><b [class.up]="(tt.xirr ?? 0) > 0" [class.down]="(tt.xirr ?? 0) < 0">{{ tt.xirr | pct }}</b><small>XIRR</small></div>
       </div>
-      <div class="kpi">
-        <span class="chip" [class]="tt.total_gain >= 0 ? 'green' : 'red'"><app-icon name="trend" [size]="17" /></span>
-        <span class="label">Total gain</span>
-        <span class="value" [class]="tt.total_gain | sign">{{ tt.total_gain | inr: 0 : true }}</span>
-        <span class="meta">Unrealized {{ tt.unrealized | inrc: true }}</span>
-      </div>
-      <div class="kpi">
-        <span class="chip violet"><app-icon name="chart" [size]="17" /></span>
-        <span class="label">Annual return</span>
-        <span class="value" [class]="tt.xirr | sign">{{ tt.xirr | pct }}</span>
-        <span class="meta">XIRR, all holdings</span>
-      </div>
+    </section>
+
+    <!-- Asset classes -->
+    <section class="assets">
+      @for (a of assets(); track a.segment) {
+        <button class="asset" (click)="go(a.route)" [style.--c]="a.color">
+          <span class="a-top">
+            <span class="a-ic" [style.background]="tint(a.color)" [style.color]="a.color"><app-icon [name]="a.icon" [size]="18" /></span>
+            <span class="a-share">{{ a.pct | pct: 0 : false }}</span>
+          </span>
+          <span class="a-name">{{ a.label }}</span>
+          <span class="a-val">{{ a.value | inrc }}</span>
+          <span class="a-ret" [class]="(a.unrealized + a.realized + a.income) | sign">
+            @if (a.unrealized_pct !== null && a.segment !== 'P2P' && a.segment !== 'Fixed Deposits') { {{ a.unrealized_pct | pct }} } @else { {{ a.realized + a.income | inrc: true }} earned }
+          </span>
+        </button>
+      }
     </section>
 
     <div class="main-grid">
       <section class="card">
         <div class="card-head">
-          <h2>Value over time</h2>
+          <div><h2>Value over time</h2>
+            @if (perf(); as pf) { <span class="hint">{{ pf.metrics.gain >= 0 ? 'Up' : 'Down' }} <b [class]="pf.metrics.gain | sign">{{ pf.metrics.gain | inr: 0 : true }}</b> in this period</span> }
+          </div>
           <div class="seg">@for (r of ranges; track r) { <button [class.on]="range() === r" (click)="range.set(r)">{{ r }}</button> }</div>
         </div>
         @if (perf(); as pf) {
           <div [class.loading-fade]="perfLoading()">
             @if (pf.series.length > 1) {
-              <app-line-chart [labels]="labels()" [series]="series()" [height]="260" [yFormat]="inrc" [tipFormat]="inrFull" ariaLabel="Portfolio value and money invested over time" />
-              <div class="row small" style="margin-top:12px;justify-content:space-between">
-                <span class="muted">Gain in period <span [class]="pf.metrics.gain | sign">{{ pf.metrics.gain | inr: 0 : true }}</span></span>
-                <a routerLink="/analytics">Performance details →</a>
-              </div>
+              <app-line-chart [labels]="labels()" [series]="series()" [height]="300" [yFormat]="inrc" [tipFormat]="inrFull" ariaLabel="Portfolio value and money invested over time" />
             } @else { <p class="muted">Not enough history yet.</p> }
           </div>
         } @else if (perfError()) {
           <p class="muted small">History unavailable right now. {{ perfError() }}</p>
-        } @else { <div class="skeleton" style="height:260px"></div> }
+        } @else { <div class="skeleton" style="height:300px"></div> }
       </section>
 
       <section class="card">
-        <div class="card-head"><h2>Allocation</h2><a routerLink="/insights" fragment="rebalance" class="small">Rebalance</a></div>
-        @for (a of allocation(); track a.segment) {
-          <div class="alloc-row" (click)="open(a.segment)" role="link" tabindex="0" (keydown.enter)="open(a.segment)">
-            <span class="name"><i class="swatch" [style.background]="a.color"></i>{{ a.segment }}</span>
-            <span class="pct">{{ a.pct | pct: 1 : false }}@if (a.target !== null) { <small>/ {{ a.target }}%</small> }</span>
-            <div class="meter" [title]="a.target !== null ? 'Target ' + a.target + '%' : ''">
-              <span [style.width.%]="a.pct" [style.background]="a.color"></span>
-              @if (a.target !== null) { <i [style.left.%]="a.target"></i> }
+        <div class="card-head"><h2>Allocation</h2><a routerLink="/insights" fragment="rebalance" class="small">Rebalance →</a></div>
+        <div class="donut-wrap">
+          <app-donut-chart [slices]="slices()" [size]="168" [centerTop]="inrc(tt.value)" centerBottom="total" [valueFormat]="inrFull" ariaLabel="Allocation by asset class" />
+        </div>
+        <div class="legend-list">
+          @for (a of assets(); track a.segment) {
+            <div class="l-row" (click)="go(a.route)">
+              <i class="swatch" [style.background]="a.color"></i>
+              <span class="l-name">{{ a.label }}</span>
+              <span class="l-pct">{{ a.pct | pct: 1 : false }}</span>
+              @if (a.target !== null) {
+                <span class="l-tgt" [class.over]="(a.drift ?? 0) >= 2.5" [class.under]="(a.drift ?? 0) <= -2.5" [title]="'Target ' + a.target + '%'">
+                  {{ (a.drift ?? 0) > 0 ? '+' : '' }}{{ (a.drift ?? 0).toFixed(1) }}
+                </span>
+              }
             </div>
-          </div>
-        }
-        <p class="small muted" style="margin-top:12px">Bar = current share · tick = your target</p>
+          }
+        </div>
+        @if (hasTargets()) { <p class="small muted" style="margin-top:10px">Right column: points above (+) or below (−) your target.</p> }
       </section>
     </div>
 
     @if (insights().length) {
       <section class="card">
-        <div class="card-head" style="margin-bottom:4px"><h2>Needs attention</h2><a routerLink="/insights" class="small">All insights</a></div>
-        @for (i of insights(); track i.id) {
-          <a class="alert-row" [routerLink]="link(i)" [fragment]="frag(i)">
-            <span class="ic" [class]="i.severity"><app-icon [name]="sevIcon[i.severity]" [size]="17" /></span>
-            <span><div class="t">{{ i.title }}</div><div class="d">{{ i.detail }}</div></span>
-            <span class="go"><app-icon name="chevronRight" [size]="16" /></span>
-          </a>
-        }
+        <div class="card-head" style="margin-bottom:4px"><h2>Needs attention</h2><a routerLink="/insights" class="small">All insights →</a></div>
+        <div class="alerts">
+          @for (i of insights(); track i.id) {
+            <a class="alert" [routerLink]="link(i)" [fragment]="frag(i)" [class]="i.severity">
+              <span class="ic"><app-icon [name]="sevIcon[i.severity]" [size]="17" /></span>
+              <span class="t">{{ i.title }}</span>
+              <span class="d">{{ i.detail }}</span>
+              <span class="go">Review <app-icon name="chevronRight" [size]="14" /></span>
+            </a>
+          }
+        </div>
       </section>
     }
   }

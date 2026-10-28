@@ -14,12 +14,12 @@
 
   @if (r(); as r) {
     <section class="kpis" [class.loading-fade]="loading()">
-      <div class="kpi"><span class="label">Capital gains</span><span class="value" [class]="r.total_realized | sign">{{ r.total_realized | inr: 0 : true }}</span>
+      <div class="kpi"><span class="chip green sm"><app-icon name="trend" [size]="15" /></span><span class="label">Capital gains</span><span class="value" [class]="r.total_realized | sign">{{ r.total_realized | inr: 0 : true }}</span>
         <span class="meta">short {{ gainsByTerm()['STCG'] | inrc: true }} · long {{ gainsByTerm()['LTCG'] | inrc: true }}</span></div>
-      <div class="kpi"><span class="label">Estimated tax</span><span class="value">{{ r.estimate.total | inr }}</span>
+      <div class="kpi"><span class="chip indigo sm"><app-icon name="receipt" [size]="15" /></span><span class="label">Estimated tax</span><span class="value">{{ r.estimate.total | inr }}</span>
         <span class="meta">at {{ r.slab_rate }}% slab · <a routerLink="/settings">change</a></span></div>
-      <div class="kpi"><span class="label">Tax-free LTCG left</span><span class="value">{{ r.equity_exemption.remaining | inr }}</span><span class="meta">of ₹1.25L this year</span></div>
-      <div class="kpi"><span class="label">Dividends & interest</span><span class="value">{{ r.income_total | inr }}</span><span class="meta">taxed at your slab</span></div>
+      <div class="kpi"><span class="chip violet sm"><app-icon name="shield" [size]="15" /></span><span class="label">Tax-free LTCG left</span><span class="value">{{ r.equity_exemption.remaining | inr }}</span><span class="meta">of ₹1.25L this year</span></div>
+      <div class="kpi"><span class="chip amber sm"><app-icon name="coins" [size]="15" /></span><span class="label">Dividends & interest</span><span class="value">{{ r.income_total | inr }}</span><span class="meta">taxed at your slab</span></div>
     </section>
 
     <div class="tabs">
@@ -34,7 +34,7 @@
           @let o = r.opportunities;
           <section class="grid grid-3">
             <div class="card">
-              <div class="section-title">Book gains tax-free</div>
+              <div class="row" style="gap:10px"><span class="chip green sm"><app-icon name="sparkle" [size]="15" /></span><span class="section-title">Book gains tax-free</span></div>
               @if (o.ltcg_harvest.suggested_booking > 0) {
                 <div class="hero-value pos" style="font-size:26px;margin:8px 0 4px">{{ o.ltcg_harvest.suggested_booking | inr }}</div>
                 <p class="small text-2">of long-term equity gains can be sold and bought back before 31 March without tax, saving about {{ o.ltcg_harvest.future_tax_saved | inr }} later.</p>
@@ -46,7 +46,7 @@
               } @else { <p class="small muted" style="margin-top:8px">Nothing to harvest right now.</p> }
             </div>
             <div class="card">
-              <div class="section-title">Offset gains with losses</div>
+              <div class="row" style="gap:10px"><span class="chip indigo sm"><app-icon name="scale" [size]="15" /></span><span class="section-title">Offset gains with losses</span></div>
               @if (o.loss_harvest.length) {
                 <div class="hero-value" style="font-size:26px;margin:8px 0 4px">{{ o.loss_harvest_offsettable | inr }}</div>
                 <p class="small text-2">of this year's gains can be cancelled by selling holdings that are below cost ({{ o.loss_harvest_total | inr }} of losses available).</p>
@@ -62,7 +62,7 @@
               } @else { <p class="small muted" style="margin-top:8px">No holdings are below cost.</p> }
             </div>
             <div class="card">
-              <div class="section-title">Wait before selling</div>
+              <div class="row" style="gap:10px"><span class="chip amber sm"><app-icon name="calendar" [size]="15" /></span><span class="section-title">Wait before selling</span></div>
               @if (o.upcoming_long_term.length) {
                 @for (l of o.upcoming_long_term.slice(0, 4); track l.instrument_id + l.date) {
                   <div class="row" style="justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">

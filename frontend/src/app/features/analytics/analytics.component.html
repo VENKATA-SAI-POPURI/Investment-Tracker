@@ -13,11 +13,11 @@
 
   @if (m(); as m) {
     <section class="kpis" [class.loading-fade]="loading()">
-      <div class="kpi"><span class="label">Annual return (XIRR)</span><span class="value" [class]="m.xirr | sign">{{ m.xirr | pct }}</span><span class="meta">since {{ m.start | dt }}</span></div>
-      <div class="kpi"><span class="label">Gain in period</span><span class="value" [class]="m.gain | sign">{{ m.gain | inr: 0 : true }}</span><span class="meta">after {{ m.net_flows | inrc }} added</span></div>
-      <div class="kpi"><span class="label">vs {{ activeBench()?.label || 'index' }}</span>
+      <div class="kpi"><span class="chip violet sm"><app-icon name="chart" [size]="15" /></span><span class="label">Annual return (XIRR)</span><span class="value" [class]="m.xirr | sign">{{ m.xirr | pct }}</span><span class="meta">since {{ m.start | dt }}</span></div>
+      <div class="kpi"><span class="chip green sm"><app-icon name="trend" [size]="15" /></span><span class="label">Gain in period</span><span class="value" [class]="m.gain | sign">{{ m.gain | inr: 0 : true }}</span><span class="meta">after {{ m.net_flows | inrc }} added</span></div>
+      <div class="kpi"><span class="chip indigo sm"><app-icon name="scale" [size]="15" /></span><span class="label">vs {{ activeBench()?.label || 'index' }}</span>
         <span class="value" [class]="activeBench()?.excess_xirr | sign">{{ activeBench()?.excess_xirr | pct }}</span><span class="meta">a year, same cash flows</span></div>
-      <div class="kpi"><span class="label">Worst fall</span><span class="value">{{ m.max_drawdown | pct }}</span><span class="meta">now {{ m.current_drawdown | pct }} from peak</span></div>
+      <div class="kpi"><span class="chip amber sm"><app-icon name="arrowDown" [size]="15" /></span><span class="label">Worst fall</span><span class="value">{{ m.max_drawdown | pct }}</span><span class="meta">now {{ m.current_drawdown | pct }} from peak</span></div>
     </section>
 
     <div class="tabs">
@@ -82,10 +82,10 @@
         }
         @case ('risk') {
           <section class="kpis">
-            <div class="kpi"><span class="label">Volatility</span><span class="value">{{ m.volatility | pct: 1 : false }}</span><span class="meta">annualised</span></div>
-            <div class="kpi"><span class="label">Sharpe ratio</span><span class="value">{{ m.sharpe ?? '—' }}</span><span class="meta">vs 6.5% risk-free</span></div>
-            <div class="kpi"><span class="label">Top 5 holdings</span><span class="value">{{ top5() | pct: 0 : false }}</span><span class="meta">of the portfolio</span></div>
-            <div class="kpi"><span class="label">In US dollars</span><span class="value">{{ usdShare() | pct: 0 : false }}</span><span class="meta">currency exposure</span></div>
+            <div class="kpi"><span class="chip blue sm"><app-icon name="chart" [size]="15" /></span><span class="label">Volatility</span><span class="value">{{ m.volatility | pct: 1 : false }}</span><span class="meta">annualised</span></div>
+            <div class="kpi"><span class="chip indigo sm"><app-icon name="scale" [size]="15" /></span><span class="label">Sharpe ratio</span><span class="value">{{ m.sharpe ?? '—' }}</span><span class="meta">vs 6.5% risk-free</span></div>
+            <div class="kpi"><span class="chip violet sm"><app-icon name="pie" [size]="15" /></span><span class="label">Top 5 holdings</span><span class="value">{{ top5() | pct: 0 : false }}</span><span class="meta">of the portfolio</span></div>
+            <div class="kpi"><span class="chip amber sm"><app-icon name="globe" [size]="15" /></span><span class="label">In US dollars</span><span class="value">{{ usdShare() | pct: 0 : false }}</span><span class="meta">currency exposure</span></div>
           </section>
           <section class="grid grid-3">
             <div class="card">

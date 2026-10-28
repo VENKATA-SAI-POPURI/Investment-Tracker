@@ -8,44 +8,27 @@ import { errorMessage } from '../../core/http';
 import { Insight, Performance, SEGMENT_COLOR } from '../../core/models';
 import { StoreService } from '../../core/store.service';
 import { TxnDialogService } from '../../core/txn-dialog.service';
+import { DonutChartComponent, Slice } from '../../shared/charts/donut-chart.component';
 import { LineChartComponent, LineSeries } from '../../shared/charts/line-chart.component';
 import { IconComponent } from '../../shared/icon.component';
 
-const HOLDING_ROUTE: Record<string, string> = {
-  'Equity (India)': '/holdings/equity', 'Equity (USA)': '/holdings/equity', 'Mutual Funds': '/holdings/mutual_fund',
-  'Commodity': '/holdings/commodity', 'P2P': '/p2p', 'Fixed Deposits': '/fixed-deposits',
+const SEGMENT_META: Record<string, { label: string; icon: string; route: string }> = {
+  'Equity (India)': { label: 'Indian stocks', icon: 'trend', route: '/holdings/equity' },
+  'Equity (USA)': { label: 'US stocks', icon: 'globe', route: '/holdings/equity' },
+  'Mutual Funds': { label: 'Mutual funds', icon: 'layers', route: '/holdings/mutual_fund' },
+  'Commodity': { label: 'Gold & silver', icon: 'coins', route: '/holdings/commodity' },
+  'P2P': { label: 'P2P lending', icon: 'users', route: '/p2p' },
+  'Fixed Deposits': { label: 'Fixed deposits', icon: 'bank', route: '/fixed-deposits' },
 };
-const SEV_ICON: Record<string, string> = { critical: 'alert', warning: 'alert', info: 'info', positive: 'checkCircle' };
+const SEV_ICON: Record<string, string> = { critical: 'alert', warning: 'alert', info: 'bulb', positive: 'checkCircle' };
 
 @Component({
   selector: 'app-overview',
   standalone: true,
-  imports: [RouterLink, IconComponent, LineChartComponent, ...FORMAT_PIPES],
+  imports: [RouterLink, IconComponent, LineChartComponent, DonutChartComponent, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './overview.component.html',
-  styles: [`
-    .main-grid { display: grid; grid-template-columns: minmax(0, 1.75fr) minmax(0, 1fr); gap: 20px; }
-    @media (max-width: 1000px) { .main-grid { grid-template-columns: minmax(0, 1fr); } }
-    .alloc-row { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; padding: 11px 0; border-bottom: 1px solid var(--border); cursor: pointer; }
-    .alloc-row:last-child { border-bottom: 0; }
-    .alloc-row:hover .name { text-decoration: underline; }
-    .alloc-row .name { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
-    .alloc-row .pct { font-size: 13.5px; font-variant-numeric: tabular-nums; text-align: right; }
-    .alloc-row .pct small { color: var(--muted); font-size: 12px; margin-left: 4px; }
-    .meter { grid-column: span 2; position: relative; height: 8px; background: #eef1f8; border-radius: 999px; }
-    .meter > span { position: absolute; left: 0; top: 0; height: 8px; border-radius: 999px; }
-    .meter > i { position: absolute; top: -3px; width: 3px; height: 14px; background: var(--text); border-radius: 2px; box-shadow: 0 0 0 2px var(--surface); }
-    .alert-row { display: flex; gap: 14px; align-items: center; padding: 13px 0; border-bottom: 1px solid var(--border); color: var(--text); text-decoration: none; }
-    .alert-row:last-child { border-bottom: 0; }
-    .alert-row:hover { text-decoration: none; }
-    .alert-row:hover .t { text-decoration: underline; }
-    .alert-row .ic { flex: none; width: 32px; height: 32px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; }
-    .alert-row .ic.warning, .alert-row .ic.critical { background: var(--warn-soft); color: var(--warn); }
-    .alert-row .ic.info { background: var(--accent-soft); color: var(--accent); }
-    .alert-row .t { font-weight: 500; font-size: 13.5px; }
-    .alert-row .d { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
-    .alert-row .go { margin-left: auto; color: var(--muted); flex: none; }
-  `],
+  styleUrl: './overview.component.scss',
 })
 export class OverviewComponent {
   store = inject(StoreService);
@@ -67,21 +50,41 @@ export class OverviewComponent {
   p = computed(() => this.store.portfolio());
   t = computed(() => this.p()?.totals);
   isEmpty = computed(() => !!this.p() && this.p()!.positions.length === 0);
-  allocation = computed(() => (this.p()?.segments ?? []).filter(s => s.value > 0 || s.target)
-    .map(s => ({ ...s, color: SEGMENT_COLOR[s.segment] ?? 'var(--s7)' })));
   greeting = computed(() => {
     const h = new Date().getHours();
     const name = (this.auth.viewAs()?.name || this.auth.user()?.name || '').split(' ')[0];
     return `${h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'}${name ? ', ' + name : ''}`;
   });
+  gainPct = computed(() => {
+    const t = this.t();
+    return t && t.cost ? (t.total_gain / t.cost) * 100 : null;
+  });
+
+  /** One card per asset class that holds money. */
+  assets = computed(() => (this.p()?.segments ?? []).filter(s => s.value > 0).map(s => ({
+    ...s, ...(SEGMENT_META[s.segment] ?? { label: s.segment, icon: 'layers', route: '/' }),
+    color: SEGMENT_COLOR[s.segment] ?? 'var(--s7)',
+  })));
+  slices = computed<Slice[]>(() => this.assets().map(a => ({ label: a.label, value: a.value, color: a.color })));
+  hasTargets = computed(() => this.assets().some(a => a.target !== null));
 
   labels = computed(() => this.perf()?.series.map(p => p.date) ?? []);
   series = computed<LineSeries[]>(() => {
     const s = this.perf()?.series ?? [];
     return [
-      { key: 'value', label: 'Value', color: 'var(--s1)', values: s.map(p => p.value), area: true },
-      { key: 'net', label: 'Invested', color: 'var(--muted)', values: s.map(p => p.net_invested), muted: true },
+      { key: 'value', label: 'Portfolio value', color: 'var(--s1)', values: s.map(p => p.value), area: true },
+      { key: 'net', label: 'Money invested', color: 'var(--muted)', values: s.map(p => p.net_invested), muted: true },
     ];
+  });
+
+  /** White sparkline for the hero banner (last points of the loaded range). */
+  spark = computed(() => {
+    const vals = (this.perf()?.series ?? []).map(p => p.value).slice(-90);
+    if (vals.length < 2) return null;
+    const w = 240, h = 64, lo = Math.min(...vals), hi = Math.max(...vals), span = hi - lo || 1;
+    const pts = vals.map((v, i) => [(i / (vals.length - 1)) * w, h - 4 - ((v - lo) / span) * (h - 8)] as const);
+    const line = pts.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`).join('');
+    return { line, area: `${line}L${w},${h}L0,${h}Z`, end: pts[pts.length - 1] };
   });
 
   constructor() {
@@ -122,7 +125,8 @@ export class OverviewComponent {
     } catch { /* optional on the home screen */ }
   }
 
-  open(seg: string) { this.router.navigate([HOLDING_ROUTE[seg] ?? '/']); }
+  go(route: string) { this.router.navigate([route]); }
+  tint(color: string, pct = 14) { return `color-mix(in srgb, ${color} ${pct}%, white)`; }
   link(i: Insight) { return (i.link ?? '/insights').split('#')[0]; }
   frag(i: Insight) { return (i.link ?? '').split('#')[1] || undefined; }
 }

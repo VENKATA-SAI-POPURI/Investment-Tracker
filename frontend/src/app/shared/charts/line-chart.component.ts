@@ -13,7 +13,7 @@ export interface LineSeries { key: string; label: string; color: string; values:
       <div class="legend" style="margin-bottom:10px">
         @for (s of series(); track s.key) { <span><i class="line-key" [style.background]="s.color"></i>{{ s.label }}</span> }
         <span class="spacer"></span>
-        <button class="btn ghost sm" (click)="table.set(!table())">{{ table() ? 'Chart' : 'Table' }}</button>
+        <button class="btn ghost sm muted" (click)="table.set(!table())">{{ table() ? 'Show chart' : 'View as table' }}</button>
       </div>
     }
     @if (!table()) {
@@ -27,8 +27,13 @@ export interface LineSeries { key: string; label: string; color: string; values:
           <text [attr.x]="x(i)" [attr.y]="height() - 6" [attr.text-anchor]="i === 0 ? 'start' : i === labels().length - 1 ? 'end' : 'middle'" class="tick">{{ xLabel(i) }}</text>
         }
         @for (s of series(); track s.key) {
-          @if (s.area) { <path [attr.d]="areaPath(s)" [attr.fill]="s.color" opacity="0.1" /> }
-          <path [attr.d]="linePath(s)" fill="none" [attr.stroke]="s.color" [attr.stroke-width]="s.muted ? 1.5 : 2"
+          @if (s.area) {
+            <defs><linearGradient [attr.id]="uid + s.key" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" [style.stop-color]="s.color" stop-opacity="0.24" /><stop offset="1" [style.stop-color]="s.color" stop-opacity="0" />
+            </linearGradient></defs>
+            <path [attr.d]="areaPath(s)" [attr.fill]="'url(#' + uid + s.key + ')'" />
+          }
+          <path [attr.d]="linePath(s)" fill="none" [attr.stroke]="s.color" [attr.stroke-width]="s.muted ? 1.5 : 2.25"
                 stroke-linejoin="round" stroke-linecap="round" [attr.opacity]="s.muted ? 0.8 : 1" />
         }
         @if (endLabel(); as e) {
@@ -66,6 +71,7 @@ export interface LineSeries { key: string; label: string; color: string; values:
   styles: [`:host{display:block;position:relative} .tick{font-size:11px;fill:var(--muted);font-variant-numeric:tabular-nums}`],
 })
 export class LineChartComponent {
+  readonly uid = 'lc' + Math.random().toString(36).slice(2, 8);
   labels = input.required<string[]>();
   series = input.required<LineSeries[]>();
   height = input(260);

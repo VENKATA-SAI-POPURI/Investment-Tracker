@@ -11,10 +11,10 @@
   </div>
 
   <section class="kpis">
-    <div class="kpi"><span class="label">Value</span><span class="value">{{ totals().value | inr }}</span><span class="meta">{{ totals().weight | pct: 1 : false }} of portfolio</span></div>
-    <div class="kpi"><span class="label">Unrealized</span><span class="value" [class]="totals().unrealized | sign">{{ totals().unrealized | inr: 0 : true }}</span><span class="meta">{{ totals().unrealizedPct | pct }} on {{ totals().cost | inrc }}</span></div>
-    <div class="kpi"><span class="label">Today</span><span class="value" [class]="totals().day | sign">{{ totals().day ? (totals().day | inr: 0 : true) : '—' }}</span><span class="meta">price change</span></div>
-    <div class="kpi"><span class="label">Realized + dividends</span><span class="value" [class]="totals().realized | sign">{{ totals().realized | inr: 0 : true }}</span><span class="meta">all time</span></div>
+    <div class="kpi"><span class="chip blue sm"><app-icon name="wallet" [size]="15" /></span><span class="label">Value</span><span class="value">{{ totals().value | inr }}</span><span class="meta">{{ totals().weight | pct: 1 : false }} of portfolio</span></div>
+    <div class="kpi"><span class="chip green sm"><app-icon name="trend" [size]="15" /></span><span class="label">Unrealized</span><span class="value" [class]="totals().unrealized | sign">{{ totals().unrealized | inr: 0 : true }}</span><span class="meta">{{ totals().unrealizedPct | pct }} on {{ totals().cost | inrc }}</span></div>
+    <div class="kpi"><span class="chip amber sm"><app-icon name="calendar" [size]="15" /></span><span class="label">Today</span><span class="value" [class]="totals().day | sign">{{ totals().day ? (totals().day | inr: 0 : true) : '—' }}</span><span class="meta">price change</span></div>
+    <div class="kpi"><span class="chip violet sm"><app-icon name="checkCircle" [size]="15" /></span><span class="label">Realized + dividends</span><span class="value" [class]="totals().realized | sign">{{ totals().realized | inr: 0 : true }}</span><span class="meta">all time</span></div>
   </section>
 
   <section class="card flush">

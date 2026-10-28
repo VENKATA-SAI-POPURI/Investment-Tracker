@@ -6,7 +6,7 @@ import { IconComponent } from '../../shared/icon.component';
 const SEV = {
   critical: { icon: 'alert', label: 'Needs attention', tone: 'warn' },
   warning: { icon: 'alert', label: 'Needs attention', tone: 'warn' },
-  info: { icon: 'info', label: 'Suggestion', tone: 'info' },
+  info: { icon: 'bulb', label: 'Suggestion', tone: 'info' },
   positive: { icon: 'checkCircle', label: 'Going well', tone: 'good' },
 };
 
@@ -32,12 +32,12 @@ const SEV = {
       </div>
     </article>`,
   styles: [`
-    .ins { display: flex; gap: 14px; align-items: flex-start; padding: 14px 0; border-bottom: 1px solid var(--border); }
+    .ins { display: flex; gap: 14px; align-items: center; padding: 14px 0; border-bottom: 1px solid var(--border); }
     :host(:last-child) .ins { border-bottom: 0; }
-    .ic { flex: none; margin-top: 1px; }
-    .ic.warn { color: var(--warn); }
-    .ic.info { color: var(--accent); }
-    .ic.good { color: var(--pos); }
+    .ic { flex: none; width: 36px; height: 36px; border-radius: 11px; display: inline-flex; align-items: center; justify-content: center; }
+    .ic.warn { background: #fff4e0; color: #d97706; }
+    .ic.info { background: #eef0ff; color: #4f46e5; }
+    .ic.good { background: #e7f8f1; color: #059669; }
     .body { flex: 1; min-width: 0; }
     .t { font-weight: 500; font-size: 13.5px; }
     .d { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
