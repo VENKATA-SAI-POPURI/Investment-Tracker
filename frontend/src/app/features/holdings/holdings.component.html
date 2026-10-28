@@ -44,8 +44,13 @@
           @for (p of rows(); track p.id) {
             <tr class="clickable" (click)="openRow(p)" [class.muted]="!p.is_open">
               <td class="name-cell">
-                <div class="ellipsis" style="font-weight:500">{{ p.name }}</div>
-                <div class="sub">{{ p.quantity | qty }} units · avg {{ p.avg_cost | inr: 2 }}@if (!p.has_price && p.is_open) { · <span style="color:var(--warn)">no price</span> }</div>
+                <div class="row" style="gap:12px">
+                  <span class="avatar-letter" [style.background]="tint(p.segment)" [style.color]="color(p.segment)">{{ p.name.slice(0, 1) }}</span>
+                  <div style="min-width:0">
+                    <div class="ellipsis" style="font-weight:500">{{ p.name }}</div>
+                    <div class="sub">{{ p.quantity | qty }} units · avg {{ p.avg_cost | inr: 2 }}@if (!p.has_price && p.is_open) { · <span style="color:var(--warn)">no price</span> }</div>
+                  </div>
+                </div>
               </td>
               <td class="num">{{ p.value | inr }}<div class="sub">@if (p.has_price) { {{ p.currency === 'USD' ? (p.price | usd) : (p.price | inr: 2) }} }</div></td>
               <td class="num" [class]="p.unrealized | sign">{{ p.has_price ? (p.unrealized | inr: 0 : true) : '—' }}<div class="sub">{{ p.unrealized_pct | pct }}</div></td>

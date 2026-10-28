@@ -35,13 +35,14 @@ const CLIENT_ID = '264259769121-grmgud6svdqkbi2o58rsoqmjg6f04cka.apps.googleuser
       </div>
     </div>`,
   styles: [`
-    .wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
-    .panel { width: 100%; max-width: 420px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow); padding: 32px 28px; display: flex; flex-direction: column; gap: 14px; align-items: center; text-align: center; }
-    .logo { display: inline-flex; width: 48px; height: 48px; border-radius: 12px; background: var(--accent); color: #fff; align-items: center; justify-content: center; }
+    .wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px 16px; background: radial-gradient(1200px 600px at 10% 0%, #6366f1 0%, transparent 60%), radial-gradient(900px 600px at 100% 100%, #7c3aed 0%, transparent 55%), #1e1b4b; }
+    .panel { width: 100%; max-width: 420px; background: var(--surface); border-radius: 20px; box-shadow: 0 30px 80px rgba(15, 23, 42, .45); padding: 36px 30px; display: flex; flex-direction: column; gap: 14px; align-items: center; text-align: center; }
+    .logo { display: inline-flex; width: 52px; height: 52px; border-radius: 14px; background: var(--hero); box-shadow: 0 10px 24px rgba(79, 70, 229, .35); color: #fff; align-items: center; justify-content: center; }
     .gbtn { min-height: 44px; display: flex; justify-content: center; }
     .notice { text-align: left; width: 100%; }
     .points { list-style: none; padding: 14px 0 0; margin: 0; border-top: 1px solid var(--border); width: 100%; display: grid; gap: 8px; text-align: left; font-size: 13px; color: var(--text-2); }
     .points li { display: flex; gap: 8px; align-items: center; }
+    .points app-icon { color: var(--primary); }
   `],
 })
 export class LoginComponent implements OnInit {

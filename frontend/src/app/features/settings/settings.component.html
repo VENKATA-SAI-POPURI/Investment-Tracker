@@ -41,13 +41,6 @@
       <div class="card">
         <div class="card-head"><h2>Preferences</h2></div>
         <div class="form">
-          <div class="field"><label>Theme</label>
-            <div class="seg">
-              <button [class.on]="theme.mode() === 'system'" (click)="theme.set('system')">System</button>
-              <button [class.on]="theme.mode() === 'light'" (click)="theme.set('light')">Light</button>
-              <button [class.on]="theme.mode() === 'dark'" (click)="theme.set('dark')">Dark</button>
-            </div>
-          </div>
           <label class="check"><input type="checkbox" [(ngModel)]="autoFlows" (ngModelChange)="saveAuto()" [disabled]="!auth.canWrite()" />
             Record capital flows automatically for mutual funds, FDs, P2P, USD transfers and dividends</label>
         </div>

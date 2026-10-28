@@ -7,7 +7,6 @@ import { FORMAT_PIPES, relTime } from '../../core/format';
 import { errorMessage } from '../../core/http';
 import { AllowlistUser, CLASS_LABEL, Position, Role, SEGMENTS, SEGMENT_COLOR } from '../../core/models';
 import { StoreService } from '../../core/store.service';
-import { ThemeService } from '../../core/theme.service';
 import { ToastService } from '../../core/toast.service';
 import { IconComponent } from '../../shared/icon.component';
 import { InstrumentEditComponent } from '../../shared/instrument-edit.component';
@@ -23,7 +22,6 @@ import { ConfirmService } from '../../shared/ui';
 export class SettingsComponent {
   store = inject(StoreService);
   auth = inject(AuthService);
-  theme = inject(ThemeService);
   private api = inject(ApiService);
   private toast = inject(ToastService);
   private confirm = inject(ConfirmService);

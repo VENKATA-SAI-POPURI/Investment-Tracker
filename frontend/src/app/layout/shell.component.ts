@@ -5,7 +5,6 @@ import { filter, map, startWith } from 'rxjs';
 import { AuthService } from '../core/auth.service';
 import { relTime } from '../core/format';
 import { StoreService } from '../core/store.service';
-import { ThemeService } from '../core/theme.service';
 import { TxnDialogService } from '../core/txn-dialog.service';
 import { IconComponent } from '../shared/icon.component';
 import { TxnFormComponent } from '../shared/txn-form.component';
@@ -34,7 +33,6 @@ export const NAV: NavItem[] = [
 export class ShellComponent {
   auth = inject(AuthService);
   store = inject(StoreService);
-  theme = inject(ThemeService);
   dialog = inject(TxnDialogService);
   private router = inject(Router);
 
@@ -54,7 +52,6 @@ export class ShellComponent {
   };
   title = computed(() => this.nav.find(n => this.active(n))?.label ?? '');
   pricesAge = computed(() => relTime(this.store.portfolio()?.prices.last_refresh));
-  themeIcon = computed(() => ({ system: 'monitor', light: 'sun', dark: 'moon' })[this.theme.mode()]);
   initials = computed(() => (this.auth.user()?.name || this.auth.user()?.email || '?').slice(0, 1).toUpperCase());
 
   constructor() {

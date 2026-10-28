@@ -32,16 +32,16 @@ const SEV_ICON: Record<string, string> = { critical: 'alert', warning: 'alert', 
     .alloc-row .name { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
     .alloc-row .pct { font-size: 13.5px; font-variant-numeric: tabular-nums; text-align: right; }
     .alloc-row .pct small { color: var(--muted); font-size: 12px; margin-left: 4px; }
-    .meter { grid-column: span 2; position: relative; height: 4px; background: var(--surface-hover); border-radius: 2px; }
-    .meter > span { position: absolute; left: 0; top: 0; height: 4px; border-radius: 2px; }
-    .meter > i { position: absolute; top: -3px; width: 2px; height: 10px; background: var(--text); border-radius: 1px; }
-    .alert-row { display: flex; gap: 12px; align-items: flex-start; padding: 13px 0; border-bottom: 1px solid var(--border); color: var(--text); text-decoration: none; }
+    .meter { grid-column: span 2; position: relative; height: 8px; background: #eef1f8; border-radius: 999px; }
+    .meter > span { position: absolute; left: 0; top: 0; height: 8px; border-radius: 999px; }
+    .meter > i { position: absolute; top: -3px; width: 3px; height: 14px; background: var(--text); border-radius: 2px; box-shadow: 0 0 0 2px var(--surface); }
+    .alert-row { display: flex; gap: 14px; align-items: center; padding: 13px 0; border-bottom: 1px solid var(--border); color: var(--text); text-decoration: none; }
     .alert-row:last-child { border-bottom: 0; }
     .alert-row:hover { text-decoration: none; }
     .alert-row:hover .t { text-decoration: underline; }
-    .alert-row .ic { flex: none; margin-top: 1px; }
-    .alert-row .ic.warning, .alert-row .ic.critical { color: var(--warn); }
-    .alert-row .ic.info { color: var(--accent); }
+    .alert-row .ic { flex: none; width: 32px; height: 32px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; }
+    .alert-row .ic.warning, .alert-row .ic.critical { background: var(--warn-soft); color: var(--warn); }
+    .alert-row .ic.info { background: var(--accent-soft); color: var(--accent); }
     .alert-row .t { font-weight: 500; font-size: 13.5px; }
     .alert-row .d { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
     .alert-row .go { margin-left: auto; color: var(--muted); flex: none; }

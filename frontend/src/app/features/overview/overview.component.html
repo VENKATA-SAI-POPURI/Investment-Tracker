@@ -25,21 +25,26 @@
       <div class="kpi hero">
         <span class="label">Net worth</span>
         <span class="value">{{ tt.value | inr }}</span>
-        <span class="meta" [class]="tt.day_change | sign">
-          @if (tt.day_change) { {{ tt.day_change | inr: 0 : true }} ({{ tt.day_change_pct | pct: 2 }}) today } @else { No change today }
+        <span class="meta">
+          @if (tt.day_change) {
+            <span class="pill"><app-icon [name]="tt.day_change > 0 ? 'arrowUp' : 'arrowDown'" [size]="12" /> {{ tt.day_change | inr: 0 : true }} · {{ tt.day_change_pct | pct: 2 }}</span> today
+          } @else { No change today }
         </span>
       </div>
       <div class="kpi">
+        <span class="chip blue"><app-icon name="wallet" [size]="17" /></span>
         <span class="label">Invested</span>
         <span class="value">{{ tt.cost | inr }}</span>
         <span class="meta">cost of what you hold</span>
       </div>
       <div class="kpi">
+        <span class="chip" [class]="tt.total_gain >= 0 ? 'green' : 'red'"><app-icon name="trend" [size]="17" /></span>
         <span class="label">Total gain</span>
         <span class="value" [class]="tt.total_gain | sign">{{ tt.total_gain | inr: 0 : true }}</span>
         <span class="meta">Unrealized {{ tt.unrealized | inrc: true }}</span>
       </div>
       <div class="kpi">
+        <span class="chip violet"><app-icon name="chart" [size]="17" /></span>
         <span class="label">Annual return</span>
         <span class="value" [class]="tt.xirr | sign">{{ tt.xirr | pct }}</span>
         <span class="meta">XIRR, all holdings</span>

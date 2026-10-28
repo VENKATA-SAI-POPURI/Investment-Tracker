@@ -3,7 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AuthService } from '../../core/auth.service';
 import { FORMAT_PIPES, downloadCsv } from '../../core/format';
-import { AssetClass, CLASS_LABEL, Position } from '../../core/models';
+import { AssetClass, CLASS_LABEL, Position, SEGMENT_COLOR } from '../../core/models';
 import { StoreService } from '../../core/store.service';
 import { TxnDialogService } from '../../core/txn-dialog.service';
 import { IconComponent } from '../../shared/icon.component';
@@ -77,6 +77,9 @@ export class HoldingsComponent {
   groupLabel = computed(() => (this.groupOptions().find(o => o[0] === this.groupBy())?.[1] ?? '').toLowerCase());
   maxGroup = computed(() => Math.max(...this.groups().map(g => g.pct), 1));
   hasUsd = computed(() => this.all().some(p => p.market === 'USA'));
+
+  color = (seg: string) => SEGMENT_COLOR[seg] ?? 'var(--s7)';
+  tint = (seg: string) => `color-mix(in srgb, ${this.color(seg)} 14%, white)`;
 
   openRow(p: Position) { this.router.navigate(['/holding', p.id]); }
   add() { this.dialog.add(this.assetClass() as any); }
