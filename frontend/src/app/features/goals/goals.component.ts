@@ -26,7 +26,20 @@ const STATUS = {
   imports: [FormsModule, KeyValuePipe, IconComponent, ModalComponent, LineChartComponent, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './goals.component.html',
-  styles: [`.goal h2 { font-size: 17px; } .alloc-row { display: grid; grid-template-columns: 1fr 110px; gap: 10px; align-items: center; }`],
+  styles: [`.goal h2 { font-size: 17px; } .alloc-row { display: grid; grid-template-columns: 1fr 110px; gap: 10px; align-items: center; }
+    .start { padding: 32px; text-align: center; }
+    .start h3 { font-size: 18px; margin-top: 12px; }
+    .start p { color: var(--muted); max-width: 520px; margin: 6px auto 0; }
+    .lotus { display: inline-flex; width: 52px; height: 52px; border-radius: 14px; align-items: center; justify-content: center; color: #fff;
+      background: linear-gradient(145deg, #e3b350, #b7862c); }
+    .presets { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-top: 26px; text-align: left; }
+    .preset { display: flex; flex-direction: column; align-items: flex-start; text-align: left; gap: 4px; padding: 16px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface-2);
+      cursor: pointer; transition: border-color .15s, box-shadow .15s, background .15s; }
+    .preset:hover { border-color: var(--border-strong); background: var(--surface); box-shadow: var(--shadow-md); }
+    .preset:disabled { cursor: default; }
+    .preset b { font-size: 14px; margin-top: 8px; }
+    .preset .amt { font-size: 13px; color: var(--text-2); }
+    .preset small { font-size: 12px; color: var(--muted); }`],
 })
 export class GoalsComponent {
   store = inject(StoreService);
@@ -71,9 +84,18 @@ export class GoalsComponent {
   }
   labels(g: Goal) { return g.projection.path.map(x => x.date); }
 
-  startAdd() {
+  /** Common Indian goals, so the first one takes a click instead of a blank form. */
+  presets = [
+    { name: 'Emergency fund', icon: 'shield', amount: 300000, years: 1, note: '6 months of expenses' },
+    { name: "Child's education", icon: 'sparkle', amount: 2500000, years: 15, note: "College, at today's fees" },
+    { name: 'Home down payment', icon: 'home', amount: 2000000, years: 7, note: '20% of a ₹1 crore home' },
+    { name: 'Retirement', icon: 'lotus', amount: 20000000, years: 25, note: 'A ₹2 crore corpus' },
+  ];
+
+  startAdd(preset?: { name: string; amount: number; years: number }) {
     const year = new Date().getFullYear();
-    this.f = { name: '', target_amount: null, target_date: `${year + 10}-03-31`, monthly_contribution: 0, expected_return: null, notes: '',
+    this.f = { name: preset?.name ?? '', target_amount: preset?.amount ?? null, target_date: `${year + (preset?.years ?? 10)}-03-31`,
+      monthly_contribution: 0, expected_return: null, notes: '',
       allocation: Object.fromEntries(SEGMENTS.map(s => [s, 0])) };
     this.error.set(null);
     this.editing.set({});

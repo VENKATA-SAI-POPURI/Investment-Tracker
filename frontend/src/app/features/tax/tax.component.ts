@@ -36,6 +36,16 @@ export class TaxComponent {
   r = computed(() => this.report());
   lots = computed(() => (this.r()?.realized ?? []).filter(l => !this.termFilter() || l.term === this.termFilter()));
   incomeRows = computed(() => Object.entries(this.r()?.income ?? {}).filter(([, v]) => v));
+  /** Tax lines with a share of the total, largest first. */
+  taxLines = computed(() => {
+    const r = this.r();
+    const term = (g: string) => g === 'LT' ? 'Long-term' : 'Short-term';
+    const lines = (r?.tax_lines ?? []).filter(l => l.tax > 0).map(l => ({
+      label: `${term(l.group)} ${l.slab ? 'gains, other' : 'equity gains'}`, rate: l.slab ? 'your slab' : `${l.rate}%`, tax: l.tax }));
+    if (r?.estimate.income_tax) lines.push({ label: 'Dividends & interest', rate: 'your slab', tax: r.estimate.income_tax });
+    const max = Math.max(...lines.map(l => l.tax), 1);
+    return lines.map(l => ({ ...l, share: l.tax / max * 100 })).sort((a, b) => b.tax - a.tax);
+  });
   gainsByTerm = computed(() => {
     const out = { STCG: 0, LTCG: 0, Intraday: 0 } as Record<string, number>;
     for (const l of this.r()?.realized ?? []) out[l.term] = (out[l.term] ?? 0) + l.gain;

@@ -21,6 +21,19 @@
       <span class="meta">{{ stats().defaulted }} defaulted · {{ stats().overdue }} overdue</span></div>
   </section>
 
+  <section class="card">
+    <div class="card-head"><div><h2>Where your lending stands</h2><span class="hint">{{ stats().lent | inr }} lent across {{ loans().length }} loans · {{ stats().interest | inr }} interest earned</span></div></div>
+    <div class="stack" role="img" aria-label="Lent money split into repaid, outstanding and at risk">
+      @for (p of split(); track p.key) { @if (p.value > 0) { <i [style.width.%]="p.pct" [style.background]="p.color" [title]="p.label"></i> } }
+    </div>
+    <div class="stack-legend">
+      @for (p of split(); track p.key) {
+        <div><small><i class="swatch" [style.background]="p.color"></i>{{ p.label }}</small><b>{{ p.value | inr }}</b><span>{{ p.pct | pct: 1 : false }} of lent</span></div>
+      }
+      <div><small><i class="swatch" style="background:var(--gold-2)"></i>Interest after fees</small><b class="pos">{{ stats().interest - stats().fees | inr }}</b><span>{{ stats().fees | inr }} paid in fees</span></div>
+    </div>
+  </section>
+
   <section class="card flush">
     <div class="card-head" style="padding-bottom:0">
       <div class="tabs" style="border:0">

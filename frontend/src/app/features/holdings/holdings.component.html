@@ -17,6 +17,7 @@
     <div class="kpi"><span class="chip violet sm"><app-icon name="checkCircle" [size]="15" /></span><span class="label">Realized + dividends</span><span class="value" [class]="totals().realized | sign">{{ totals().realized | inr: 0 : true }}</span><span class="meta">all time</span></div>
   </section>
 
+  <div class="main-aside">
   <section class="card flush">
     <div class="card-head" style="padding-bottom:14px">
       <input class="input" style="max-width:260px" placeholder="Search" [ngModel]="q()" (ngModelChange)="q.set($event)" aria-label="Search holdings" />
@@ -55,7 +56,7 @@
               <td class="num">{{ p.value | inr }}<div class="sub">@if (p.has_price) { {{ p.currency === 'USD' ? (p.price | usd) : (p.price | inr: 2) }} }</div></td>
               <td class="num" [class]="p.unrealized | sign">{{ p.has_price ? (p.unrealized | inr: 0 : true) : '—' }}<div class="sub">{{ p.unrealized_pct | pct }}</div></td>
               <td class="num hide-sm" [class]="p.day_change | sign">{{ p.day_change ? (p.day_change | inr: 0 : true) : '—' }}</td>
-              <td class="num hide-sm">{{ p.weight | pct: 1 : false }}</td>
+              <td class="num hide-sm">{{ p.weight | pct: 1 : false }}<span class="wbar"><i [style.width.%]="p.weight / maxWeight() * 100"></i></span></td>
             </tr>
           } @empty {
             <tr><td colspan="5"><div class="empty"><h3>Nothing here yet</h3>
@@ -66,23 +67,35 @@
     </div>
   </section>
 
-  @if (groups().length > 1) {
-    <details class="more">
-      <summary>Breakdown by {{ groupLabel() }}</summary>
-      <section class="card" style="margin-top:10px">
-        <div class="card-head">
-          <div class="seg">@for (o of groupOptions(); track o[0]) { <button [class.on]="groupBy() === o[0]" (click)="groupBy.set(o[0])">{{ o[1] }}</button> }</div>
-        </div>
-        <div class="bars">
-          @for (g of groups(); track g.key) {
-            <div class="bar-row" [title]="(g.value | inr) + ' · ' + g.count + ' holdings'">
-              <span class="ellipsis">{{ g.key }}</span>
-              <div class="track"><span [style.width.%]="(g.pct / maxGroup()) * 100"></span></div>
-              <span class="num right">{{ g.pct | pct: 1 : false }}</span>
-            </div>
+    <aside>
+      @if (groups().length > 1) {
+        <section class="card">
+          <div class="card-head" style="margin-bottom:12px"><h2>Breakdown</h2>
+            <span class="hint">{{ open().length }} holdings</span></div>
+          <div class="seg" style="margin-bottom:14px">@for (o of groupOptions(); track o[0]) { <button [class.on]="groupBy() === o[0]" (click)="groupBy.set(o[0])">{{ o[1] }}</button> }</div>
+          <div class="bars">
+            @for (g of groups().slice(0, 8); track g.key) {
+              <div class="bar-row" [title]="(g.value | inr) + ' · ' + g.count + ' holdings'">
+                <div class="bl"><span class="ellipsis">{{ g.key }}</span><span class="num">{{ g.pct | pct: 1 : false }}</span></div>
+                <div class="track"><span [style.width.%]="(g.pct / maxGroup()) * 100"></span></div>
+              </div>
+            }
+            @if (groups().length > 8) { <p class="small muted">+ {{ groups().length - 8 }} more</p> }
+          </div>
+        </section>
+      }
+      @if (movers().length) {
+        <section class="card">
+          <div class="card-head" style="margin-bottom:8px"><h2>Today's movers</h2><span class="hint">by price change</span></div>
+          @for (m of movers(); track m.id) {
+            <button class="mv" (click)="openRow(m)">
+              <span class="ellipsis">{{ m.name }}</span>
+              <span class="num" [class]="m.day_change | sign">{{ m.day_change | inr: 0 : true }}</span>
+              <span class="pill" [class.up]="m.dayPct > 0" [class.down]="m.dayPct < 0">{{ m.dayPct | pct }}</span>
+            </button>
           }
-        </div>
-      </section>
-    </details>
-  }
+        </section>
+      }
+    </aside>
+  </div>
 </div>

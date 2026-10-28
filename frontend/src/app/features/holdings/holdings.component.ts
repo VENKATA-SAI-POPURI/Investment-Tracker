@@ -19,10 +19,20 @@ interface Group { key: string; value: number; pct: number; count: number; }
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './holdings.component.html',
   styles: [`
-    .bars { display: grid; gap: 10px; max-width: 640px; }
-    .bar-row { display: grid; grid-template-columns: minmax(90px, 200px) 1fr 60px; gap: 12px; align-items: center; font-size: 13px; }
-    .track { height: 6px; background: var(--surface-hover); border-radius: 0 3px 3px 0; overflow: hidden; }
-    .track > span { display: block; height: 100%; background: var(--s1); border-radius: 0 3px 3px 0; }
+    .bars { display: grid; gap: 12px; }
+    .bar-row { display: grid; gap: 5px; font-size: 13px; }
+    .bl { display: flex; justify-content: space-between; gap: 10px; }
+    .bl .num { font-weight: 600; }
+    .track { height: 6px; background: var(--grid); border-radius: 999px; overflow: hidden; }
+    .track > span { display: block; height: 100%; background: var(--primary); border-radius: 999px; }
+    .mv { display: grid; grid-template-columns: minmax(0, 1fr) auto 62px; gap: 10px; align-items: center; width: 100%; padding: 9px 0;
+      border: 0; border-bottom: 1px solid var(--border); background: none; cursor: pointer; text-align: left; font-size: 13px; }
+    .mv:last-child { border-bottom: 0; }
+    .mv:hover .ellipsis { color: var(--primary); }
+    .mv .num { font-weight: 600; font-size: 12.5px; }
+    .pill { text-align: center; font-size: 11.5px; font-weight: 600; padding: 2px 0; border-radius: 6px; background: var(--surface-2); color: var(--muted); }
+    .pill.up { background: var(--pos-soft); color: var(--pos); }
+    .pill.down { background: var(--neg-soft); color: var(--neg); }
   `],
 })
 export class HoldingsComponent {
@@ -76,6 +86,17 @@ export class HoldingsComponent {
   });
   groupLabel = computed(() => (this.groupOptions().find(o => o[0] === this.groupBy())?.[1] ?? '').toLowerCase());
   maxGroup = computed(() => Math.max(...this.groups().map(g => g.pct), 1));
+  maxWeight = computed(() => Math.max(...this.rows().map(p => p.weight), 0.01));
+  /** Three biggest risers and fallers today, by rupee change. */
+  movers = computed(() => {
+    const moved = this.open().filter(p => p.day_change).map(p => {
+      const prev = p.value - p.day_change;
+      return { ...p, dayPct: prev ? (p.day_change / prev) * 100 : 0 };
+    });
+    const up = moved.filter(p => p.day_change > 0).sort((a, b) => b.day_change - a.day_change).slice(0, 3);
+    const down = moved.filter(p => p.day_change < 0).sort((a, b) => a.day_change - b.day_change).slice(0, 3);
+    return [...up, ...down];
+  });
   hasUsd = computed(() => this.all().some(p => p.market === 'USA'));
 
   color = (seg: string) => SEGMENT_COLOR[seg] ?? 'var(--s7)';
