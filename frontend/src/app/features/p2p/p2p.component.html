@@ -1,0 +1,149 @@
+<div class="page">
+  <div class="page-head">
+    <div><h1>P2P lending</h1><p class="sub">{{ stats().activeCount }} active loans{{ stats().avgRate ? ' · average stated rate ' + stats().avgRate!.toFixed(1) + '%' : '' }}</p></div>
+    @if (auth.canWrite()) {
+      <div class="row wrap">
+        <button class="btn" (click)="startImport('order')"><app-icon name="upload" [size]="16" /> Order report</button>
+        <button class="btn" (click)="startImport('statement')"><app-icon name="upload" [size]="16" /> Statement</button>
+        <button class="btn" (click)="dialog.add('p2p_repayment')">Repayment</button>
+        <button class="btn primary" (click)="dialog.add('p2p_loan')"><app-icon name="plus" [size]="16" /> Loan</button>
+      </div>
+    }
+  </div>
+
+  <section class="grid grid-4">
+    <div class="card stat"><span class="label">Outstanding principal</span><span class="value">{{ stats().outstanding | inr }}</span><span class="meta">of {{ stats().lent | inr }} lent</span></div>
+    <div class="card stat"><span class="label">Interest earned</span><span class="value pos">{{ stats().interest | inr }}</span><span class="meta">fees {{ stats().fees | inr }}</span></div>
+    <div class="card stat"><span class="label">Realised return (XIRR)</span><span class="value" [class]="seg()?.xirr | sign">{{ seg()?.xirr | pct }}</span>
+      <span class="meta">vs {{ stats().avgRate ? stats().avgRate!.toFixed(1) + '% stated' : 'stated rate' }}</span></div>
+    <div class="card stat"><span class="label">At risk (defaulted)</span><span class="value" [class.neg]="stats().atRisk > 0">{{ stats().atRisk | inr }}</span>
+      <span class="meta">{{ stats().defaulted }} defaulted · {{ stats().overdue }} overdue</span></div>
+  </section>
+
+  <section class="card flush">
+    <div class="card-head" style="padding-bottom:0">
+      <div class="tabs" style="border:0">
+        @for (t of ['active', 'overdue', 'closed', 'defaulted', 'all']; track t) {
+          <button [class.on]="tab() === t" (click)="tab.set($any(t))">{{ t | titlecase }} <span class="muted">{{ $any(counts())[t] }}</span></button>
+        }
+      </div>
+      <input class="input" style="max-width:220px;height:32px" placeholder="Search borrower or loan id" [ngModel]="q()" (ngModelChange)="q.set($event)" />
+    </div>
+    <div class="table-wrap" style="max-height:560px">
+      <table class="table">
+        <thead><tr>
+          <th class="sortable" (click)="sort.toggle('ref')">Loan{{ sort.arrow('ref') }}</th>
+          <th class="sortable" (click)="sort.toggle('first_date')">Disbursed{{ sort.arrow('first_date') }}</th>
+          <th class="num sortable" (click)="sort.toggle('invested')">Lent{{ sort.arrow('invested') }}</th>
+          <th class="num sortable" (click)="sort.toggle('outstanding')">Outstanding{{ sort.arrow('outstanding') }}</th>
+          <th class="num sortable hide-sm" (click)="sort.toggle('interest')">Interest{{ sort.arrow('interest') }}</th>
+          <th class="num sortable hide-sm" (click)="sort.toggle('rate')">Rate{{ sort.arrow('rate') }}</th>
+          <th class="sortable hide-sm" (click)="sort.toggle('maturity_date')">Maturity{{ sort.arrow('maturity_date') }}</th>
+          <th>Status</th>
+        </tr></thead>
+        <tbody>
+          @for (p of rows(); track p.id) {
+            <tr class="clickable" (click)="open(p)">
+              <td class="name-cell"><div class="ellipsis">{{ p.name }}</div><div class="sub">{{ p.ref }} · {{ p.ref2 || '—' }}</div></td>
+              <td>{{ p.first_date | dt }}</td>
+              <td class="num">{{ p.invested | inr }}</td>
+              <td class="num">{{ p.outstanding | inr }}</td>
+              <td class="num hide-sm pos">{{ p.interest | inr: 2 }}</td>
+              <td class="num hide-sm">{{ p.rate ? p.rate + '%' : '—' }}</td>
+              <td class="hide-sm">{{ p.maturity_date | dt }}</td>
+              <td>
+                @switch (p.status) {
+                  @case ('closed') { <span class="badge good">Closed</span> }
+                  @case ('defaulted') { <span class="badge bad">Defaulted</span> }
+                  @default { @if ((p.overdue_days ?? 0) > 7) { <span class="badge warn">Overdue {{ p.overdue_days }}d</span> } @else { <span class="badge info">Active</span> } }
+                }
+              </td>
+            </tr>
+          } @empty { <tr><td colspan="8"><div class="empty">No loans in this view.</div></td></tr> }
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card flush">
+    <div class="card-head"><h2>Cohorts by disbursement month</h2><span class="hint">How each month's loans are performing</span></div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>Month</th><th class="num">Loans</th><th class="num">Lent</th><th class="num">Principal back</th><th class="num">Repaid</th><th class="num">Interest</th><th class="num">Closed</th><th class="num">Defaulted</th></tr></thead>
+        <tbody>
+          @for (c of cohorts(); track c.month) {
+            <tr><td>{{ c.month }}</td><td class="num">{{ c.count }}</td><td class="num">{{ c.lent | inr }}</td><td class="num">{{ c.back | inr }}</td>
+              <td class="num">{{ c.lent ? (c.back / c.lent * 100 | pct: 0 : false) : '—' }}</td><td class="num pos">{{ c.interest | inr }}</td>
+              <td class="num">{{ c.closed }}</td><td class="num" [class.neg]="c.defaulted > 0">{{ c.defaulted }}</td></tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+@if (importKind()) {
+  <app-modal [title]="importKind() === 'order' ? 'Import LenDen order report' : 'Import LenDen statement'" [width]="900" (close)="importKind.set(null)">
+    @if (!preview()) {
+      <div class="form">
+        <p class="text-2">
+          @if (importKind() === 'order') { Upload the ORDER_REPORT .xlsx from LenDenClub. New loans are added; loans you already have are skipped. }
+          @else { Upload the account statement .xlsx. Repayments not yet recorded are posted for each loan, and status changes are applied. }
+        </p>
+        <input type="file" accept=".xlsx" class="input" style="padding:6px" (change)="onFile($event)" [disabled]="importBusy()" />
+        @if (importBusy()) { <p class="muted">Reading file…</p> }
+        @if (importError()) { <div class="notice bad">{{ importError() }}</div> }
+      </div>
+    } @else {
+      @let pv = preview();
+      <p class="small text-2" style="margin-bottom:10px">Period {{ pv.from_date || '?' }} → {{ pv.to_date || '?' }}{{ pv.skipped ? ' · ' + pv.skipped + ' pending/cancelled rows skipped' : '' }}</p>
+      @if (importKind() === 'order') {
+        <div class="table-wrap" style="max-height:420px">
+          <table class="table">
+            <thead><tr><th><input type="checkbox" checked (change)="toggleAll(pv.rows, $any($event.target).checked)" aria-label="Select all" /></th>
+              <th>Loan</th><th>Date</th><th class="num">Amount</th><th class="num">Tenure</th><th class="num">Rate</th><th>Status</th></tr></thead>
+            <tbody>
+              @for (r of pv.rows; track r.loan_id) {
+                <tr [class.muted]="r.already_exists">
+                  <td><input type="checkbox" [(ngModel)]="r.selected" [disabled]="r.already_exists" [attr.aria-label]="'Import ' + r.loan_id" /></td>
+                  <td>{{ r.loan_id }} <span class="sub">{{ r.lending_id || 'exists' }}</span></td><td>{{ r.date | dt }}</td>
+                  <td class="num">{{ r.amount | inr }}</td><td class="num">{{ r.tenure }} m</td><td class="num">{{ r.rate }}%</td><td>{{ r.status }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      } @else {
+        @for (w of pv.warnings; track w.loan_id + w.type) {
+          @if (w.type === 'status_change') {
+            <label class="check small" style="display:flex;margin-bottom:4px"><input type="checkbox" [(ngModel)]="w.apply" /> {{ w.message }}</label>
+          }
+        }
+        <div class="table-wrap" style="max-height:380px;margin-top:8px">
+          <table class="table">
+            <thead><tr><th><input type="checkbox" checked (change)="toggleAll(pv.suggested, $any($event.target).checked)" aria-label="Select all" /></th>
+              <th>Loan</th><th class="num">New principal</th><th class="num">New interest</th><th class="num">Fee</th><th class="num">Credited</th></tr></thead>
+            <tbody>
+              @for (r of pv.suggested; track r.loan_id) {
+                <tr [class.muted]="r.delta_principal < 0 || r.delta_interest < 0">
+                  <td><input type="checkbox" [(ngModel)]="r.selected" [attr.aria-label]="'Post ' + r.loan_id" /></td>
+                  <td>{{ r.name }} <span class="sub">{{ r.loan_id }}</span></td>
+                  <td class="num">{{ r.delta_principal | inr: 2 }}</td><td class="num">{{ r.delta_interest | inr: 2 }}</td>
+                  <td class="num">{{ r.delta_fee | inr: 2 }}</td><td class="num">{{ r.delta_total | inr: 2 }}</td>
+                </tr>
+              } @empty { <tr><td colspan="6" class="muted">Everything in this statement is already recorded.</td></tr> }
+            </tbody>
+          </table>
+        </div>
+        @for (w of pv.warnings; track w.loan_id + w.type) {
+          @if (w.type === 'unmatched') { <p class="small muted">⚠ {{ w.message }}</p> }
+        }
+      }
+      @if (importError()) { <div class="notice bad" style="margin-top:10px">{{ importError() }}</div> }
+      <div class="form-actions" style="margin-top:14px">
+        <button class="btn" (click)="preview.set(null)">Choose another file</button>
+        <button class="btn primary" (click)="commit()" [disabled]="importBusy() || !selectedCount()">{{ importBusy() ? 'Importing…' : 'Import ' + selectedCount() + ' row(s)' }}</button>
+      </div>
+    }
+  </app-modal>
+}

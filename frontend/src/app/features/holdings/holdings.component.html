@@ -1,0 +1,97 @@
+<div class="page">
+  <div class="page-head">
+    <div>
+      <h1>{{ title() }}</h1>
+      <p class="sub">{{ open().length }} open {{ open().length === 1 ? 'holding' : 'holdings' }} · {{ totals().weight | pct: 1 : false }} of portfolio</p>
+    </div>
+    <div class="row">
+      <button class="btn" (click)="export()"><app-icon name="download" [size]="16" /> <span class="hide-sm">Export</span></button>
+      @if (auth.canWrite()) { <button class="btn primary" (click)="add()"><app-icon name="plus" [size]="16" /> Add</button> }
+    </div>
+  </div>
+
+  <section class="grid grid-4">
+    <div class="card stat"><span class="label">Current value</span><span class="value">{{ totals().value | inr }}</span>
+      <span class="meta" [class]="totals().day | sign">{{ totals().day ? (totals().day | inr: 0 : true) + ' today' : '' }}</span></div>
+    <div class="card stat"><span class="label">Invested (open cost)</span><span class="value">{{ totals().cost | inr }}</span></div>
+    <div class="card stat"><span class="label">Unrealized</span><span class="value" [class]="totals().unrealized | sign">{{ totals().unrealized | inr: 0 : true }}</span>
+      <span class="meta">{{ totals().unrealizedPct | pct }}</span></div>
+    <div class="card stat"><span class="label">Realized + dividends</span><span class="value" [class]="totals().realized | sign">{{ totals().realized | inr: 0 : true }}</span>
+      <span class="meta">including closed positions</span></div>
+  </section>
+
+  <section class="grid grid-3">
+    <div class="card flush span-2">
+      <div class="card-head" style="padding-bottom:12px">
+        <input class="input" style="max-width:260px" placeholder="Search name, ticker or sector" [ngModel]="q()" (ngModelChange)="q.set($event)" />
+        <div class="row wrap">
+          @if (hasUsd()) {
+            <div class="seg">
+              <button [class.on]="market() === 'all'" (click)="market.set('all')">All</button>
+              <button [class.on]="market() === 'India'" (click)="market.set('India')">India</button>
+              <button [class.on]="market() === 'USA'" (click)="market.set('USA')">USA</button>
+            </div>
+          }
+          <label class="check small"><input type="checkbox" [ngModel]="showClosed()" (ngModelChange)="showClosed.set($event)" /> Show closed</label>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr>
+            <th class="sortable" (click)="sort.toggle('name')">Name{{ sort.arrow('name') }}</th>
+            <th class="num sortable hide-sm" (click)="sort.toggle('quantity')">Qty{{ sort.arrow('quantity') }}</th>
+            <th class="num hide-sm">Avg cost</th>
+            <th class="num hide-sm">Price</th>
+            <th class="num sortable" (click)="sort.toggle('value')">Value{{ sort.arrow('value') }}</th>
+            <th class="num sortable" (click)="sort.toggle('unrealized_pct')">Unrealized{{ sort.arrow('unrealized_pct') }}</th>
+            <th class="num sortable hide-sm" (click)="sort.toggle('day_change')">Today{{ sort.arrow('day_change') }}</th>
+            <th class="num sortable hide-sm" (click)="sort.toggle('xirr')">XIRR{{ sort.arrow('xirr') }}</th>
+            <th class="num sortable hide-sm" (click)="sort.toggle('weight')">Weight{{ sort.arrow('weight') }}</th>
+          </tr></thead>
+          <tbody>
+            @for (p of rows(); track p.id) {
+              <tr class="clickable" (click)="openRow(p)" [class.muted]="!p.is_open">
+                <td class="name-cell">
+                  <div class="ellipsis">{{ p.name }}</div>
+                  <div class="sub">{{ p.symbol || 'no ticker' }}{{ p.sector ? ' · ' + p.sector : p.category ? ' · ' + p.category : '' }}{{ p.market === 'USA' ? ' · US' : '' }}{{ p.elss?.locked_qty ? ' · lock-in' : '' }}</div>
+                </td>
+                <td class="num hide-sm">{{ p.quantity | qty }}</td>
+                <td class="num hide-sm">{{ p.avg_cost | inr: 2 }}</td>
+                <td class="num hide-sm">@if (p.has_price) { {{ p.currency === 'USD' ? (p.price | usd) : (p.price | inr: 2) }} } @else { <span class="badge warn" title="Valued at cost">no price</span> }</td>
+                <td class="num">{{ p.value | inr }}</td>
+                <td class="num" [class]="p.unrealized | sign">{{ p.has_price ? (p.unrealized | inr: 0 : true) : '—' }}<div class="sub">{{ p.unrealized_pct | pct }}</div></td>
+                <td class="num hide-sm" [class]="p.day_change | sign">{{ p.day_change ? (p.day_change | inr: 0 : true) : '—' }}</td>
+                <td class="num hide-sm" [class]="p.xirr | sign">{{ p.xirr | pct }}</td>
+                <td class="num hide-sm">{{ p.weight | pct: 1 : false }}</td>
+              </tr>
+            } @empty {
+              <tr><td colspan="9"><div class="empty"><h3>No holdings here yet</h3>
+                @if (auth.canWrite()) { <button class="btn primary" (click)="add()"><app-icon name="plus" /> Add {{ title().toLowerCase() }}</button> }</div></td></tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>Breakdown</h2>
+        <select class="input" style="width:auto;height:30px" [ngModel]="groupBy()" (ngModelChange)="groupBy.set($event)" aria-label="Group by">
+          @for (o of groupOptions(); track o[0]) { <option [value]="o[0]">{{ o[1] }}</option> }
+        </select>
+      </div>
+      <div class="bars">
+        @for (g of groups(); track g.key) {
+          <div class="bar-row" [title]="(g.value | inr) + ' · ' + g.count + ' holdings'">
+            <span class="ellipsis">{{ g.key }}</span>
+            <div class="track"><span [style.width.%]="(g.pct / maxGroup()) * 100"></span></div>
+            <span class="num right">{{ g.pct | pct: 1 : false }}</span>
+          </div>
+        } @empty { <p class="muted small">Nothing to break down.</p> }
+      </div>
+      @if (assetClass() === 'equity' && groups().length && groups()[0].pct > 30 && groupBy() === 'sector') {
+        <div class="notice warn" style="margin-top:14px"><app-icon name="alert" [size]="16" /> {{ groups()[0].key }} is {{ groups()[0].pct | pct: 0 : false }} of your stocks.</div>
+      }
+    </div>
+  </section>
+</div>

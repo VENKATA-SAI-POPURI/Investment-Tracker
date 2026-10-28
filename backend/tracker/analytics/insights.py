@@ -70,7 +70,7 @@ def build_insights(portfolio: dict, tax: dict | None, goals: list[dict], setting
             add(f"concentration:{p['id']}", "warning" if p["weight"] >= limit_w else "info", "risk",
                 f"{p['name']} is {p['weight']:.1f}% of your portfolio",
                 "A single position this large can dominate your returns.",
-                "Consider capping any one holding near 10% of the portfolio.", f"/holdings/{p['id']}", p["value"])
+                "Consider capping any one holding near 10% of the portfolio.", f"/holding/{p['id']}", p["value"])
     equity_val = sum(p["value"] for p in open_pos if p["asset_class"] == d.EQUITY)
     by_sector = defaultdict(float)
     for p in open_pos:
@@ -95,11 +95,11 @@ def build_insights(portfolio: dict, tax: dict | None, goals: list[dict], setting
         if up <= -20 and held >= 180:
             add(f"loser:{p['id']}", "warning", "performance", f"{p['name']} is down {abs(up):.0f}%",
                 f"Unrealized loss of {_inr(-p['unrealized'])} after {held // 30} months.",
-                "Re-check the reason you bought it; selling also books a tax loss.", f"/holdings/{p['id']}", -p["unrealized"])
+                "Re-check the reason you bought it; selling also books a tax loss.", f"/holding/{p['id']}", -p["unrealized"])
         elif up >= 50 and p["weight"] >= 5:
             add(f"winner:{p['id']}", "info", "performance", f"{p['name']} is up {up:.0f}%",
                 f"It has grown to {p['weight']:.1f}% of the portfolio.",
-                "Consider booking partial profits to stay near your targets.", f"/holdings/{p['id']}", p["unrealized"])
+                "Consider booking partial profits to stay near your targets.", f"/holding/{p['id']}", p["unrealized"])
 
     # ── P2P ──
     p2p = [p for p in positions if p["asset_class"] == d.P2P]
@@ -163,13 +163,14 @@ def build_insights(portfolio: dict, tax: dict | None, goals: list[dict], setting
         if e and (e.get("unlocked_value") or 0) > 0:
             add(f"elss:unlocked:{p['id']}", "info", "tax", f"{_inr(e['unlocked_value'])} of {p['name']} is out of lock-in",
                 f"{e['unlocked_qty']:.2f} units have completed 3 years and can be redeemed or switched.",
-                "Use unlocked units for LTCG harvesting or rebalancing.", f"/holdings/{p['id']}", e["unlocked_value"])
+                "Use unlocked units for LTCG harvesting or rebalancing.", f"/holding/{p['id']}", e["unlocked_value"])
 
     # ── Data quality ──
     if totals.get("missing_prices"):
         names = totals["missing_prices"]
-        add("data:missing-prices", "warning", "data", f"{len(names)} holdings have no live price",
-            ", ".join(names[:5]) + (" …" if len(names) > 5 else "") + " are valued at cost.",
+        add("data:missing-prices", "warning", "data",
+            f"{len(names)} holding{'s have' if len(names) > 1 else ' has'} no live price",
+            ", ".join(names[:5]) + (" …" if len(names) > 5 else "") + (" are" if len(names) > 1 else " is") + " valued at cost.",
             "Add a ticker so returns and allocation are accurate.", "/settings#prices")
     stale = []
     for p in open_pos:
@@ -190,7 +191,7 @@ def build_insights(portfolio: dict, tax: dict | None, goals: list[dict], setting
             gap = (today - to_date(p["last_date"])).days
             if 40 <= gap <= 400:
                 add(f"sip:gap:{p['id']}", "info", "habit", f"No SIP in {p['name']} for {gap} days",
-                    "If the SIP is still running, record the missing instalments.", None, f"/holdings/{p['id']}")
+                    "If the SIP is still running, record the missing instalments.", None, f"/holding/{p['id']}")
     last_review = settings.get("lastReviewDate")
     days_since = (today - to_date(last_review)).days if last_review else None
     if days_since is None or days_since > 90:

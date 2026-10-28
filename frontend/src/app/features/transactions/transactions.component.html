@@ -1,0 +1,99 @@
+<div class="page">
+  <div class="page-head">
+    <div><h1>Transactions</h1><p class="sub">{{ filtered().length }} of {{ all().length }} · out {{ sums().out | inr }} · in {{ sums().in | inr }}</p></div>
+    <div class="row wrap">
+      <button class="btn" (click)="export()"><app-icon name="download" [size]="16" /> Export</button>
+      @if (auth.canWrite()) {
+        <button class="btn" (click)="importing.set(true)"><app-icon name="upload" [size]="16" /> Import CSV</button>
+        <button class="btn primary" (click)="dialog.add()"><app-icon name="plus" [size]="16" /> Add</button>
+      }
+    </div>
+  </div>
+
+  <div class="row wrap">
+    <input class="input" style="max-width:240px" placeholder="Search name or notes" [ngModel]="q()" (ngModelChange)="q.set($event)" aria-label="Search" />
+    <select class="input" style="width:auto" [ngModel]="cls()" (ngModelChange)="cls.set($event)" aria-label="Asset class">
+      <option value="">All holdings</option>@for (c of classes; track c[0]) { <option [value]="c[0]">{{ c[1] }}</option> }
+    </select>
+    <select class="input" style="width:auto" [ngModel]="type()" (ngModelChange)="type.set($event)" aria-label="Type">
+      <option value="">All types</option>@for (t of types; track t[0]) { <option [value]="t[0]">{{ t[1] }}</option> }
+    </select>
+    <input class="input" type="date" style="width:auto" [ngModel]="from()" (ngModelChange)="from.set($event)" aria-label="From" />
+    <span class="muted">→</span>
+    <input class="input" type="date" style="width:auto" [ngModel]="to()" (ngModelChange)="to.set($event)" aria-label="To" />
+    @if (q() || cls() || type() || from() || to()) { <button class="btn ghost sm" (click)="clear()">Clear</button> }
+  </div>
+
+  <section class="card flush" [class.loading-fade]="loading() && all().length">
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>Date</th><th>Holding</th><th>Type</th><th class="num">Quantity</th><th class="num">Amount</th><th class="hide-sm">Notes</th><th class="hide-sm">Source</th>@if (auth.canWrite()) { <th></th> }</tr></thead>
+        <tbody>
+          @for (t of shown(); track t.id) {
+            <tr>
+              <td class="nowrap">{{ t.date | dt }}</td>
+              <td class="name-cell"><a [routerLink]="['/holding', t.instrument_id]">{{ t.instrument_name }}</a><div class="sub">{{ classLabel[t.asset_class!] }}</div></td>
+              <td><span class="badge" [class.good]="['SELL', 'DIVIDEND', 'REPAYMENT', 'MATURITY', 'INTEREST'].includes(t.type)">{{ txnLabel[t.type] }}</span></td>
+              <td class="num">{{ t.quantity | qty }}</td>
+              <td class="num">{{ t.amount | inr: 2 }}@if (t.amount_fc) { <div class="sub">{{ t.amount_fc | usd }}</div> }</td>
+              <td class="hide-sm small muted ellipsis" style="max-width:220px" [title]="t.notes ?? ''">{{ t.notes }}</td>
+              <td class="hide-sm small muted">{{ t.source }}</td>
+              @if (auth.canWrite()) {
+                <td class="right nowrap">
+                  <button class="btn ghost icon sm" (click)="dialog.edit(t)" aria-label="Edit"><app-icon name="edit" [size]="15" /></button>
+                  <button class="btn ghost icon sm danger" (click)="remove(t)" aria-label="Delete"><app-icon name="trash" [size]="15" /></button>
+                </td>
+              }
+            </tr>
+          } @empty {
+            <tr><td colspan="8"><div class="empty">{{ loading() ? 'Loading…' : 'No transactions match these filters.' }}</div></td></tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    @if (filtered().length > limit()) {
+      <div class="row" style="justify-content:center;padding:12px"><button class="btn" (click)="limit.set(limit() + 200)">Show more ({{ filtered().length - limit() }} left)</button></div>
+    }
+  </section>
+</div>
+
+@if (importing()) {
+  <app-modal title="Import transactions" [width]="860" (close)="importing.set(false); preview.set(null)">
+    @if (!preview()) {
+      <div class="form">
+        <p class="text-2 small">Use the template columns, or upload a <b>Zerodha Console tradebook</b> CSV directly. You'll see a preview before anything is saved; rows already in your ledger are detected and skipped.</p>
+        <div class="row wrap">
+          <input type="file" accept=".csv,text/csv" class="input" style="padding:6px;max-width:340px" (change)="onFile($event)" />
+          <button class="btn ghost sm" (click)="downloadTemplate()"><app-icon name="download" [size]="14" /> Template</button>
+        </div>
+        <div class="field"><label for="csv-text">…or paste CSV</label><textarea id="csv-text" class="input" rows="8" [(ngModel)]="csv" style="font-family:ui-monospace,monospace;font-size:12px"></textarea></div>
+        @if (importError()) { <div class="notice bad">{{ importError() }}</div> }
+        <div class="form-actions"><button class="btn primary" (click)="runPreview()" [disabled]="!csv.trim() || busy()">Preview</button></div>
+      </div>
+    } @else {
+      @let pv = preview()!;
+      <p class="small text-2">Format: <b>{{ pv.format }}</b> · {{ pv.rows.length }} rows{{ pv.errors.length ? ' · ' + pv.errors.length + ' with errors' : '' }}</p>
+      @for (e of pv.errors.slice(0, 5); track e.line) { <p class="small neg">Line {{ e.line }}: {{ e.error }}</p> }
+      <div class="table-wrap" style="max-height:420px;margin-top:8px">
+        <table class="table">
+          <thead><tr><th></th><th>Date</th><th>Type</th><th>Holding</th><th class="num">Qty</th><th class="num">Amount</th><th></th></tr></thead>
+          <tbody>
+            @for (r of pv.rows; track $index) {
+              <tr [class.muted]="r.duplicate">
+                <td><input type="checkbox" [(ngModel)]="r.selected" [attr.aria-label]="'Import row ' + $index" /></td>
+                <td>{{ r.date }}</td><td>{{ r.type }}</td><td>{{ r.name }} <span class="sub">{{ r.symbol }}</span></td>
+                <td class="num">{{ r.quantity | qty }}</td><td class="num">{{ r.amount | inr: 2 }}</td>
+                <td>@if (r.duplicate) { <span class="badge">already recorded</span> } @else if (r.new_instrument) { <span class="badge info">new holding</span> }</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      @if (importError()) { <div class="notice bad" style="margin-top:10px">{{ importError() }}</div> }
+      <div class="form-actions" style="margin-top:12px">
+        <button class="btn" (click)="preview.set(null)">Back</button>
+        <button class="btn primary" (click)="commit()" [disabled]="busy() || !selectedRows().length">{{ busy() ? 'Importing…' : 'Import ' + selectedRows().length }}</button>
+      </div>
+    }
+  </app-modal>
+}

@@ -1,0 +1,75 @@
+@if (auth.viewAs(); as v) {
+  <div class="viewas no-print">
+    <app-icon name="eye" [size]="16" />
+    <span>Viewing <b>{{ v.name || v.email }}</b>'s portfolio ({{ v.role }})</span>
+    <button class="btn sm" (click)="auth.stopViewAs()">Exit view</button>
+  </div>
+}
+
+<div class="layout">
+  <aside class="sidebar" [class.open]="menuOpen()">
+    <a routerLink="/" class="brand">
+      <span class="logo"><app-icon name="trend" [size]="18" /></span>
+      <span>Investment Tracker</span>
+    </a>
+    <nav>
+      @for (g of groups; track $index) {
+        @if (g.title) { <div class="group">{{ g.title }}</div> }
+        @for (it of g.items; track it.path) {
+          <a [routerLink]="it.path" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: !!it.exact }" class="nav">
+            <app-icon [name]="it.icon" /> <span>{{ it.label }}</span>
+          </a>
+        }
+      }
+    </nav>
+    <div class="me">
+      @if (auth.user()?.picture) {
+        <img [src]="auth.user()!.picture" alt="" referrerpolicy="no-referrer" class="avatar" />
+      } @else {
+        <span class="avatar initials">{{ initials() }}</span>
+      }
+      <div class="who">
+        <div class="ellipsis">{{ auth.user()?.name || auth.user()?.email }}</div>
+        <div class="small muted">{{ auth.realRole() }}</div>
+      </div>
+      <button class="btn ghost icon sm" (click)="theme.cycle()" [title]="'Theme: ' + theme.mode()" [attr.aria-label]="'Theme: ' + theme.mode()"><app-icon [name]="themeIcon()" /></button>
+      <button class="btn ghost icon sm" (click)="auth.logout()" title="Sign out" aria-label="Sign out"><app-icon name="logout" /></button>
+    </div>
+  </aside>
+  @if (menuOpen()) { <div class="scrim" (click)="menuOpen.set(false)"></div> }
+
+  <div class="main">
+    <header class="topbar no-print">
+      <button class="btn ghost icon menu-btn" (click)="menuOpen.set(true)" aria-label="Open menu"><app-icon name="menu" /></button>
+      <h1 class="title">{{ title() }}</h1>
+      <span class="spacer"></span>
+      <button class="prices btn ghost sm" (click)="store.refreshPrices(true)" [disabled]="store.refreshingPrices()"
+              title="Refresh market prices">
+        <span [class.spin]="store.refreshingPrices()"><app-icon name="refresh" [size]="15" /></span>
+        <span class="hide-sm">Prices {{ store.refreshingPrices() ? 'updating…' : pricesAge() }}</span>
+      </button>
+      @if (auth.canWrite()) {
+        <button class="btn primary add-btn" (click)="dialog.add()"><app-icon name="plus" /> <span class="hide-sm">Add transaction</span></button>
+      }
+    </header>
+    @if (store.error() && !store.portfolio()) {
+      <div class="page"><div class="notice bad"><app-icon name="alert" /> <div><b>Couldn't load your portfolio.</b> {{ store.error() }}
+        <button class="btn sm" style="margin-left:8px" (click)="store.reload()">Retry</button></div></div></div>
+    }
+    <main><router-outlet /></main>
+  </div>
+</div>
+
+<nav class="bottom-nav no-print" aria-label="Primary">
+  <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }"><app-icon name="home" /><span>Overview</span></a>
+  <a routerLink="/holdings/equity" routerLinkActive="active"><app-icon name="layers" /><span>Holdings</span></a>
+  @if (auth.canWrite()) {
+    <button class="fab" (click)="dialog.add()" aria-label="Add transaction"><app-icon name="plus" [size]="22" /></button>
+  }
+  <a routerLink="/insights" routerLinkActive="active"><app-icon name="bulb" /><span>Insights</span></a>
+  <button (click)="menuOpen.set(true)"><app-icon name="menu" /><span>More</span></button>
+</nav>
+
+@if (dialog.state(); as s) {
+  <app-txn-form [state]="s" (done)="dialog.close()" />
+}

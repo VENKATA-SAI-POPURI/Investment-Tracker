@@ -1,0 +1,162 @@
+<app-modal [title]="title()" [width]="kind() ? 600 : 560" (close)="done.emit()">
+  @if (!kind()) {
+    <div class="kinds">
+      @for (k of kinds; track k.kind) {
+        <button class="kind" (click)="pick(k.kind)">
+          <span class="ic"><app-icon [name]="k.icon" /></span>
+          <span><b>{{ k.label }}</b><span class="h">{{ k.hint }}</span></span>
+        </button>
+      }
+    </div>
+  } @else {
+    <form class="form" (ngSubmit)="save()" autocomplete="off">
+      @switch (kind()) {
+        @case ('p2p_loan') {
+          <div class="cols">
+            <div class="field"><label for="tf-name">Borrower</label><input id="tf-name" class="input" name="name" [(ngModel)]="f.name" placeholder="Name on the platform" /></div>
+            <div class="field"><label for="tf-loan">Loan ID</label><input id="tf-loan" class="input" name="ref2" [(ngModel)]="f.ref2" placeholder="LOA-XXXXXXX" /></div>
+            <div class="field"><label for="tf-plat">Platform</label><input id="tf-plat" class="input" name="platform" [(ngModel)]="f.platform" /></div>
+            <div class="field"><label for="tf-date">Disbursed on</label><input id="tf-date" class="input" type="date" name="date" [(ngModel)]="f.date" /></div>
+            <div class="field"><label for="tf-amt">Amount lent (₹)</label><input id="tf-amt" class="input num" type="number" step="0.01" min="0" name="amount" [(ngModel)]="f.amount" /></div>
+            <div class="field"><label for="tf-ten">Tenure (months)</label><input id="tf-ten" class="input num" type="number" min="1" name="tenure" [(ngModel)]="f.tenure_months" /></div>
+            <div class="field"><label for="tf-rate">Interest rate (% a year)</label><input id="tf-rate" class="input num" type="number" step="0.01" name="rate" [(ngModel)]="f.rate" /></div>
+          </div>
+          <p class="small muted">Maturity is estimated from the tenure (EMIs on the 5th). A capital-flow and escrow entry are recorded automatically.</p>
+        }
+        @case ('p2p_repayment') {
+          <div class="field">
+            <label for="tf-loanpick">Loan</label>
+            <select id="tf-loanpick" class="input" name="loan" [(ngModel)]="f.instrument_id" [disabled]="isEdit()">
+              <option [ngValue]="null" disabled>Choose a loan</option>
+              @for (l of loans(); track l.id) { <option [ngValue]="l.id">{{ l.ref }} · {{ l.name }} · {{ l.outstanding | inr }} outstanding</option> }
+            </select>
+          </div>
+          <div class="cols">
+            <div class="field"><label for="tf-date">Received on</label><input id="tf-date" class="input" type="date" name="date" [(ngModel)]="f.date" /></div>
+            <div class="field"><label for="tf-pr">Principal (₹)</label><input id="tf-pr" class="input num" type="number" step="0.01" min="0" name="principal" [(ngModel)]="f.principal" /></div>
+            <div class="field"><label for="tf-int">Interest (₹)</label><input id="tf-int" class="input num" type="number" step="0.01" min="0" name="interest" [(ngModel)]="f.interest" /></div>
+            <div class="field"><label for="tf-fee">Platform fee (₹)</label><input id="tf-fee" class="input num" type="number" step="0.01" min="0" name="fees" [(ngModel)]="f.fees" /><span class="hint">For your records; not deducted again</span></div>
+          </div>
+          <div class="calc">Credited: <b>{{ repaymentTotal() | inr: 2 }}</b></div>
+        }
+        @case ('fixed_deposit') {
+          <div class="cols">
+            <div class="field"><label for="tf-bank">Bank</label><input id="tf-bank" class="input" name="name" [(ngModel)]="f.name" placeholder="e.g. HDFC Bank" /></div>
+            <div class="field"><label for="tf-via">Booked via (optional)</label><input id="tf-via" class="input" name="platform" [(ngModel)]="f.platform" placeholder="e.g. Stable Money" /></div>
+            <div class="field"><label for="tf-date">Start date</label><input id="tf-date" class="input" type="date" name="date" [(ngModel)]="f.date" /></div>
+            <div class="field"><label for="tf-mat">Maturity date</label><input id="tf-mat" class="input" type="date" name="maturity" [(ngModel)]="f.maturity_date" /></div>
+            <div class="field"><label for="tf-amt">Deposit (₹)</label><input id="tf-amt" class="input num" type="number" step="0.01" min="0" name="amount" [(ngModel)]="f.amount" /></div>
+            <div class="field"><label for="tf-rate">Interest rate (% a year)</label><input id="tf-rate" class="input num" type="number" step="0.01" name="rate" [(ngModel)]="f.rate" /></div>
+          </div>
+        }
+        @case ('forex') {
+          <div class="field">
+            <label>Direction</label>
+            <div class="seg">
+              <button type="button" [class.on]="f.direction === 'FX_IN'" (click)="f.direction = 'FX_IN'">INR → USD (deposit)</button>
+              <button type="button" [class.on]="f.direction === 'FX_OUT'" (click)="f.direction = 'FX_OUT'">USD → INR (withdrawal)</button>
+            </div>
+          </div>
+          <div class="cols three">
+            <div class="field"><label for="tf-date">Date</label><input id="tf-date" class="input" type="date" name="date" [(ngModel)]="f.date" /></div>
+            <div class="field"><label for="tf-inr">Rupees (₹)</label><input id="tf-inr" class="input num" type="number" step="0.01" min="0" name="amount" [(ngModel)]="f.amount" /></div>
+            <div class="field"><label for="tf-usd">Dollars ($)</label><input id="tf-usd" class="input num" type="number" step="0.01" min="0" name="amount_fc" [(ngModel)]="f.amount_fc" /></div>
+          </div>
+          @if (f.amount > 0 && f.amount_fc > 0) { <div class="calc">Effective rate ₹{{ (f.amount / f.amount_fc).toFixed(4) }} / USD @if (fxRate()) { · market ₹{{ fxRate()!.toFixed(2) }} } </div> }
+        }
+        @default {
+          @if (kind() !== 'dividend') {
+            <div class="field">
+              <label>Type</label>
+              <div class="seg">
+                <button type="button" [class.on]="f.type === 'BUY'" (click)="f.type = 'BUY'">Buy</button>
+                <button type="button" [class.on]="f.type === 'SELL'" (click)="f.type = 'SELL'">Sell</button>
+                @if (kind() !== 'commodity') { <button type="button" [class.on]="f.type === 'DIVIDEND'" (click)="f.type = 'DIVIDEND'">Dividend</button> }
+              </div>
+            </div>
+          }
+          <div class="field">
+            <label for="tf-name">{{ kind() === 'mutual_fund' ? 'Fund' : kind() === 'dividend' ? 'Holding' : 'Name' }}</label>
+            <input id="tf-name" class="input" name="name" [(ngModel)]="f.name" (ngModelChange)="onName()" list="tf-holdings"
+                   [disabled]="isEdit()" placeholder="Start typing to pick an existing holding" />
+            <datalist id="tf-holdings">@for (h of holdings(); track h.id) { <option [value]="h.name"></option> }</datalist>
+            @if (existing(); as ex) {
+              <span class="hint">Existing holding · {{ ex.quantity | qty }} units · avg {{ ex.avg_cost | inr: 2 }}{{ ex.symbol ? ' · ' + ex.symbol : '' }}</span>
+            } @else if (f.name && !isEdit()) {
+              <span class="hint">New holding — add details below so analysis can group it.</span>
+            }
+          </div>
+          @if (!existing() && f.name && !isEdit() && kind() !== 'dividend') {
+            <div class="cols">
+              @if (kind() === 'equity') {
+                <div class="field"><label for="tf-mkt">Market</label>
+                  <select id="tf-mkt" class="input" name="market" [(ngModel)]="f.market"><option>India</option><option>USA</option></select></div>
+                <div class="field"><label for="tf-sec">Sector</label>
+                  <select id="tf-sec" class="input" name="sector" [(ngModel)]="f.sector"><option value="">—</option>@for (s of sectors; track s) { <option>{{ s }}</option> }</select></div>
+                <div class="field"><label for="tf-cap">Market cap</label>
+                  <select id="tf-cap" class="input" name="cap" [(ngModel)]="f.market_cap"><option value="">—</option>@for (c of caps; track c) { <option>{{ c }}</option> }</select></div>
+              }
+              @if (kind() === 'mutual_fund') {
+                <div class="field"><label for="tf-cat">Category</label>
+                  <select id="tf-cat" class="input" name="category" [(ngModel)]="f.category"><option value="">—</option>@for (c of mfCategories; track c) { <option>{{ c }}</option> }</select></div>
+                <div class="field"><label for="tf-plan">Investing via</label>
+                  <select id="tf-plan" class="input" name="plan" [(ngModel)]="f.sub_category"><option value="">—</option><option>SIP</option><option>Lump Sum</option></select></div>
+              }
+              @if (kind() === 'commodity') {
+                <div class="field"><label for="tf-cmd">Commodity</label>
+                  <select id="tf-cmd" class="input" name="category" [(ngModel)]="f.category"><option value="">—</option><option>Gold</option><option>Silver</option><option>Other</option></select></div>
+              }
+              <div class="field">
+                <label for="tf-sym">Price ticker</label>
+                <div class="input-group">
+                  <input id="tf-sym" class="input" name="symbol" [(ngModel)]="f.symbol" placeholder="e.g. TCS.NS, AAPL, AMFI:120503" />
+                  <button type="button" class="btn" (click)="searchSymbol()" [disabled]="searching()"><app-icon name="search" [size]="15" /></button>
+                </div>
+              </div>
+            </div>
+            @if (hits(); as hs) {
+              <div class="hits">
+                @for (h of hs; track h.symbol) {
+                  <button type="button" class="hit" (click)="chooseHit(h)"><span class="ellipsis">{{ h.name }}</span><span class="muted nowrap">{{ h.symbol }} · {{ h.exchange }}</span></button>
+                } @empty { <div class="hit muted">No matches — you can type the ticker directly.</div> }
+              </div>
+            }
+          }
+          <div class="cols three">
+            <div class="field"><label for="tf-date">Date</label><input id="tf-date" class="input" type="date" name="date" [(ngModel)]="f.date" /></div>
+            @if (f.type !== 'DIVIDEND') {
+              <div class="field"><label for="tf-qty">Quantity</label><input id="tf-qty" class="input num" type="number" step="any" min="0" name="quantity" [(ngModel)]="f.quantity" />
+                @if (f.type === 'SELL' && existing()) { <span class="hint">You hold {{ existing()!.quantity | qty }}</span> }</div>
+            }
+            <div class="field"><label for="tf-amt">{{ f.type === 'SELL' ? 'Sale proceeds' : f.type === 'DIVIDEND' ? 'Amount received' : 'Total cost' }} (₹)</label>
+              <input id="tf-amt" class="input num" type="number" step="0.01" min="0" name="amount" [(ngModel)]="f.amount" /></div>
+          </div>
+          @if (isUsd() && f.type !== 'DIVIDEND') {
+            <div class="cols">
+              <div class="field"><label for="tf-usd">Amount in USD ($)</label><input id="tf-usd" class="input num" type="number" step="0.01" min="0" name="amount_fc" [(ngModel)]="f.amount_fc" />
+                <span class="hint">Used to track your US wallet balance and currency gains</span></div>
+              @if (fxRate() && f.amount_fc) {
+                <div class="field"><label>&nbsp;</label><button type="button" class="btn" (click)="fillInr()">Fill ₹ at today's rate ({{ fxRate()!.toFixed(2) }})</button></div>
+              }
+            </div>
+          }
+          @if (unitPrice() && f.type !== 'DIVIDEND') {
+            <div class="calc">Price per unit: <b>{{ unitPrice() | inr: 2 }}</b>@if (existing()?.price) { · current {{ existing()!.currency === 'USD' ? '$' + existing()!.price : (existing()!.price | inr: 2) }} }</div>
+          }
+        }
+      }
+      @if (kind() !== 'forex') {
+        <div class="field"><label for="tf-notes">Notes (optional)</label><input id="tf-notes" class="input" name="notes" [(ngModel)]="f.notes" /></div>
+      }
+      @if (error()) { <div class="notice bad"><app-icon name="alert" [size]="16" /> {{ error() }}</div> }
+      <div class="form-actions">
+        @if (!isEdit()) {
+          <label class="check small" style="margin-right:auto"><input type="checkbox" name="another" [(ngModel)]="addAnother" /> Save &amp; add another</label>
+          @if (!state().kind) { <button type="button" class="btn ghost" (click)="kind.set(null)">Back</button> }
+        }
+        <button type="button" class="btn" (click)="done.emit()">Cancel</button>
+        <button type="submit" class="btn primary" [disabled]="saving()">{{ saving() ? 'Saving…' : 'Save' }}</button>
+      </div>
+    </form>
+  }
+</app-modal>

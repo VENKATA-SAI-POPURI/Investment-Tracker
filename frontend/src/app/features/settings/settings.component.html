@@ -1,0 +1,117 @@
+<div class="page">
+  <div class="page-head"><div><h1>Settings</h1><p class="sub">Targets, tax, prices and access</p></div></div>
+
+  <section class="grid grid-2">
+    <div class="card">
+      <div class="card-head"><div><h2>Target allocation</h2><span class="hint">Drives drift alerts and the rebalancing planner</span></div>
+        <button class="btn ghost sm" (click)="matchCurrent()" [disabled]="!auth.canWrite()">Use current mix</button></div>
+      <form class="form" (ngSubmit)="saveTargets()">
+        <table class="table">
+          <thead><tr><th>Segment</th><th class="num">Now</th><th class="num" style="width:120px">Target %</th></tr></thead>
+          <tbody>
+            @for (s of segments; track s) {
+              <tr><td><span class="row"><i class="swatch" [style.background]="colorOf(s)"></i>{{ s }}</span></td>
+                <td class="num muted">{{ current()[s] | pct: 1 : false }}</td>
+                <td><input class="input num" type="number" min="0" max="100" step="1" [name]="s" [(ngModel)]="targets[s]" [disabled]="!auth.canWrite()" [attr.aria-label]="s + ' target'" /></td></tr>
+            }
+          </tbody>
+          <tfoot><tr><td>Total</td><td></td><td class="num" [class.neg]="targetSum() !== 100">{{ targetSum() }}%</td></tr></tfoot>
+        </table>
+        @if (auth.canWrite()) {
+          <div class="form-actions"><button class="btn primary" type="submit" [disabled]="saving() || targetSum() !== 100">Save targets</button></div>
+        }
+      </form>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="card">
+        <div class="card-head"><h2>Tax</h2></div>
+        <div class="form">
+          <div class="field">
+            <label for="slab">Your income-tax slab (used for short-term non-equity gains and interest)</label>
+            <div class="row">
+              <select id="slab" class="input" style="max-width:200px" [(ngModel)]="slab" [disabled]="!auth.canWrite()">
+                @for (r of [0, 5, 10, 15, 20, 25, 30]; track r) { <option [ngValue]="r">{{ r }}%</option> }
+              </select>
+              @if (auth.canWrite()) { <button class="btn" (click)="saveSlab()" [disabled]="saving()">Save</button> }
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Preferences</h2></div>
+        <div class="form">
+          <div class="field"><label>Theme</label>
+            <div class="seg">
+              <button [class.on]="theme.mode() === 'system'" (click)="theme.set('system')">System</button>
+              <button [class.on]="theme.mode() === 'light'" (click)="theme.set('light')">Light</button>
+              <button [class.on]="theme.mode() === 'dark'" (click)="theme.set('dark')">Dark</button>
+            </div>
+          </div>
+          <label class="check"><input type="checkbox" [(ngModel)]="autoFlows" (ngModelChange)="saveAuto()" [disabled]="!auth.canWrite()" />
+            Record capital flows automatically for mutual funds, FDs, P2P, USD transfers and dividends</label>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card flush" id="prices">
+    <div class="card-head">
+      <div><h2>Prices & tickers</h2><span class="hint">Last refresh {{ rel(store.portfolio()?.prices?.last_refresh) }} · USD/INR {{ store.portfolio()?.usd_inr ?? '—' }}</span></div>
+      <div class="row">
+        <div class="seg"><button [class.on]="priceFilter() === 'missing'" (click)="priceFilter.set('missing')">Missing</button><button [class.on]="priceFilter() === 'all'" (click)="priceFilter.set('all')">All</button></div>
+        <button class="btn sm" (click)="store.refreshPrices(true)" [disabled]="store.refreshingPrices()"><app-icon name="refresh" [size]="14" /> Refresh</button>
+      </div>
+    </div>
+    <div class="table-wrap" style="max-height:420px">
+      <table class="table">
+        <thead><tr><th>Holding</th><th>Ticker</th><th class="num">Price</th><th class="hide-sm">Updated</th>@if (auth.canWrite()) { <th></th> }</tr></thead>
+        <tbody>
+          @for (p of tradables(); track p.id) {
+            <tr [class.muted]="!p.is_open">
+              <td class="name-cell">{{ p.name }}<div class="sub">{{ classLabel[p.asset_class] }}{{ p.is_open ? '' : ' · closed' }}</div></td>
+              <td>@if (p.symbol) { <code>{{ p.symbol }}</code> } @else { <span class="badge warn">none</span> }</td>
+              <td class="num">@if (p.has_price) { {{ p.currency === 'USD' ? (p.price | usd) : (p.price | inr: 2) }} } @else { — }</td>
+              <td class="hide-sm small muted">{{ p.price_at ? rel(p.price_at) : '—' }}</td>
+              @if (auth.canWrite()) { <td class="right"><button class="btn sm" (click)="editing.set(p)">{{ p.symbol ? 'Change' : 'Set ticker' }}</button></td> }
+            </tr>
+          } @empty { <tr><td colspan="5"><div class="empty">Every open holding has a live price.</div></td></tr> }
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  @if (auth.isAdmin()) {
+    <section class="card flush">
+      <div class="card-head"><div><h2>People with access</h2><span class="hint">Users see only their own data; admins and guests see everything; guests are read-only</span></div></div>
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>Person</th><th>Role</th><th class="hide-sm">Last sign-in</th><th></th></tr></thead>
+          <tbody>
+            @for (u of users(); track u.email) {
+              <tr>
+                <td>{{ u.name || u.email }}<div class="sub">{{ u.email }}</div></td>
+                <td><select class="input" style="width:auto;height:30px" [ngModel]="u.role" (ngModelChange)="setRole(u, $event)" [attr.aria-label]="'Role for ' + u.email">
+                  <option value="admin">Admin</option><option value="user">User</option><option value="guest">Guest</option></select></td>
+                <td class="hide-sm small muted">{{ u.last_login ? rel(u.last_login) : 'never' }}</td>
+                <td class="right nowrap">
+                  @if (u.email !== auth.user()?.email) {
+                    <button class="btn sm" (click)="viewAs(u)"><app-icon name="eye" [size]="14" /> View as</button>
+                    <button class="btn ghost icon sm danger" (click)="removeUser(u)" aria-label="Remove"><app-icon name="trash" [size]="15" /></button>
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      <form class="row wrap" style="padding:14px 20px;border-top:1px solid var(--border)" (ngSubmit)="addUser()">
+        <input class="input" style="max-width:280px" type="email" name="email" [(ngModel)]="newEmail" placeholder="name@gmail.com" aria-label="Email to add" />
+        <select class="input" style="width:auto" name="role" [(ngModel)]="newRole" aria-label="Role"><option value="user">User</option><option value="guest">Guest</option><option value="admin">Admin</option></select>
+        <button class="btn primary" type="submit" [disabled]="!newEmail.includes('@')">Add person</button>
+      </form>
+    </section>
+  }
+</div>
+
+@if (editing(); as p) { <app-instrument-edit [position]="p" (done)="editing.set(null)" /> }
