@@ -1,4 +1,4 @@
-<div class="page">
+<div class="page" [style.--acc]="accent()">
   <div>
     <div class="page-head" style="margin-bottom:12px">
       <h1>Holdings</h1>
@@ -54,7 +54,7 @@
                 </div>
               </td>
               <td class="num">{{ p.value | inr }}<div class="sub">@if (p.has_price) { {{ p.currency === 'USD' ? (p.price | usd) : (p.price | inr: 2) }} }</div></td>
-              <td class="num" [class]="p.unrealized | sign">{{ p.has_price ? (p.unrealized | inr: 0 : true) : '—' }}<div class="sub">{{ p.unrealized_pct | pct }}</div></td>
+              <td class="num" [class]="p.unrealized | sign">{{ p.has_price ? (p.unrealized | inr: 0 : true) : '—' }}@if (p.has_price) { <div class="sub"><span class="chg" [class]="p.unrealized_pct | sign">{{ p.unrealized_pct | pct }}</span></div> }</td>
               <td class="num hide-sm" [class]="p.day_change | sign">{{ p.day_change ? (p.day_change | inr: 0 : true) : '—' }}</td>
               <td class="num hide-sm">{{ p.weight | pct: 1 : false }}<span class="wbar"><i [style.width.%]="p.weight / maxWeight() * 100"></i></span></td>
             </tr>
@@ -73,11 +73,14 @@
           <div class="card-head" style="margin-bottom:12px"><h2>Breakdown</h2>
             <span class="hint">{{ open().length }} holdings</span></div>
           <div class="seg" style="margin-bottom:14px">@for (o of groupOptions(); track o[0]) { <button [class.on]="groupBy() === o[0]" (click)="groupBy.set(o[0])">{{ o[1] }}</button> }</div>
+          <div class="stack" style="margin-bottom:16px" role="img" [attr.aria-label]="'Breakdown by ' + groupLabel()">
+            @for (g of coloured(); track g.key) { <i [style.width.%]="g.pct" [style.background]="g.color" [title]="g.key + ' ' + (g.pct | pct: 1 : false)"></i> }
+          </div>
           <div class="bars">
-            @for (g of groups().slice(0, 8); track g.key) {
+            @for (g of coloured().slice(0, 8); track g.key) {
               <div class="bar-row" [title]="(g.value | inr) + ' · ' + g.count + ' holdings'">
-                <div class="bl"><span class="ellipsis">{{ g.key }}</span><span class="num">{{ g.pct | pct: 1 : false }}</span></div>
-                <div class="track"><span [style.width.%]="(g.pct / maxGroup()) * 100"></span></div>
+                <div class="bl"><span class="ellipsis"><i class="swatch" [style.background]="g.color"></i> {{ g.key }}</span><span class="num">{{ g.pct | pct: 1 : false }}</span></div>
+                <div class="track"><span [style.width.%]="(g.pct / maxGroup()) * 100" [style.background]="g.color"></span></div>
               </div>
             }
             @if (groups().length > 8) { <p class="small muted">+ {{ groups().length - 8 }} more</p> }

@@ -38,7 +38,7 @@
             <tr>
               <td class="nowrap">{{ t.date | dt }}</td>
               <td class="name-cell"><a [routerLink]="['/holding', t.instrument_id]">{{ t.instrument_name }}</a><div class="sub">{{ classLabel[t.asset_class!] }}</div></td>
-              <td><span class="badge" [class.info]="t.type === 'BUY'" [class.good]="['SELL', 'DIVIDEND', 'REPAYMENT', 'MATURITY', 'INTEREST'].includes(t.type)">{{ txnLabel[t.type] }}</span></td>
+              <td><span class="badge" [attr.data-type]="t.type">{{ txnLabel[t.type] }}</span></td>
               <td class="num">{{ t.quantity | qty }}</td>
               <td class="num">{{ t.amount | inr: 2 }}@if (t.amount_fc) { <div class="sub">{{ t.amount_fc | usd }}</div> }</td>
               <td class="hide-sm small muted ellipsis" style="max-width:220px" [title]="t.notes ?? ''">{{ t.notes }}</td>

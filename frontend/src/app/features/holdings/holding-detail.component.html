@@ -99,7 +99,7 @@
               @for (t of txns(); track t.id) {
                 <tr>
                   <td>{{ t.date | dt }}</td>
-                  <td><span class="badge" [class.good]="t.type === 'SELL' || t.type === 'DIVIDEND' || t.type === 'REPAYMENT'">{{ txnLabel[t.type] }}</span></td>
+                  <td><span class="badge" [attr.data-type]="t.type">{{ txnLabel[t.type] }}</span></td>
                   <td class="num">{{ t.quantity | qty }}</td>
                   <td class="num">{{ t.amount | inr: 2 }}@if (t.amount_fc) { <div class="sub">{{ t.amount_fc | usd }}</div> }
                     @if (t.type === 'REPAYMENT' && t.principal !== null) { <div class="sub">P {{ t.principal | inr: 2 }} · I {{ t.amount - t.principal | inr: 2 }}</div> }</td>

@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { inrCompact } from '../core/format';
+import { CLASS_COLOR, AssetClass } from '../core/models';
 import { StoreService } from '../core/store.service';
 
 const GROUPS: Record<string, { path: string; label: string; classes?: string[] }[]> = {
@@ -27,10 +28,11 @@ const GROUPS: Record<string, { path: string; label: string; classes?: string[] }
   template: `
     <nav class="tabs" aria-label="Section">
       @for (t of tabs(); track t.path) {
-        <a [routerLink]="t.path" [class.on]="t.path === current()">{{ t.label }}@if (t.value) { <span class="v">{{ t.value }}</span> }</a>
+        <a [routerLink]="t.path" [class.on]="t.path === current()" [style.--tab-c]="t.color">@if (t.color) { <i class="dot" [style.background]="t.color"></i> }{{ t.label }}@if (t.value) { <span class="v">{{ t.value }}</span> }</a>
       }
     </nav>`,
-  styles: [`.v { margin-left: 6px; color: var(--muted); font-weight: 400; font-size: 12.5px; }`],
+  styles: [`.v { margin-left: 6px; color: var(--muted); font-weight: 400; font-size: 12.5px; }
+    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; vertical-align: 1px; }`],
 })
 export class SectionTabsComponent {
   group = input.required<'holdings' | 'activity'>();
@@ -40,9 +42,10 @@ export class SectionTabsComponent {
   tabs = computed(() => {
     const pos = this.store.positions();
     return GROUPS[this.group()].map(t => {
-      if (!t.classes) return { ...t, value: '' };
+      const color = t.classes ? CLASS_COLOR[t.classes[0] as AssetClass] : '';
+      if (!t.classes) return { ...t, value: '', color };
       const v = pos.filter(p => t.classes!.includes(p.asset_class) && p.is_open).reduce((a, p) => a + p.value, 0);
-      return { ...t, value: v > 0 ? inrCompact(v) : '' };
+      return { ...t, value: v > 0 ? inrCompact(v) : '', color };
     });
   });
 }

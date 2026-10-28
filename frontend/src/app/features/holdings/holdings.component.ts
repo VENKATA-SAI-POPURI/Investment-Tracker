@@ -3,7 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AuthService } from '../../core/auth.service';
 import { FORMAT_PIPES, downloadCsv } from '../../core/format';
-import { AssetClass, CLASS_LABEL, Position, SEGMENT_COLOR } from '../../core/models';
+import { AssetClass, CLASS_LABEL, Position, SEGMENT_COLOR, CLASS_COLOR } from '../../core/models';
 import { StoreService } from '../../core/store.service';
 import { TxnDialogService } from '../../core/txn-dialog.service';
 import { IconComponent } from '../../shared/icon.component';
@@ -85,6 +85,12 @@ export class HoldingsComponent {
     return [...map.values()].map(g => ({ ...g, pct: (g.value / total) * 100 })).sort((a, b) => b.value - a.value);
   });
   groupLabel = computed(() => (this.groupOptions().find(o => o[0] === this.groupBy())?.[1] ?? '').toLowerCase());
+  accent = computed(() => CLASS_COLOR[this.assetClass()] ?? 'var(--primary)');
+  /** Groups with a stable colour: slot by alphabetical position, so a colour follows its group, not its rank. */
+  coloured = computed(() => {
+    const slots = [...this.groups().map(g => g.key)].sort();
+    return this.groups().map(g => ({ ...g, color: `var(--s${(slots.indexOf(g.key) % 8) + 1})` }));
+  });
   maxGroup = computed(() => Math.max(...this.groups().map(g => g.pct), 1));
   maxWeight = computed(() => Math.max(...this.rows().map(p => p.weight), 0.01));
   /** Three biggest risers and fallers today, by rupee change. */
