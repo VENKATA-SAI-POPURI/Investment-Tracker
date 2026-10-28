@@ -116,3 +116,21 @@ def test_health_score_bounds():
     port = compute_portfolio(inst, txns, None, today=date(2025, 6, 1))
     h = health_score(port, None, None)
     assert 0 <= h["score"] <= 100 and len(h["components"]) == 5 and h["focus"]["label"]
+
+
+def test_story_rhythm_milestones_and_attribution():
+    from tracker.analytics.story import build_story, lakh_label
+    inst = [I(1, d.EQUITY, "Winner", last_price=30.0), I(2, d.EQUITY, "Loser", last_price=5.0)]
+    txns = [T(1, 1, "2026-01-10", d.BUY, 1000, 10000), T(2, 2, "2026-02-10", d.BUY, 1000, 10000),
+            T(3, 1, "2026-03-10", d.BUY, 100, 2000)]
+    port = compute_portfolio(inst, txns, None, today=date(2026, 6, 15))
+    perf = {"metrics": {"xirr": 50.0, "start": "2026-01-10"},
+            "benchmarks": [{"key": "NIFTY50", "label": "Nifty 50", "xirr": 8.0, "end_value": 23000.0, "excess_xirr": 42.0}]}
+    s = build_story(port, txns, perf, today=date(2026, 6, 15))
+    assert s["rhythm"]["active_months"] == 3 and s["rhythm"]["invested"] == 22000
+    assert s["rhythm"]["streak"] == 0  # nothing bought in May, so the streak is broken
+    assert s["attribution"]["gainers"][0]["name"] == "Winner" and s["attribution"]["losers"][0]["name"] == "Loser"
+    assert s["milestones"]["ahead"][0]["label"] == "₹1 lakh"
+    keys = [t["key"] for t in s["takeaways"]]
+    assert keys[:3] == ["market", "driver", "drag"] and "ahead" in s["takeaways"][0]["value"]
+    assert lakh_label(2.5e5) == "₹2.5 lakh" and lakh_label(1e7) == "₹1 crore"

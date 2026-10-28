@@ -5,7 +5,7 @@ import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { FORMAT_PIPES, inr, inrCompact, inrWords } from '../../core/format';
 import { errorMessage } from '../../core/http';
-import { Insight, Performance, Pulse, SEGMENT_COLOR } from '../../core/models';
+import { Insight, Performance, Pulse, SEGMENT_COLOR, SEGMENT_META } from '../../core/models';
 import { StoreService } from '../../core/store.service';
 import { TxnDialogService } from '../../core/txn-dialog.service';
 import { DonutChartComponent, Slice } from '../../shared/charts/donut-chart.component';
@@ -13,21 +13,15 @@ import { LineChartComponent, LineSeries } from '../../shared/charts/line-chart.c
 import { IconComponent } from '../../shared/icon.component';
 import { MandalaComponent } from '../../shared/motifs';
 import { FestivalStripComponent, HealthCardComponent, MoneyCalendarComponent } from './pulse.components';
+import { DriversComponent, MarketComponent, MilestonesComponent, RhythmComponent, TakeawaysComponent } from './story.components';
 
-const SEGMENT_META: Record<string, { label: string; icon: string; route: string }> = {
-  'Equity (India)': { label: 'Indian stocks', icon: 'trend', route: '/holdings/equity' },
-  'Equity (USA)': { label: 'US stocks', icon: 'globe', route: '/holdings/equity' },
-  'Mutual Funds': { label: 'Mutual funds', icon: 'layers', route: '/holdings/mutual_fund' },
-  'Commodity': { label: 'Gold & silver', icon: 'coins', route: '/holdings/commodity' },
-  'P2P': { label: 'P2P lending', icon: 'users', route: '/p2p' },
-  'Fixed Deposits': { label: 'Fixed deposits', icon: 'bank', route: '/fixed-deposits' },
-};
 const SEV_ICON: Record<string, string> = { critical: 'alert', warning: 'alert', info: 'bulb', positive: 'checkCircle' };
 
 @Component({
   selector: 'app-overview',
   standalone: true,
-  imports: [RouterLink, IconComponent, LineChartComponent, DonutChartComponent, MandalaComponent, FestivalStripComponent, HealthCardComponent, MoneyCalendarComponent, ...FORMAT_PIPES],
+  imports: [RouterLink, IconComponent, LineChartComponent, DonutChartComponent, MandalaComponent, FestivalStripComponent, HealthCardComponent, MoneyCalendarComponent,
+    TakeawaysComponent, DriversComponent, MarketComponent, RhythmComponent, MilestonesComponent, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './overview.component.html',
   styleUrl: './overview.component.scss',
@@ -46,6 +40,8 @@ export class OverviewComponent {
   perfError = signal<string | null>(null);
   insights = signal<Insight[]>([]);
   pulse = signal<Pulse | null>(null);
+  story = computed(() => this.pulse()?.story ?? null);
+  compare = signal(false);
   words = inrWords;
   sevIcon = SEV_ICON;
   inrc = (v: number) => inrCompact(v);
@@ -76,12 +72,16 @@ export class OverviewComponent {
   slices = computed<Slice[]>(() => this.assets().map(a => ({ label: a.label, value: a.value, color: a.color })));
   hasTargets = computed(() => this.assets().some(a => a.target !== null));
 
+  hasBench = computed(() => !!this.perf()?.benchmarks.some(b => b.key === 'NIFTY50'));
   labels = computed(() => this.perf()?.series.map(p => p.date) ?? []);
   series = computed<LineSeries[]>(() => {
     const s = this.perf()?.series ?? [];
     return [
       { key: 'value', label: 'Portfolio value', color: 'var(--s1)', values: s.map(p => p.value), area: true },
       { key: 'net', label: 'Money invested', color: 'var(--muted)', values: s.map(p => p.net_invested), muted: true },
+      ...(this.compare() && this.hasBench()
+        ? [{ key: 'NIFTY50', label: 'Same money in Nifty 50', color: 'var(--s2)', values: s.map(p => p['NIFTY50'] as number | null) }]
+        : []),
     ];
   });
 
@@ -137,7 +137,6 @@ export class OverviewComponent {
   }
 
   go(route: string) { this.router.navigate([route]); }
-  tint(color: string, pct = 14) { return `color-mix(in srgb, ${color} ${pct}%, white)`; }
   link(i: Insight) { return (i.link ?? '/insights').split('#')[0]; }
   frag(i: Insight) { return (i.link ?? '').split('#')[1] || undefined; }
 }

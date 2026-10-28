@@ -15,6 +15,16 @@ export const SEGMENT_COLOR: Record<string, string> = {
   'Fixed Deposits': 'var(--s6)',
 };
 
+/** Friendly name, icon and page for each segment. */
+export const SEGMENT_META: Record<string, { label: string; icon: string; route: string }> = {
+  'Equity (India)': { label: 'Indian stocks', icon: 'trend', route: '/holdings/equity' },
+  'Equity (USA)': { label: 'US stocks', icon: 'globe', route: '/holdings/equity' },
+  'Mutual Funds': { label: 'Mutual funds', icon: 'layers', route: '/holdings/mutual_fund' },
+  'Commodity': { label: 'Gold & silver', icon: 'coins', route: '/holdings/commodity' },
+  'P2P': { label: 'P2P lending', icon: 'users', route: '/p2p' },
+  'Fixed Deposits': { label: 'Fixed deposits', icon: 'bank', route: '/fixed-deposits' },
+};
+
 export const CLASS_LABEL: Record<AssetClass, string> = {
   equity: 'Stocks', mutual_fund: 'Mutual funds', commodity: 'Commodities', p2p: 'P2P lending',
   fixed_deposit: 'Fixed deposits', cash: 'USD wallet',
@@ -279,7 +289,20 @@ export interface AllowlistUser { email: string; added_date: string; role: Role; 
 export interface HealthComponent { key: string; label: string; weight: number; score: number; note: string; }
 export interface Health { score: number; grade: string; components: HealthComponent[]; focus: { key: string; label: string; note: string }; }
 export interface CalendarEvent { date: string; key: string; title: string; kind: 'festival' | 'national' | 'tax' | 'fy' | 'personal'; note: string; link: string | null; days: number; }
-export interface Pulse { health: Health; calendar: { events: CalendarEvent[]; theme: string | null; next_festival: CalendarEvent | null }; }
+export interface Takeaway { key: string; icon: string; tone: 'pos' | 'neg' | 'neutral'; label: string; value: string; note: string; link: string | null; }
+export interface Contributor { id: number; name: string; segment: string; gain: number; is_open: boolean; }
+export interface Attribution {
+  total: number; unrealized: number; realized: number; income: number; gross_gains: number; gross_losses: number;
+  gainers: Contributor[]; losers: Contributor[]; segments: { segment: string; gain: number }[]; winners: number; losers_count: number;
+}
+export interface MarketCompare { you: number | null; value: number; since: string | null;
+  rows: { key: string; label: string; xirr: number | null; end_value: number; diff_value: number; excess: number | null }[]; }
+export interface Rhythm { months: { month: string; invested: number; withdrawn: number; net: number }[]; active_months: number; streak: number;
+  invested: number; net: number; monthly_avg: number; pace: number; }
+export interface Milestones { value: number; monthly: number; assumed_return: number; last_reached: { amount: number; label: string } | null; progress: number;
+  ahead: { amount: number; label: string; months: number | null; when: string | null; in: string | null }[]; }
+export interface Story { takeaways: Takeaway[]; attribution: Attribution; market: MarketCompare | null; rhythm: Rhythm; milestones: Milestones; }
+export interface Pulse { health: Health; calendar: { events: CalendarEvent[]; theme: string | null; next_festival: CalendarEvent | null }; story: Story; }
 export interface IncomeMonth { month: string; dividends: number; p2p_interest: number; fd_interest: number; total: number; }
 export interface Income { months: IncomeMonth[]; last_12m: number; monthly_avg: number; top_payers: { instrument_id: number; name: string; amount: number }[]; }
 export interface PriceHistory { symbol: string | null; currency: string | null; points: [string, number][]; trades: { date: string; type: 'BUY' | 'SELL'; quantity: number; amount: number; price: number | null }[]; }

@@ -49,30 +49,21 @@
       </div>
     </section>
 
-    <!-- Asset classes -->
-    <section class="assets">
-      @for (a of assets(); track a.segment) {
-        <button class="asset" (click)="go(a.route)" [style.--c]="a.color">
-          <span class="a-top">
-            <span class="a-ic" [style.background]="tint(a.color)" [style.color]="a.color"><app-icon [name]="a.icon" [size]="18" /></span>
-            <span class="a-share">{{ a.pct | pct: 0 : false }}</span>
-          </span>
-          <span class="a-name">{{ a.label }}</span>
-          <span class="a-val">{{ a.value | inrc }}</span>
-          <span class="a-ret" [class]="(a.unrealized + a.realized + a.income) | sign">
-            @if (a.unrealized_pct !== null && a.segment !== 'P2P' && a.segment !== 'Fixed Deposits') { {{ a.unrealized_pct | pct }} } @else { {{ a.realized + a.income | inrc: true }} earned }
-          </span>
-        </button>
-      }
-    </section>
+    @if (story(); as st) {
+      <div class="sec-head"><h2>What stands out</h2><span>Drawn from your full history</span></div>
+      <app-takeaways [items]="st.takeaways" />
+    }
 
     <div class="main-grid">
       <section class="card">
         <div class="card-head">
           <div><h2>Value over time</h2>
-            @if (perf(); as pf) { <span class="hint">{{ pf.metrics.gain >= 0 ? 'Up' : 'Down' }} <b [class]="pf.metrics.gain | sign">{{ pf.metrics.gain | inr: 0 : true }}</b> in this period</span> }
+            @if (perf(); as pf) { <span class="hint">{{ pf.metrics.gain >= 0 ? 'Up' : 'Down' }} <b [class]="pf.metrics.gain | sign">{{ (pf.metrics.gain < 0 ? -pf.metrics.gain : pf.metrics.gain) | inr }}</b> in this period</span> }
           </div>
-          <div class="seg">@for (r of ranges; track r) { <button [class.on]="range() === r" (click)="range.set(r)">{{ r }}</button> }</div>
+          <div class="row wrap">
+            @if (hasBench()) { <button class="cmp" [class.on]="compare()" (click)="compare.set(!compare())" [attr.aria-pressed]="compare()"><i></i>vs Nifty 50</button> }
+            <div class="seg">@for (r of ranges; track r) { <button [class.on]="range() === r" (click)="range.set(r)">{{ r }}</button> }</div>
+          </div>
         </div>
         @if (perf(); as pf) {
           <div [class.loading-fade]="perfLoading()">
@@ -86,7 +77,7 @@
       </section>
 
       <section class="card">
-        <div class="card-head"><h2>Allocation</h2><a routerLink="/insights" fragment="rebalance" class="small">Rebalance →</a></div>
+        <div class="card-head"><h2>Where your money is</h2><a routerLink="/insights" fragment="rebalance" class="small">Rebalance →</a></div>
         <div class="donut-wrap">
           <app-donut-chart [slices]="slices()" [size]="168" [centerTop]="inrc(tt.value)" centerBottom="total" [valueFormat]="inrFull" ariaLabel="Allocation by asset class" />
         </div>
@@ -94,7 +85,8 @@
           @for (a of assets(); track a.segment) {
             <div class="l-row" (click)="go(a.route)">
               <i class="swatch" [style.background]="a.color"></i>
-              <span class="l-name">{{ a.label }}</span>
+              <span class="l-name"><app-icon [name]="a.icon" [size]="14" />{{ a.label }}</span>
+              <span class="l-val">{{ a.value | inrc }}</span>
               <span class="l-pct">{{ a.pct | pct: 1 : false }}</span>
               @if (a.target !== null) {
                 <span class="l-tgt" [class.over]="(a.drift ?? 0) >= 2.5" [class.under]="(a.drift ?? 0) <= -2.5" [title]="'Target ' + a.target + '%'">
@@ -108,7 +100,20 @@
       </section>
     </div>
 
+    @if (story(); as st) {
+      <div class="sec-head"><h2>Analysis</h2><span>Why your portfolio looks the way it does</span></div>
+      <div class="duo">
+        <app-drivers [data]="st.attribution" />
+        @if (st.market) { <app-market [data]="st.market" /> }
+      </div>
+      <div class="duo">
+        <app-rhythm [data]="st.rhythm" />
+        <app-milestones [data]="st.milestones" />
+      </div>
+    }
+
     @if (pulse(); as pl) {
+      <div class="sec-head"><h2>Health &amp; calendar</h2><span>How well-built the portfolio is, and what's coming up</span></div>
       <div class="pulse-grid">
         <app-health-card [health]="pl.health" />
         <app-money-calendar [events]="pl.calendar.events" />

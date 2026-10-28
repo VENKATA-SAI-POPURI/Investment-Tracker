@@ -12,6 +12,7 @@ from .analytics.health import health_score
 from .analytics.history import build_history
 from .analytics.insights import build_insights
 from .analytics.portfolio import compute_portfolio, to_date
+from .analytics.story import build_story
 from .analytics.tax import compute_tax
 from .ledger import Ledger
 
@@ -148,10 +149,12 @@ class Services:
         return goals_mod.rebalance_plan(port["segments"], targets, new_money, allow_sell)
 
     def pulse(self, scope: str | None, settings: dict) -> dict:
-        """Health score + money calendar for the overview."""
+        """Health score, money calendar and the narrative analysis for the overview."""
         res = self.insights(scope, settings)
+        txns = self.ledger.load(scope)["transactions"]
         return {"health": health_score(res["portfolio"], res["tax"], res["performance"]),
-                "calendar": build_calendar(res["portfolio"], res["tax"], res["goals"])}
+                "calendar": build_calendar(res["portfolio"], res["tax"], res["goals"]),
+                "story": build_story(res["portfolio"], txns, res["performance"])}
 
     def income(self, scope: str | None, months: int = 24) -> dict:
         """Passive income (dividends, P2P interest, FD interest) per month."""

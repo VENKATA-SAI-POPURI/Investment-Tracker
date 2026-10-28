@@ -51,7 +51,7 @@ function split(link: string | null) {
     .cta { position: relative; flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 8px 14px; border-radius: 10px;
       background: #fff; color: #9a3412; font-weight: 600; font-size: 13px; text-decoration: none; }
     .cta:hover { text-decoration: none; background: #fff7ed; }
-    @media (max-width: 640px) { .fest { flex-wrap: wrap; } .cta { margin-left: 62px; } }
+    @media (max-width: 640px) { .fest { flex-wrap: wrap; align-items: flex-start; } .body { flex: 1 1 calc(100% - 62px); } .cta { margin-left: 62px; } }
   `],
 })
 export class FestivalStripComponent {
