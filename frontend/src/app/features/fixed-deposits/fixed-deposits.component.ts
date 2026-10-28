@@ -27,10 +27,10 @@ import { ModalComponent } from '../../shared/ui';
       </div>
       <app-section-tabs group="holdings" current="/fixed-deposits" style="margin-top:-12px" />
       <section class="kpis">
-        <div class="kpi"><span class="label">Active deposits</span><span class="value">{{ stats().principal | inr }}</span><span class="meta">{{ active().length }} FDs</span></div>
-        <div class="kpi"><span class="label">Interest accrued</span><span class="value pos">{{ stats().accrued | inr }}</span></div>
-        <div class="kpi"><span class="label">Value today</span><span class="value">{{ stats().value | inr }}</span></div>
-        <div class="kpi"><span class="label">Next maturity</span><span class="value">{{ stats().next ? (stats().next!.maturity_date | dt) : '—' }}</span>
+        <div class="kpi"><span class="chip blue sm"><app-icon name="bank" [size]="15" /></span><span class="label">Active deposits</span><span class="value">{{ stats().principal | inr }}</span><span class="meta">{{ active().length }} FDs</span></div>
+        <div class="kpi"><span class="chip green sm"><app-icon name="trend" [size]="15" /></span><span class="label">Interest accrued</span><span class="value pos">{{ stats().accrued | inr }}</span></div>
+        <div class="kpi"><span class="chip violet sm"><app-icon name="wallet" [size]="15" /></span><span class="label">Value today</span><span class="value">{{ stats().value | inr }}</span></div>
+        <div class="kpi"><span class="chip amber sm"><app-icon name="calendar" [size]="15" /></span><span class="label">Next maturity</span><span class="value">{{ stats().next ? (stats().next!.maturity_date | dt) : '—' }}</span>
           <span class="meta">{{ stats().next ? stats().next!.name + ' · ' + stats().next!.days_to_maturity + ' days' : '' }}</span></div>
       </section>
       <section class="card flush">

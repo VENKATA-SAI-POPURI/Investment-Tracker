@@ -75,7 +75,7 @@ export class FestivalStripComponent {
   imports: [IconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <section class="card health">
+    <section class="card health fill">
       <div class="card-head"><div class="row" style="gap:10px"><span class="chip violet sm"><app-icon name="heart" [size]="15" /></span><h2>Portfolio health</h2></div></div>
       <div class="gauge">
         <svg viewBox="-100 -100 200 112" width="220" height="124" role="img" [attr.aria-label]="'Health score ' + health().score + ' out of 100'">
@@ -97,9 +97,10 @@ export class FestivalStripComponent {
           </div>
         }
       </div>
-      <div class="focus"><b>Improve next:</b> {{ health().focus.label }} — {{ health().focus.note }}</div>
+      <div class="focus push"><b>Improve next:</b> {{ health().focus.label }} — {{ health().focus.note }}</div>
     </section>`,
   styles: [`
+    :host { display: block; }
     .gauge { display: flex; flex-direction: column; align-items: center; margin-top: -6px; }
     .score { font-size: 38px; font-weight: 700; fill: var(--text); letter-spacing: -1px; }
     .of { font-size: 11px; fill: var(--muted); }
@@ -128,7 +129,7 @@ export class HealthCardComponent {
   imports: [RouterLink, IconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <section class="card">
+    <section class="card fill">
       <div class="card-head"><div class="row" style="gap:10px"><span class="chip amber sm"><app-icon name="calendar" [size]="15" /></span><h2>Money calendar</h2></div>
         <span class="hint">Next {{ events().length ? '75 days' : '' }}</span></div>
       @for (e of events().slice(0, 6); track e.key) {
@@ -145,6 +146,7 @@ export class HealthCardComponent {
       } @empty { <p class="muted small">Nothing in the next few weeks.</p> }
     </section>`,
   styles: [`
+    :host { display: block; }
     .ev { display: flex; gap: 14px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); color: var(--text); text-decoration: none; }
     .ev:last-child { border-bottom: 0; }
     .ev:hover { text-decoration: none; }

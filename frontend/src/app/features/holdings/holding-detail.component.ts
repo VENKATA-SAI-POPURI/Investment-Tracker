@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../core/api.service';
@@ -17,7 +18,7 @@ import { ConfirmService } from '../../shared/ui';
 @Component({
   selector: 'app-holding-detail',
   standalone: true,
-  imports: [RouterLink, IconComponent, InstrumentEditComponent, LineChartComponent, ...FORMAT_PIPES],
+  imports: [RouterLink, NgTemplateOutlet, IconComponent, InstrumentEditComponent, LineChartComponent, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './holding-detail.component.html',
 })
@@ -35,6 +36,7 @@ export class HoldingDetailComponent {
   history = signal<PriceHistory | null>(null);
   priceFmt = (v: number) => this.history()?.currency === 'USD' ? usd(v) : inr(v, 2);
   priceAxis = (v: number) => this.history()?.currency === 'USD' ? '$' + Math.round(v) : '₹' + Math.round(v).toLocaleString('en-IN');
+  hasChart = computed(() => (this.history()?.points.length ?? 0) > 1);
   hLabels = computed(() => (this.history()?.points ?? []).map(p => p[0]));
   hSeries = computed<LineSeries[]>(() => [{ key: 'px', label: 'Price', color: 'var(--s1)', values: (this.history()?.points ?? []).map(p => p[1]), area: true }]);
   hMarkers = computed(() => {

@@ -71,7 +71,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 /* ── Layout ───────────────────────────────────────────────────── */
 .page { padding: 28px 32px 56px; max-width: 1240px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
-.page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.page-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .page-head .sub { color: var(--muted); margin-top: 3px; font-size: 13px; }
 .row { display: flex; align-items: center; gap: 8px; }
 .row.wrap { flex-wrap: wrap; }
@@ -81,6 +81,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .span-2 { grid-column: span 2; }
+.grid.top { align-items: start; }
+/* Cards that sit side by side fill the row height; push footers down with .push */
+.fill { display: flex; flex-direction: column; height: 100%; }
+.card.fill > .push { margin-top: auto; }
+.card.fill > :has(+ .push) { margin-bottom: 14px; }
 @media (max-width: 1100px) { .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 760px) {
   .page { padding: 18px 16px 96px; gap: 16px; }
