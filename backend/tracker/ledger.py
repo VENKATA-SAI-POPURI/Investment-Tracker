@@ -169,6 +169,10 @@ class Ledger:
                 fields["last_price"] = None
                 fields["prev_close"] = None
                 fields["last_price_at"] = None
+        if fields.get("last_price") is not None and "symbol" not in fields and not inst.get("symbol"):
+            # A price typed in by hand (e.g. an NPS NAV from the latest statement)
+            fields["last_price_at"] = now_iso()
+            fields["price_source"] = "manual"
         if "market" in fields and inst["asset_class"] == d.EQUITY:
             fields["currency"] = d.currency_for(d.EQUITY, fields["market"])
         if not fields:
@@ -189,7 +193,7 @@ class Ledger:
         self._bump()
 
     # ── transactions ──
-    def _validate_txn(self, inst: dict, t: dict, exclude_id: int | None = None):
+    def _validate_txn(self, inst: dict, t: dict, exclude_id: int | None = None, check_holdings: bool = True):
         ac = inst["asset_class"]
         if t.get("type") not in d.TXN_TYPES_BY_CLASS[ac]:
             raise ValidationError(f"{t.get('type')} is not valid for {ac.replace('_', ' ')}; use one of "
@@ -202,14 +206,19 @@ class Ledger:
         for k in ("quantity", "amount_fc", "principal", "fees"):
             if t.get(k) is not None and t[k] < 0:
                 raise ValidationError(f"{k} cannot be negative")
-        if ac in d.TRADABLE and t["type"] in (d.BUY, d.SELL):
+        if ac in d.UNITISED and t["type"] in (d.BUY, d.SELL):
             if not t.get("quantity"):
                 raise ValidationError("quantity is required for buys and sells")
+        if t["type"] in d.CORPORATE_ACTIONS:
+            if not t.get("quantity"):
+                raise ValidationError("bonus shares received are required" if t["type"] == d.BONUS
+                                      else "split ratio is required (new shares for each old share)")
+            t["amount"] = 0.0
         if t["type"] == d.REPAYMENT and t.get("principal") is not None and t["principal"] > t["amount"] + 0.005:
             raise ValidationError("principal cannot exceed the amount credited")
         if t["type"] in (d.FX_IN, d.FX_OUT) and not t.get("amount_fc"):
             raise ValidationError("USD amount is required")
-        if ac in d.TRADABLE and t["type"] == d.SELL:
+        if check_holdings and ac in d.UNITISED and t["type"] == d.SELL:
             rows = self.db.query("SELECT * FROM transactions WHERE instrument_id = ? AND date <= ? AND id != ?",
                                  (inst["id"], t["date"], exclude_id or -1))
             lots, _, _ = run_fifo(inst["id"], rows)
@@ -251,6 +260,10 @@ class Ledger:
             label = "deposit" if typ == d.FX_IN else "withdrawal"
             cash("capital", "in" if typ == d.FX_IN else "out", "Equity USA", "Deposit" if typ == d.FX_IN else "Withdrawal",
                  f"Forex {label}: ${float(t['amount_fc']):,.2f} at ₹{rate:.2f}/USD")
+        elif ac in (d.EPF, d.NPS) and typ in (d.BUY, d.SELL):
+            label = "EPF" if ac == d.EPF else "NPS"
+            cash("capital", "in" if typ == d.BUY else "out", label, "Deposit" if typ == d.BUY else "Withdrawal",
+                 f"{name} {'contribution' if typ == d.BUY else 'withdrawal'}")
         elif typ == d.DIVIDEND:
             cash("capital", "out", "Equity/Commodity", "Withdrawal", f"{name} dividend")
         return rows
@@ -279,7 +292,8 @@ class Ledger:
         self._bump()
         return self.db.one("SELECT * FROM transactions WHERE id = ?", (res.lastrowid,))
 
-    def bulk_add(self, owner: str, entries: list[dict], status_updates: list[tuple[int, str]] = ()) -> int:
+    def bulk_add(self, owner: str, entries: list[dict], status_updates: list[tuple[int, str]] = (),
+                 check_holdings: bool = True) -> int:
         """Insert many transactions (optionally with new instruments) in ONE atomic batch.
         entry: {"instrument": dict (existing row) | None, "new_instrument": dict | None, "txn": dict, "source": str}
         New instruments must carry a unique `ref` so later statements can find their id."""
@@ -306,7 +320,7 @@ class Ledger:
             else:
                 inst = e["instrument"]
                 inst_sql, inst_params = "?", [inst["id"]]
-            self._validate_txn({**inst, "id": inst.get("id") or -1}, t)
+            self._validate_txn({**inst, "id": inst.get("id") or -1}, t, check_holdings=check_holdings)
             cols = list(t.keys())
             stmts.append((f"INSERT INTO transactions (owner, instrument_id, {','.join(cols)}, created_at, updated_at) "
                           f"VALUES (?, {inst_sql}, {','.join('?' * len(cols))}, ?, ?)",
@@ -344,12 +358,11 @@ class Ledger:
     def delete_transaction(self, tid: int, scope: str | None):
         cur = self.transaction(tid, scope)
         inst = self.instrument(cur["instrument_id"], scope)
-        if inst["asset_class"] in d.TRADABLE and cur["type"] == d.BUY:
+        if inst["asset_class"] in d.UNITISED and cur["type"] in (d.BUY, d.BONUS, d.SPLIT):
             rows = self.db.query("SELECT * FROM transactions WHERE instrument_id = ? AND id != ?", (inst["id"], tid))
-            sold = sum(float(r["quantity"] or 0) for r in rows if r["type"] == d.SELL)
-            bought = sum(float(r["quantity"] or 0) for r in rows if r["type"] == d.BUY)
-            if sold > bought + 1e-6:
-                raise ValidationError("Deleting this purchase would leave more units sold than bought; delete the sale first")
+            _, _, unmatched = run_fifo(inst["id"], rows)
+            if unmatched > 1e-6:
+                raise ValidationError("Deleting this would leave more units sold than held; delete the sale first")
         self.db.batch([("DELETE FROM cash_movements WHERE transaction_id = ?", (tid,)),
                        ("DELETE FROM transactions WHERE id = ?", (tid,))])
         self._touch_status(inst)

@@ -76,6 +76,11 @@ class Directory:
             self._roles[email.lower()] = (time.time(), role)
         return role
 
+    def canonical_email(self, email: str) -> str:
+        """The allowlist spelling of an email, which is how ledger rows record their owner."""
+        row = self.db.one("SELECT email FROM allowlist WHERE LOWER(email) = LOWER(?) ORDER BY id LIMIT 1", (email,))
+        return row["email"] if row else email
+
     def forget(self, email: str | None = None):
         with self._lock:
             if email:
@@ -142,8 +147,14 @@ def authenticate(directory: Directory):
         if not target_role:
             return jsonify({"error": f"{view_as} is not on the allowlist"}), 400
         g.email, g.role, g.impersonating = view_as, target_role, True
-    # users see their own data; admins and guests see the combined portfolio
+    # users see their own portfolio; admins and guests see the family, or one member picked in the switcher
+    g.owner = g.email
     g.scope = g.email if g.role == "user" else None
+    portfolio = request.headers.get("X-Portfolio", "").strip()
+    if g.role != "user" and portfolio and portfolio.lower() != "family":
+        if not directory.role(portfolio):
+            return jsonify({"error": f"{portfolio} is not a member of this family"}), 400
+        g.scope = g.owner = directory.canonical_email(portfolio)
     return None
 
 

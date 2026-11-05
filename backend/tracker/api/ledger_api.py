@@ -1,12 +1,14 @@
 import base64
 import re
 from collections import defaultdict
+from datetime import date
 
 from flask import Blueprint, current_app, g, jsonify, request
 
 from .. import domain as d
 from .. import prices as px
-from ..importers import csv_import, lenden
+from ..analytics.portfolio import run_fifo
+from ..importers import cas_import, csv_import, lenden
 from ..ledger import ValidationError
 from ..security import write_required
 
@@ -37,7 +39,7 @@ def list_instruments():
 @bp.post("/instruments")
 @write_required
 def create_instrument():
-    return jsonify(L().create_instrument(g.email, body())), 201
+    return jsonify(L().create_instrument(g.owner, body())), 201
 
 
 @bp.put("/instruments/<int:iid>")
@@ -59,7 +61,7 @@ def suggestions():
     rows = L().load(g.scope)["instruments"]
     out = defaultdict(list)
     for r in rows:
-        if r["asset_class"] in d.TRADABLE:
+        if r["asset_class"] in d.UNITISED + (d.EPF,):
             out[r["asset_class"]].append({k: r.get(k) for k in ("id", "name", "symbol", "market", "sector", "market_cap",
                                                                  "category", "sub_category")})
     out["sectors"] = sorted({r["sector"] for r in rows if r.get("sector")})
@@ -102,10 +104,10 @@ def add_transaction():
     iid = data.get("instrument_id")
     if not iid:
         spec = data.get("instrument") or {}
-        if not spec.get("name") or spec.get("asset_class") not in d.TRADABLE + (d.CASH,):
+        if not spec.get("name") or spec.get("asset_class") not in d.TRADABLE + (d.CASH, d.EPF, d.NPS):
             raise ValidationError("Choose an existing holding or give the new holding's name and type")
-        iid = L().find_or_create_instrument(g.email, spec["asset_class"], spec["name"], spec)["id"]
-    return jsonify(L().add_transaction(g.email, g.scope, int(iid), data)), 201
+        iid = L().find_or_create_instrument(g.owner, spec["asset_class"], spec["name"], spec)["id"]
+    return jsonify(L().add_transaction(g.owner, g.scope, int(iid), data)), 201
 
 
 @bp.put("/transactions/<int:tid>")
@@ -151,12 +153,116 @@ def import_commit():
     for r in rows:
         try:
             spec = {k: r.get(k) for k in ("name", "symbol", "market", "sector", "market_cap", "category")}
-            inst = L().find_or_create_instrument(g.email, r["asset_class"], r["name"], spec)
-            t = L().add_transaction(g.email, g.scope, inst["id"], r, source="import:csv")
+            inst = L().find_or_create_instrument(g.owner, r["asset_class"], r["name"], spec)
+            t = L().add_transaction(g.owner, g.scope, inst["id"], r, source="import:csv")
             results.append({"name": r["name"], "date": r["date"], "ok": True, "id": t["id"]})
         except (ValidationError, KeyError) as e:
             results.append({"name": r.get("name"), "date": r.get("date"), "ok": False, "error": str(e)})
     return jsonify({"results": results, "imported": sum(1 for x in results if x["ok"])})
+
+
+# ── CAS (consolidated account statement) import ──
+
+def _cas_key(t: dict) -> tuple:
+    return (str(t["date"])[:10], t["type"], round(float(t.get("quantity") or 0), 3))
+
+
+def _match_fund(f: dict, funds: list[dict]) -> dict | None:
+    if f.get("amfi"):
+        hit = next((i for i in funds if (i.get("symbol") or "").upper() == f"AMFI:{f['amfi']}"), None)
+        if hit:
+            return hit
+    n = cas_import.norm_name(f["name"])
+    return next((i for i in funds if cas_import.norm_name(i["name"]) == n), None)
+
+
+@bp.post("/import/cas/preview")
+@write_required
+def cas_preview():
+    data = body()
+    try:
+        pdf = base64.b64decode((data.get("file") or "").split(",")[-1])
+        parsed = cas_import.parse(pdf, (data.get("password") or "").strip())
+    except cas_import.CasError as e:
+        raise ValidationError(str(e))
+    ledger = L().load(g.scope)
+    by_inst = defaultdict(list)
+    for t in ledger["transactions"]:
+        by_inst[t["instrument_id"]].append(t)
+    funds = [i for i in ledger["instruments"] if i["asset_class"] == d.MUTUAL_FUND]
+    for f in parsed["funds"]:
+        inst = _match_fund(f, funds)
+        have = {_cas_key(t) for t in by_inst.get(inst["id"], [])} if inst else set()
+        for t in f["transactions"]:
+            t["duplicate"] = _cas_key(t) in have
+        f["matched_id"], f["matched_name"] = (inst["id"], inst["name"]) if inst else (None, None)
+        f["new_count"] = sum(1 for t in f["transactions"] if not t["duplicate"])
+        f["duplicate_count"] = len(f["transactions"]) - f["new_count"]
+        f["selected"] = f["new_count"] > 0
+    nps = [i for i in ledger["instruments"] if i["asset_class"] == d.NPS]
+    for n in parsed["nps"]:
+        hit = next((i for i in nps if cas_import.norm_name(i["name"]) == cas_import.norm_name(n["name"])), None)
+        n["matched_id"], n["action"] = (hit["id"], "update_nav") if hit else (None, "create")
+        n["selected"] = True
+    port, _ = S().portfolio(g.scope, S().settings())
+    held = [p for p in port["positions"] if p["asset_class"] in d.UNITISED and p.get("is_open")]
+    for h in parsed["demat"]:
+        sym = (h.get("symbol") or "").upper()
+        hit = next((p for p in held if sym and (p.get("symbol") or "").upper().split(".")[0] == sym), None) or             next((p for p in held if cas_import.norm_name(p["name"]) == cas_import.norm_name(h["name"] or "")), None)
+        h["app_units"] = hit["quantity"] if hit else None
+        h["app_name"] = hit["name"] if hit else None
+        h["status"] = "missing" if not hit else ("match" if abs((hit["quantity"] or 0) - h["units"]) < 1e-3 else "differs")
+    return jsonify(parsed)
+
+
+@bp.post("/import/cas/commit")
+@write_required
+def cas_commit():
+    data = body()
+    results = []
+    for f in data.get("funds") or []:
+        try:
+            if f.get("matched_id"):
+                inst = L().instrument(int(f["matched_id"]), g.scope)
+            else:
+                spec = {"symbol": f"AMFI:{f['amfi']}" if f.get("amfi") else None, "category": f.get("category"),
+                        "platform": f.get("amc"), "notes": f"Folio {f.get('folio')}" if f.get("folio") else None}
+                inst = L().find_or_create_instrument(g.owner, d.MUTUAL_FUND, f["name"], {k: v for k, v in spec.items() if v})
+            existing = L().db.query("SELECT * FROM transactions WHERE instrument_id = ?", (inst["id"],))
+            have = {_cas_key(t) for t in existing}
+            new = [t for t in f.get("transactions") or [] if _cas_key(t) not in have]
+            if not new:
+                results.append({"name": f["name"], "ok": True, "imported": 0})
+                continue
+            # check units never go negative before writing anything for this fund
+            _, _, unmatched = run_fifo(inst["id"], existing + [{**t, "id": 10**9 + n} for n, t in enumerate(new)])
+            if unmatched > 1e-6:
+                raise ValidationError(f"redemptions exceed purchases by {unmatched:g} units; import the full-history (detailed) CAS")
+            entries = [{"instrument": inst, "txn": {k: t.get(k) for k in ("date", "type", "quantity", "amount", "notes")},
+                        "source": "import:cas"} for t in new]
+            L().bulk_add(inst["owner"], entries, check_holdings=False)
+            results.append({"name": f["name"], "ok": True, "imported": len(new)})
+        except (ValidationError, KeyError, LookupError) as e:
+            results.append({"name": f.get("name"), "ok": False, "error": str(e)})
+    for n in data.get("nps") or []:
+        try:
+            if n.get("matched_id"):
+                L().update_instrument(int(n["matched_id"]), g.scope, {"last_price": n.get("nav")})
+                results.append({"name": n["name"], "ok": True, "imported": 0, "updated": "NAV"})
+                continue
+            inst = L().create_instrument(g.owner, {"asset_class": d.NPS, "name": n["name"], "platform": n.get("fund_manager"),
+                                                   "ref": n.get("pran"), "category": n.get("tier")})
+            if n.get("nav"):
+                L().update_instrument(inst["id"], g.scope, {"last_price": n["nav"]})
+            if n.get("units"):
+                L().add_transaction(g.owner, g.scope, inst["id"], {
+                    "date": data.get("as_of") or date.today().isoformat(), "type": d.BUY, "quantity": n["units"], "amount": n.get("value") or 0,
+                    "notes": "Opening balance from NSDL CAS at market value; replace with your contributions for accurate returns"},
+                    source="import:cas")
+            results.append({"name": n["name"], "ok": True, "imported": 1})
+        except (ValidationError, KeyError, LookupError) as e:
+            results.append({"name": n.get("name"), "ok": False, "error": str(e)})
+    return jsonify({"results": results, "imported": sum(r.get("imported", 0) for r in results if r["ok"])})
 
 
 # ── cash movements (capital flows & P2P escrow) ──
@@ -171,7 +277,7 @@ def list_cash():
 @bp.post("/cash")
 @write_required
 def add_cash():
-    return jsonify(L().add_cash(g.email, body())), 201
+    return jsonify(L().add_cash(g.owner, body())), 201
 
 
 @bp.put("/cash/<int:cid>")
@@ -205,13 +311,13 @@ def add_loan():
     if loan_id and any(i.get("ref2") == loan_id and i["asset_class"] == d.P2P for i in insts):
         raise ValidationError(f"Loan {loan_id} already exists")
     maturity = data.get("maturity_date") or lenden.maturity_from(data.get("date"), int(float(data.get("tenure_months") or 0)))
-    inst = L().create_instrument(g.email, {
+    inst = L().create_instrument(g.owner, {
         "asset_class": d.P2P, "name": data.get("name") or loan_id or ref, "platform": data.get("platform") or "LenDen",
         "ref": ref, "ref2": loan_id, "rate": data.get("rate"), "tenure_months": data.get("tenure_months"),
         "maturity_date": maturity, "status": data.get("status") or "active", "notes": data.get("notes"),
         "tax_class": d.TAX_INCOME})
     try:
-        L().add_transaction(g.email, g.scope, inst["id"], {"type": d.BUY, "date": data.get("date"), "amount": data.get("amount")})
+        L().add_transaction(g.owner, g.scope, inst["id"], {"type": d.BUY, "date": data.get("date"), "amount": data.get("amount")})
     except ValidationError:
         L().delete_instrument(inst["id"], g.scope)
         raise
@@ -274,7 +380,7 @@ def order_report_commit():
             "tax_class": d.TAX_INCOME},
             "txn": {"type": d.BUY, "date": r.get("date"), "amount": r.get("amount")}, "source": "import:lenden"})
         results.append({"loan_id": loan_id, "ok": True, "lending_id": ref})
-    L().bulk_add(g.email, entries)
+    L().bulk_add(g.owner, entries)
     return jsonify({"results": results, "imported": len(entries)})
 
 
@@ -317,7 +423,7 @@ def statement_commit():
             results.append({"loan_id": r.get("loan_id"), "ok": True})
     updates = [(int(u["instrument_id"]), u["new_status"]) for u in payload.get("status_updates") or []
                if int(u.get("instrument_id") or 0) in loans and u.get("new_status")]
-    L().bulk_add(g.email, entries, updates)
+    L().bulk_add(g.owner, entries, updates)
     return jsonify({"results": results, "imported": len(entries), "status_updated": len(updates)})
 
 
@@ -327,12 +433,12 @@ def statement_commit():
 @write_required
 def add_fd():
     data = body()
-    inst = L().create_instrument(g.email, {
+    inst = L().create_instrument(g.owner, {
         "asset_class": d.FIXED_DEPOSIT, "name": data.get("name") or data.get("bank"), "platform": data.get("platform"),
         "rate": data.get("rate"), "maturity_date": data.get("maturity_date"), "ref2": data.get("ref2"),
         "notes": data.get("notes"), "tax_class": d.TAX_INCOME})
     try:
-        L().add_transaction(g.email, g.scope, inst["id"], {"type": d.BUY, "date": data.get("date"), "amount": data.get("amount")})
+        L().add_transaction(g.owner, g.scope, inst["id"], {"type": d.BUY, "date": data.get("date"), "amount": data.get("amount")})
     except ValidationError:
         L().delete_instrument(inst["id"], g.scope)
         raise
@@ -346,7 +452,7 @@ def mature_fd(iid):
     inst = L().instrument(iid, g.scope)
     principal = sum(float(t["amount"]) for t in L().load(g.scope)["transactions"]
                     if t["instrument_id"] == iid and t["type"] == d.BUY)
-    L().add_transaction(g.email, g.scope, inst["id"], {"type": d.MATURITY, "date": data.get("date") or inst.get("maturity_date"),
+    L().add_transaction(g.owner, g.scope, inst["id"], {"type": d.MATURITY, "date": data.get("date") or inst.get("maturity_date"),
                                                         "amount": data.get("amount"), "principal": principal})
     return jsonify({"message": "FD closed"})
 
@@ -357,10 +463,10 @@ def mature_fd(iid):
 @write_required
 def add_forex():
     data = body()
-    wallet = L().find_or_create_instrument(g.email, d.CASH, "USD Wallet",
+    wallet = L().find_or_create_instrument(g.owner, d.CASH, "USD Wallet",
                                            {"market": "USA", "currency": "USD", "tax_class": d.TAX_INCOME})
     typ = d.FX_OUT if (data.get("type") or "").upper() in ("FX_OUT", "WITHDRAWAL") else d.FX_IN
-    return jsonify(L().add_transaction(g.email, g.scope, wallet["id"], {**data, "type": typ})), 201
+    return jsonify(L().add_transaction(g.owner, g.scope, wallet["id"], {**data, "type": typ})), 201
 
 
 # ── market data ──

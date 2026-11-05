@@ -156,6 +156,25 @@ class Services:
                 "calendar": build_calendar(res["portfolio"], res["tax"], res["goals"]),
                 "story": build_story(res["portfolio"], txns, res["performance"])}
 
+    def notifications(self, scope: str | None, settings: dict, horizon: int = 30) -> list[dict]:
+        """Reminders shown at sign-in and under the bell: dated events coming up soon plus
+        insights that need action. Skips market history so it stays quick."""
+        res = self.insights(scope, settings, with_performance=False)
+        cal = build_calendar(res["portfolio"], res["tax"], res["goals"])
+        out = []
+        for e in cal["events"]:
+            if e["days"] <= horizon and e["kind"] != "national":
+                out.append({"id": f"cal:{e['key']}:{e['date']}", "kind": e["kind"], "title": e["title"], "body": e["note"],
+                            "date": e["date"], "days": e["days"], "link": e.get("link"),
+                            "severity": "warning" if e["days"] <= 7 and e["kind"] in ("tax", "personal") else "info"})
+        for i in res["insights"]:
+            if i["severity"] in ("critical", "warning"):
+                out.append({"id": f"ins:{i['id']}", "kind": "insight", "title": i["title"], "body": i["detail"], "date": None,
+                            "days": None, "link": i.get("link"), "severity": i["severity"]})
+        order = {"critical": 0, "warning": 1, "info": 2}
+        out.sort(key=lambda n: (order.get(n["severity"], 3), n["days"] if n["days"] is not None else 99))
+        return out
+
     def income(self, scope: str | None, months: int = 24) -> dict:
         """Passive income (dividends, P2P interest, FD interest) per month."""
         from collections import defaultdict

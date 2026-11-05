@@ -102,3 +102,42 @@ def test_csv_import_preview_and_commit(client):
     assert res["imported"] == 2
     again = client.post("/api/transactions/import/preview", headers=h, json={"csv": csv}).json
     assert all(r["duplicate"] for r in again["rows"])
+
+
+def test_family_switcher_scopes_reads_and_writes(client):
+    me, other = auth(ADMIN, "admin"), auth(OTHER, "user")
+    buy(client, other, name="INFY")
+    as_member = {**me, "X-Portfolio": OTHER}
+    names = [p["name"] for p in client.get("/api/portfolio", headers=as_member).json["positions"]]
+    assert names == ["INFY"]
+    # a purchase made while a member is selected belongs to that member
+    assert buy(client, as_member, name="HDFC Bank").status_code == 201
+    mine = client.get("/api/portfolio", headers=other).json["positions"]
+    assert sorted(p["name"] for p in mine) == ["HDFC Bank", "INFY"]
+    fam = client.get("/api/portfolios", headers=me).json
+    assert fam["family"] and fam["members"][0]["self"]
+    assert client.get("/api/portfolios", headers=other).json["family"] is False
+    # members cannot widen their own scope
+    assert len(client.get("/api/portfolio", headers={**other, "X-Portfolio": "family"}).json["positions"]) == 2
+
+
+def test_reports_render_and_export(client):
+    h = auth(USER, "user")
+    buy(client, h)
+    client.post("/api/transactions", headers=h, json={"type": "BUY", "date": "2026-01-10", "amount": 5000,
+                                                      "instrument": {"asset_class": "epf", "name": "EPF"}})
+    cat = client.get("/api/reports", headers=h).json
+    assert {r["key"] for r in cat["reports"]} >= {"summary", "capital_gains", "schedule_112a", "income", "cashflow"}
+    for key in ("summary", "holdings", "xirr", "statement", "transactions", "income", "unrealised", "capital_gains"):
+        r = client.get(f"/api/reports/{key}", headers=h)
+        assert r.status_code == 200, (key, r.json)
+        assert r.json["columns"] and "rows" in r.json
+    xl = client.get("/api/reports/holdings/export.xlsx", headers=h)
+    assert xl.status_code == 200 and xl.data[:2] == b"PK"
+
+
+def test_notifications_endpoint(client):
+    h = auth(USER, "user")
+    buy(client, h)
+    r = client.get("/api/notifications", headers=h)
+    assert r.status_code == 200 and isinstance(r.json["items"], list)

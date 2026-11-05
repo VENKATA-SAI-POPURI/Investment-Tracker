@@ -10,9 +10,12 @@ COMMODITY = "commodity"
 P2P = "p2p"
 FIXED_DEPOSIT = "fixed_deposit"
 CASH = "cash"
+EPF = "epf"            # Employees' Provident Fund: contributions + interest credited yearly
+NPS = "nps"            # National Pension System: scheme units at a NAV you update
 
-ASSET_CLASSES = (EQUITY, MUTUAL_FUND, COMMODITY, P2P, FIXED_DEPOSIT, CASH)
-TRADABLE = (EQUITY, MUTUAL_FUND, COMMODITY)
+ASSET_CLASSES = (EQUITY, MUTUAL_FUND, COMMODITY, P2P, FIXED_DEPOSIT, CASH, EPF, NPS)
+TRADABLE = (EQUITY, MUTUAL_FUND, COMMODITY)   # market-priced, taxed on sale
+UNITISED = TRADABLE + (NPS,)                  # valued as units x price through FIFO lots
 
 # ── Transaction types ──
 BUY = "BUY"            # quantity, amount = INR cost (incl. charges), amount_fc = foreign-currency cost
@@ -23,15 +26,21 @@ REPAYMENT = "REPAYMENT"  # P2P: amount = cash credited (principal + interest), p
 MATURITY = "MATURITY"  # FD: amount = total received, principal = deposit returned
 FX_IN = "FX_IN"        # cash wallet: amount = INR sent, amount_fc = USD received
 FX_OUT = "FX_OUT"      # cash wallet: amount = INR received, amount_fc = USD withdrawn
+CREDIT = "CREDIT"      # EPF: interest credited to the account (stays invested, not a payout)
+BONUS = "BONUS"        # corporate action: quantity = bonus shares received, amount = 0
+SPLIT = "SPLIT"        # corporate action: quantity = new shares per old share (e.g. 5 for a 1:5 split)
+CORPORATE_ACTIONS = (BONUS, SPLIT)
 
-TXN_TYPES = (BUY, SELL, DIVIDEND, INTEREST, REPAYMENT, MATURITY, FX_IN, FX_OUT)
+TXN_TYPES = (BUY, SELL, DIVIDEND, INTEREST, REPAYMENT, MATURITY, FX_IN, FX_OUT, CREDIT, BONUS, SPLIT)
 TXN_TYPES_BY_CLASS = {
-    EQUITY: (BUY, SELL, DIVIDEND),
+    EQUITY: (BUY, SELL, DIVIDEND, BONUS, SPLIT),
     MUTUAL_FUND: (BUY, SELL, DIVIDEND),
     COMMODITY: (BUY, SELL),
     P2P: (BUY, REPAYMENT),
     FIXED_DEPOSIT: (BUY, INTEREST, MATURITY),
     CASH: (FX_IN, FX_OUT),
+    EPF: (BUY, CREDIT, SELL),
+    NPS: (BUY, SELL),
 }
 
 # ── Allocation segments (labels match the targetAllocation setting) ──
@@ -41,7 +50,9 @@ SEG_MF = "Mutual Funds"
 SEG_COMMODITY = "Commodity"
 SEG_P2P = "P2P"
 SEG_FD = "Fixed Deposits"
-SEGMENTS = (SEG_EQ_IN, SEG_EQ_US, SEG_MF, SEG_COMMODITY, SEG_P2P, SEG_FD)
+SEG_EPF = "EPF"
+SEG_NPS = "NPS"
+SEGMENTS = (SEG_EQ_IN, SEG_EQ_US, SEG_MF, SEG_COMMODITY, SEG_P2P, SEG_FD, SEG_EPF, SEG_NPS)
 
 
 def segment_of(inst: dict) -> str:
@@ -51,7 +62,8 @@ def segment_of(inst: dict) -> str:
     if ac == CASH:
         # USD broker wallet is uninvested cash inside the US broker account
         return SEG_EQ_US
-    return {MUTUAL_FUND: SEG_MF, COMMODITY: SEG_COMMODITY, P2P: SEG_P2P, FIXED_DEPOSIT: SEG_FD}[ac]
+    return {MUTUAL_FUND: SEG_MF, COMMODITY: SEG_COMMODITY, P2P: SEG_P2P, FIXED_DEPOSIT: SEG_FD,
+            EPF: SEG_EPF, NPS: SEG_NPS}[ac]
 
 
 # ── Tax treatment ──
@@ -60,7 +72,8 @@ TAX_FOREIGN = "foreign_equity"         # foreign stocks, overseas FoFs
 TAX_DEBT = "debt"                      # specified MFs / debt — always slab
 TAX_LISTED_OTHER = "listed_other"      # gold/silver ETFs and other listed units
 TAX_INCOME = "income"                  # P2P / FD — interest taxed at slab
-TAX_CLASSES = (TAX_EQUITY, TAX_FOREIGN, TAX_DEBT, TAX_LISTED_OTHER, TAX_INCOME)
+TAX_EXEMPT = "exempt"                  # EPF / NPS — outside capital gains and slab income
+TAX_CLASSES = (TAX_EQUITY, TAX_FOREIGN, TAX_DEBT, TAX_LISTED_OTHER, TAX_INCOME, TAX_EXEMPT)
 
 _FOREIGN_FUND = re.compile(r"\b(us|u\.s\.|global|international|overseas|nasdaq|world|fof)\b", re.I)
 
@@ -78,6 +91,8 @@ def default_tax_class(asset_class: str, market: str | None = None, category: str
         return TAX_EQUITY
     if asset_class == COMMODITY:
         return TAX_LISTED_OTHER
+    if asset_class in (EPF, NPS):
+        return TAX_EXEMPT
     return TAX_INCOME
 
 
