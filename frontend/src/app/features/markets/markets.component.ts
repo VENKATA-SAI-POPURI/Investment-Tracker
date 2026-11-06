@@ -13,13 +13,15 @@ import { StoreService } from '../../core/store.service';
 import { ToastService } from '../../core/toast.service';
 import { IconComponent } from '../../shared/icon.component';
 import { ConfirmService, ModalComponent } from '../../shared/ui';
+import { PerformanceComponent } from '../analytics/analytics.component';
 import { IposComponent } from './ipos.component';
 import { ChgComponent, RangeBarComponent, SignalChipsComponent, SparkComponent } from './market-parts';
 
-type Tab = 'today' | 'ideas' | 'watchlist' | 'ipos';
+type Tab = 'performance' | 'today' | 'ideas' | 'watchlist';
 const TABS: { key: Tab; label: string; icon: string }[] = [
+  { key: 'performance', label: 'Your performance', icon: 'chart' },
   { key: 'today', label: 'Today', icon: 'zap' }, { key: 'ideas', label: 'Ideas', icon: 'bulb' },
-  { key: 'watchlist', label: 'Watchlist', icon: 'star' }, { key: 'ipos', label: 'IPOs', icon: 'rocket' },
+  { key: 'watchlist', label: 'Watchlist & IPOs', icon: 'star' },
 ];
 const LENSES: { title: string; hint: string; lists: { key: SignalKey; label: string; hint: string }[] }[] = [
   { title: 'Momentum', hint: 'Follows the trend: what keeps rising, what keeps falling',
@@ -33,41 +35,20 @@ const LENSES: { title: string; hint: string; lists: { key: SignalKey; label: str
 @Component({
   selector: 'app-markets',
   standalone: true,
-  imports: [FormsModule, DecimalPipe, RouterLink, IconComponent, ModalComponent, IposComponent, SparkComponent, RangeBarComponent,
+  imports: [FormsModule, DecimalPipe, RouterLink, IconComponent, ModalComponent, IposComponent, PerformanceComponent, SparkComponent, RangeBarComponent,
     SignalChipsComponent, ChgComponent, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page">
       <div class="page-head">
         <div><h1>Markets</h1>
-          <p class="sub">{{ data()?.universe ?? 'Nifty 200' }} and your holdings · price moves over the last week and month
-            @if (data(); as d) { · updated {{ rel(d.as_of) }} }</p></div>
+          <p class="sub">How your money is doing against the market, today's moves across the Nifty 200, and ideas
+            @if (data(); as d) { · prices updated {{ rel(d.as_of) }} }</p></div>
         <div class="row wrap">
           <a class="btn ghost sm" routerLink="/settings" fragment="alerts"><app-icon name="bell" [size]="15" /> Alerts {{ data()?.alerts_config?.enabled === false ? 'off' : 'on' }}</a>
           @if (auth.canWrite()) { <button class="btn sm" (click)="openWatch()"><app-icon name="star" [size]="15" /> Add to watchlist</button> }
         </div>
       </div>
-
-      @if (data(); as d) {
-        <section class="kpis">
-          <div class="kpi"><span class="chip blue sm"><app-icon name="chart" [size]="15" /></span><span class="label">{{ d.index.name }}</span>
-            <span class="value">{{ d.index.metrics ? (d.index.metrics.price | number: '1.0-0') : '—' }}</span>
-            <span class="meta">{{ d.index.metrics?.d1 | pct }} today · {{ d.index.metrics?.w1 | pct }} week · {{ d.index.metrics?.m1 | pct }} month</span></div>
-          <div class="kpi"><span class="chip green sm"><app-icon name="trend" [size]="15" /></span><span class="label">Market breadth</span>
-            <span class="value pos">{{ d.breadth.up }} <small>rising</small></span>
-            <span class="meta">{{ d.breadth.down }} falling, of {{ d.breadth.total }} stocks today</span></div>
-          <div class="kpi"><span class="chip violet sm"><app-icon name="wallet" [size]="15" /></span><span class="label">Your stocks today</span>
-            <span class="value" [class]="mine().d1 | sign">{{ mine().d1 | pct: 2 }}</span>
-            <span class="meta">{{ mine().count }} tracked · {{ mine().w1 | pct }} this week</span></div>
-          <div class="kpi"><span class="chip amber sm"><app-icon name="bell" [size]="15" /></span><span class="label">Alerts</span>
-            <span class="value">{{ todayAlerts() }}</span>
-            <span class="meta">today · moves of {{ d.alerts_config.day }}%+ in a day, {{ d.alerts_config.week }}%+ in a week</span></div>
-        </section>
-      } @else if (error()) {
-        <div class="notice bad"><app-icon name="alert" [size]="16" /> <div>{{ error() }} <button class="btn sm" (click)="load()">Retry</button></div></div>
-      } @else {
-        <div class="skeleton" style="height:112px;border-radius:16px"></div>
-      }
 
       <div class="tabs" role="tablist">
         @for (t of tabs; track t.key) {
@@ -78,8 +59,30 @@ const LENSES: { title: string; hint: string; lists: { key: SignalKey; label: str
         }
       </div>
 
-      @if (tab() === 'ipos') { <app-ipos /> }
-      @else if (!data()) {
+
+      @if (tab() === 'performance') { <app-performance /> }
+      @else {
+      @if (data(); as d) {
+          <section class="kpis">
+            <div class="kpi"><span class="chip blue sm"><app-icon name="chart" [size]="15" /></span><span class="label">{{ d.index.name }}</span>
+              <span class="value">{{ d.index.metrics ? (d.index.metrics.price | number: '1.0-0') : '—' }}</span>
+              <span class="meta">{{ d.index.metrics?.d1 | pct }} today · {{ d.index.metrics?.w1 | pct }} week · {{ d.index.metrics?.m1 | pct }} month</span></div>
+            <div class="kpi"><span class="chip green sm"><app-icon name="trend" [size]="15" /></span><span class="label">Market breadth</span>
+              <span class="value pos">{{ d.breadth.up }} <small>rising</small></span>
+              <span class="meta">{{ d.breadth.down }} falling, of {{ d.breadth.total }} stocks today</span></div>
+            <div class="kpi"><span class="chip violet sm"><app-icon name="wallet" [size]="15" /></span><span class="label">Your stocks today</span>
+              <span class="value" [class]="mine().d1 | sign">{{ mine().d1 | pct: 2 }}</span>
+              <span class="meta">{{ mine().count }} tracked · {{ mine().w1 | pct }} this week</span></div>
+            <div class="kpi"><span class="chip amber sm"><app-icon name="bell" [size]="15" /></span><span class="label">Alerts</span>
+              <span class="value">{{ todayAlerts() }}</span>
+              <span class="meta">today · moves of {{ d.alerts_config.day }}%+ in a day, {{ d.alerts_config.week }}%+ in a week</span></div>
+          </section>
+        } @else if (error()) {
+          <div class="notice bad"><app-icon name="alert" [size]="16" /> <div>{{ error() }} <button class="btn sm" (click)="load()">Retry</button></div></div>
+        } @else {
+          <div class="skeleton" style="height:112px;border-radius:16px"></div>
+        }
+      @if (!data()) {
         <div class="duo"><div class="card"><div class="skeleton" style="height:320px"></div></div><div class="card"><div class="skeleton" style="height:320px"></div></div></div>
       } @else {
         @let d = data()!;
@@ -229,8 +232,10 @@ const LENSES: { title: string; hint: string; lists: { key: SignalKey; label: str
                 </table>
               </div>
             </section>
+            <app-ipos />
           }
         }
+      }
       }
     </div>
 
@@ -308,7 +313,8 @@ export class MarketsComponent {
 
   tabs = TABS;
   lenses = LENSES;
-  tab = signal<Tab>((this.route.snapshot.queryParamMap.get('tab') as Tab) || 'today');
+  // IPOs live on the watchlist tab; older links (and IPO reminders) still say tab=ipos
+  tab = signal<Tab>(({ today: 'today', ideas: 'ideas', watchlist: 'watchlist', ipos: 'watchlist' } as Record<string, Tab>)[this.route.snapshot.queryParamMap.get('tab') ?? ''] ?? 'performance');
   data = signal<MarketOverview | null>(null);
   alerts = signal<MarketAlert[]>([]);
   error = signal<string | null>(null);
@@ -365,7 +371,7 @@ export class MarketsComponent {
 
   setTab(t: Tab) {
     this.tab.set(t);
-    this.router.navigate([], { queryParams: { tab: t === 'today' ? null : t }, queryParamsHandling: 'merge', replaceUrl: true });
+    this.router.navigate([], { queryParams: { tab: t === 'performance' ? null : t }, queryParamsHandling: 'merge', replaceUrl: true });
   }
   go(path: string) { this.router.navigateByUrl(path); }
   rel(iso: string) { return relTime(iso); }

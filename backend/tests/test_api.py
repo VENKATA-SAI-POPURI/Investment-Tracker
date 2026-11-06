@@ -129,8 +129,8 @@ def test_reports_render_and_export(client):
     client.post("/api/transactions", headers=h, json={"type": "BUY", "date": "2026-01-10", "amount": 5000,
                                                       "instrument": {"asset_class": "epf", "name": "EPF"}})
     cat = client.get("/api/reports", headers=h).json
-    assert {r["key"] for r in cat["reports"]} >= {"summary", "capital_gains", "schedule_112a", "income", "cashflow"}
-    for key in ("summary", "holdings", "xirr", "statement", "transactions", "income", "unrealised", "capital_gains"):
+    assert {r["key"] for r in cat["reports"]} == {"summary", "holdings", "performance", "capital_gains", "schedule_112a", "income", "transactions"}
+    for key in ("summary", "holdings", "transactions", "income", "capital_gains", "schedule_112a"):
         r = client.get(f"/api/reports/{key}", headers=h)
         assert r.status_code == 200, (key, r.json)
         assert r.json["columns"] and "rows" in r.json

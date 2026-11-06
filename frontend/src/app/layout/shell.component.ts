@@ -14,21 +14,20 @@ import { TxnFormComponent } from '../shared/txn-form.component';
 
 interface NavItem { path: string; label: string; icon: string; match: string[]; hint?: string; }
 
+/** The places most visits need; everything else sits under More. */
 export const NAV: NavItem[] = [
-  { path: '/', label: 'Dashboard', icon: 'home', match: [] },
+  { path: '/', label: 'Dashboard', icon: 'home', match: ['/insights'] },
   { path: '/holdings/equity', label: 'Holdings', icon: 'layers', match: ['/holdings', '/holding/', '/p2p', '/fixed-deposits', '/forex', '/epf', '/nps'] },
-  { path: '/transactions', label: 'Transactions', icon: 'list', match: ['/transactions', '/cash-flows'] },
+  { path: '/markets', label: 'Markets', icon: 'zap', match: ['/markets', '/analytics'] },
   { path: '/reports', label: 'Reports', icon: 'file', match: ['/reports'] },
-  { path: '/analytics', label: 'Analytics', icon: 'chart', match: ['/analytics'] },
-  { path: '/markets', label: 'Markets', icon: 'zap', match: ['/markets'] },
 ];
 
 export const TOOLS: NavItem[] = [
+  { path: '/transactions', label: 'Transactions', icon: 'list', match: ['/transactions', '/cash-flows'], hint: 'Every buy, sell and cash flow' },
   { path: '/tax', label: 'Tax planner', icon: 'receipt', match: ['/tax'], hint: 'Capital gains, harvesting and the tax estimate' },
   { path: '/goals', label: 'Goals', icon: 'target', match: ['/goals'], hint: 'Earmark money and track your chances' },
-  { path: '/insights', label: 'Insights', icon: 'bulb', match: ['/insights'], hint: 'Suggestions and the rebalancing planner' },
-  { path: '/import', label: 'Import statements', icon: 'upload', match: ['/import'], hint: 'CAS, broker tradebooks, P2P statements' },
-  { path: '/settings', label: 'Settings', icon: 'settings', match: ['/settings'], hint: 'Targets, tax slab, prices and family access' },
+  { path: '/import', label: 'Import statements', icon: 'upload', match: ['/import'], hint: 'CAS, Kite, EPF and P2P statements' },
+  { path: '/settings', label: 'Settings', icon: 'settings', match: ['/settings'], hint: 'Targets, alerts, prices and family access' },
 ];
 
 type Menu = 'portfolio' | 'tools' | 'user' | null;

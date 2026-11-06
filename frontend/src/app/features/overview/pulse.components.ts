@@ -1,6 +1,6 @@
-import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { CalendarEvent, Health } from '../../core/models';
+import { CalendarEvent } from '../../core/models';
 import { IconComponent } from '../../shared/icon.component';
 
 const KIND = {
@@ -14,60 +14,6 @@ const KIND = {
 function split(link: string | null) {
   const [path, frag] = (link ?? '/').split('#');
   return { path, frag: frag || undefined };
-}
-
-/** Semicircle gauge + component bars for the portfolio health score. */
-@Component({
-  selector: 'app-health-card',
-  standalone: true,
-  imports: [IconComponent],
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `
-    <section class="card health fill">
-      <div class="card-head"><div class="row" style="gap:10px"><span class="chip violet sm"><app-icon name="heart" [size]="15" /></span><h2>Portfolio health</h2></div></div>
-      <div class="gauge">
-        <svg viewBox="-100 -100 200 112" width="220" height="124" role="img" [attr.aria-label]="'Health score ' + health().score + ' out of 100'">
-          
-          <path d="M -80 0 A 80 80 0 0 1 80 0" stroke="var(--grid)" stroke-width="14" fill="none" stroke-linecap="round" />
-          <path d="M -80 0 A 80 80 0 0 1 80 0" stroke="var(--primary)" stroke-width="14" fill="none" stroke-linecap="round"
-                pathLength="100" [attr.stroke-dasharray]="health().score + ' 100'" />
-          <text x="0" y="-12" text-anchor="middle" class="score">{{ health().score }}</text>
-          <text x="0" y="8" text-anchor="middle" class="of">out of 100</text>
-        </svg>
-        <span class="grade" [class]="gradeClass()">{{ health().grade }}</span>
-      </div>
-      <div class="parts">
-        @for (c of health().components; track c.key) {
-          <div class="part" [title]="c.note">
-            <span class="pl">{{ c.label }}</span>
-            <span class="pb"><span [style.width.%]="c.score" [class.low]="c.score < 55"></span></span>
-            <span class="ps">{{ c.score }}</span>
-          </div>
-        }
-      </div>
-      <div class="focus push"><b>Improve next:</b> {{ health().focus.label }} — {{ health().focus.note }}</div>
-    </section>`,
-  styles: [`
-    :host { display: block; }
-    .gauge { display: flex; flex-direction: column; align-items: center; margin-top: -6px; }
-    .score { font-size: 38px; font-weight: 700; fill: var(--text); letter-spacing: -1px; }
-    .of { font-size: 11px; fill: var(--muted); }
-    .grade { margin-top: 2px; padding: 3px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--accent-soft); color: var(--primary); }
-    .grade.great { background: var(--pos-soft); color: var(--pos); }
-    .grade.fair { background: var(--warn-soft); color: var(--warn); }
-    .parts { display: grid; gap: 9px; margin-top: 18px; }
-    .part { display: grid; grid-template-columns: 110px 1fr 28px; gap: 10px; align-items: center; font-size: 12.5px; }
-    .pl { color: var(--text-2); }
-    .pb { height: 6px; background: var(--grid); border-radius: 999px; overflow: hidden; }
-    .pb > span { display: block; height: 100%; border-radius: 999px; background: var(--primary); }
-    .pb > span.low { background: var(--gold-2); }
-    .ps { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
-    .focus { margin-top: 16px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); font-size: 12.5px; color: var(--text-2); }
-  `],
-})
-export class HealthCardComponent {
-  health = input.required<Health>();
-  gradeClass = computed(() => this.health().score >= 85 ? 'great' : this.health().score >= 70 ? '' : 'fair');
 }
 
 /** Upcoming festivals, tax dates and personal milestones. */
@@ -94,7 +40,8 @@ export class HealthCardComponent {
       } @empty { <p class="muted small">Nothing in the next few weeks.</p> }
     </section>`,
   styles: [`
-    :host { display: block; }
+    :host { display: flex; flex-direction: column; }
+    :host > .card { flex: 1; }
     .ev { display: flex; gap: 14px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); color: var(--text); text-decoration: none; }
     .ev:last-child { border-bottom: 0; }
     .ev:hover { text-decoration: none; }

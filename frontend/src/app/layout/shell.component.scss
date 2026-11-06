@@ -7,7 +7,10 @@
 /* ── Top application bar ── */
 .appbar { position: sticky; top: 0; z-index: 80; background: var(--ink); color: #fff; box-shadow: 0 1px 0 rgba(255, 255, 255, .06), 0 6px 18px rgba(11, 20, 48, .18); }
 .appbar::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: linear-gradient(90deg, var(--gold-2), #e87ba4 50%, #6366f1); opacity: .85; }
-.bar { display: flex; align-items: center; gap: 14px; height: 62px; padding: 0 24px; max-width: 1440px; margin: 0 auto; }
+.bar { --ctl: 36px; display: flex; align-items: center; gap: 12px; height: 62px; padding: 0 36px; max-width: 1280px; margin: 0 auto; box-sizing: border-box; }
+/* every control in the bar shares one height and never wraps or squeezes */
+.bar > * { flex: none; }
+.bar > .spacer { flex: 1 1 0; min-width: 8px; }
 .brand { display: flex; align-items: center; gap: 10px; color: #fff; text-decoration: none; font-weight: 650; font-size: 15px; flex: none; }
 .brand:hover { text-decoration: none; }
 .logo { display: inline-flex; width: 34px; height: 34px; border-radius: 10px; align-items: center; justify-content: center; flex: none;
@@ -16,39 +19,40 @@
 .brand-text small { font-size: 9.5px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: var(--gold-2); margin-top: 2px; }
 
 .pop-wrap { position: relative; }
-.switcher { display: flex; align-items: center; gap: 9px; height: 42px; padding: 0 12px 0 6px; border-radius: 10px; cursor: pointer;
+.switcher { display: flex; align-items: center; gap: 9px; height: calc(var(--ctl) + 4px); padding: 0 12px 0 5px; border-radius: 10px; cursor: pointer;
   background: rgba(255, 255, 255, .07); border: 1px solid rgba(255, 255, 255, .12); color: #fff; margin-left: 6px; }
 .switcher:hover { background: rgba(255, 255, 255, .12); }
 .switcher.static { cursor: default; }
-.sw-avatar { display: inline-flex; width: 30px; height: 30px; border-radius: 8px; align-items: center; justify-content: center; flex: none;
+.sw-avatar { display: inline-flex; width: 28px; height: 28px; border-radius: 8px; align-items: center; justify-content: center; flex: none;
   background: #2b3870; color: #fff; font-weight: 650; font-size: 13px; }
 .sw-avatar.family { background: linear-gradient(145deg, #e3b350, #b7862c); color: var(--ink); }
 .sw-text { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.15; min-width: 0; }
 .sw-text small { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: rgba(255, 255, 255, .55); }
 .sw-text b { font-size: 13.5px; font-weight: 600; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.mainnav { display: flex; align-items: center; gap: 2px; margin-left: 10px; }
-.nl { position: relative; display: inline-flex; align-items: center; gap: 4px; height: 62px; padding: 0 13px; color: rgba(255, 255, 255, .72);
-  font-size: 13.5px; font-weight: 500; text-decoration: none; background: none; border: 0; cursor: pointer; }
+.mainnav { display: flex; align-items: center; gap: 2px; margin-left: 8px; }
+.nl { position: relative; display: inline-flex; align-items: center; gap: 4px; height: 62px; padding: 0 14px; color: rgba(255, 255, 255, .72);
+  font-size: 14px; font-weight: 500; line-height: 1; white-space: nowrap; text-decoration: none; background: none; border: 0; cursor: pointer; }
 .nl:hover { color: #fff; text-decoration: none; }
 .nl.on { color: #fff; font-weight: 600; }
 .nl.on::after { content: ''; position: absolute; left: 12px; right: 12px; bottom: 0; height: 3px; border-radius: 3px 3px 0 0; background: var(--gold-2); }
 
-.icon-btn { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 10px;
+.icon-btn { position: relative; display: inline-flex; align-items: center; justify-content: center; width: var(--ctl); height: var(--ctl); border-radius: 10px;
   background: none; border: 0; color: rgba(255, 255, 255, .85); cursor: pointer; }
 .icon-btn:hover { background: rgba(255, 255, 255, .08); color: #fff; }
 .bell .count { position: absolute; top: 4px; right: 3px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: #e5484d;
   color: #fff; font-size: 10.5px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; border: 2px solid var(--ink); }
-.prices { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border-radius: 999px; cursor: pointer; font-size: 12px;
+.prices { display: inline-flex; align-items: center; gap: 7px; height: var(--ctl); padding: 0 14px; border-radius: 999px; cursor: pointer; font-size: 12.5px; white-space: nowrap;
   background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .1); color: rgba(255, 255, 255, .78); }
 .prices:hover { color: #fff; }
 .prices .dot { width: 7px; height: 7px; border-radius: 50%; background: #34d399; box-shadow: 0 0 0 3px rgba(52, 211, 153, .2); }
 .spin { display: inline-flex; animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.add-btn { background: var(--gold-2); border-color: var(--gold-2); color: var(--ink); font-weight: 600; box-shadow: none; }
+.prices .p-age { color: rgba(255, 255, 255, .55); }
+.add-btn { height: var(--ctl); padding: 0 16px; background: var(--gold-2); border-color: var(--gold-2); color: var(--ink); font-weight: 600; box-shadow: none; }
 .add-btn:hover { background: #e3b350; border-color: #e3b350; }
 .me { background: none; border: 0; padding: 0; cursor: pointer; display: inline-flex; }
-.avatar { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; border: 2px solid rgba(255, 255, 255, .2); }
+.avatar { width: var(--ctl); height: var(--ctl); border-radius: 50%; object-fit: cover; border: 2px solid rgba(255, 255, 255, .2); }
 .avatar.initials { display: inline-flex; align-items: center; justify-content: center; background: #2b3870; color: #fff; font-weight: 600; font-size: 13px; }
 
 /* ── Pop-over menus ── */
@@ -108,6 +112,7 @@
 .menu-btn { display: none; }
 .bottom-nav { display: none; }
 
+@media (max-width: 1400px) { .prices .p-label { display: none; } }
 @media (max-width: 1180px) {
   .hide-md { display: none !important; }
   .nl { padding: 0 9px; }

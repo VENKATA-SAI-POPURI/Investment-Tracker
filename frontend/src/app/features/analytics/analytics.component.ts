@@ -1,28 +1,29 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { FORMAT_PIPES, inr, inrCompact } from '../../core/format';
 import { errorMessage } from '../../core/http';
-import { Benchmark, Income, Performance, Pulse, SEGMENTS, activeSeries } from '../../core/models';
+import { Benchmark, Performance, SEGMENTS, activeSeries } from '../../core/models';
 import { StoreService } from '../../core/store.service';
 import { LineChartComponent, LineSeries } from '../../shared/charts/line-chart.component';
-import { Bar, BarChartComponent } from '../../shared/charts/bar-chart.component';
 import { IconComponent } from '../../shared/icon.component';
-import { HealthCardComponent } from '../overview/pulse.components';
-import { DriversComponent, MarketComponent, MilestonesComponent, RhythmComponent } from '../overview/story.components';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 @Component({
-  selector: 'app-analytics',
+  selector: 'app-performance',
   standalone: true,
-  imports: [FormsModule, RouterLink, IconComponent, LineChartComponent, BarChartComponent, HealthCardComponent, DriversComponent, MarketComponent,
-    RhythmComponent, MilestonesComponent, ...FORMAT_PIPES],
+  imports: [FormsModule, RouterLink, IconComponent, LineChartComponent, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './analytics.component.html',
   styles: [`
+    .perf { display: flex; flex-direction: column; gap: 22px; }
+    .toolbar { display: flex; justify-content: flex-end; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .sections { display: flex; flex-direction: column; gap: 22px; }
+    .vs-row { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(360px, 1fr); gap: 20px; align-items: stretch; }
+    @media (max-width: 1100px) { .vs-row { grid-template-columns: minmax(0, 1fr); } }
     .heat { border-collapse: separate; border-spacing: 2px; width: 100%; font-size: 12px; }
     .heat th { color: var(--muted); font-weight: 500; padding: 4px 1px; text-align: center; font-size: 11px; }
     .heat td { text-align: center; padding: 7px 1px; border-radius: 3px; font-variant-numeric: tabular-nums; color: var(--text); min-width: 26px; font-size: 11.5px; }
@@ -33,7 +34,8 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
     .track > span { display: block; height: 100%; border-radius: 0 3px 3px 0; background: var(--s1); }
   `],
 })
-export class AnalyticsComponent {
+/** Your returns against the market, returns over time and where the money is concentrated (a Markets tab). */
+export class PerformanceComponent {
   store = inject(StoreService);
   private api = inject(ApiService);
 
@@ -42,34 +44,6 @@ export class AnalyticsComponent {
   range = signal('1Y');
   segment = signal('');
   bench = signal('NIFTY50');
-  tab = signal<'growth' | 'returns' | 'risk' | 'income' | 'analysis'>('growth');
-  pulse = signal<Pulse | null>(null);
-  income = signal<Income | null>(null);
-  incomeBars = computed<Bar[]>(() => (this.income()?.months ?? []).slice(-18).map(m => {
-    const d = new Date(m.month + '-01T00:00:00');
-    return { label: d.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' }), value: Math.round(m.total),
-      title: `${d.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })} · dividends ₹${Math.round(m.dividends)} · P2P ₹${Math.round(m.p2p_interest)}` };
-  }));
-  incomeSplit = computed(() => {
-    const m = (this.income()?.months ?? []).slice(-12);
-    const s = (k: 'dividends' | 'p2p_interest' | 'fd_interest') => m.reduce((a, r) => a + r[k], 0);
-    return [{ label: 'Dividends', value: s('dividends'), color: 'var(--s1)' }, { label: 'P2P interest', value: s('p2p_interest'), color: 'var(--s5)' },
-      { label: 'FD interest', value: s('fd_interest'), color: 'var(--s6)' }].filter(x => x.value > 0);
-  });
-  /** What drove returns, market comparison, rhythm, milestones and the health score. */
-  loadAnalysis() {
-    this.tab.set('analysis');
-    if (!this.pulse()) firstValueFrom(this.api.pulse()).then(r => this.pulse.set(r)).catch(e => this.error.set(errorMessage(e)));
-  }
-  private openTab = (() => {
-    if (inject(ActivatedRoute).snapshot.queryParamMap.get('tab') === 'analysis') queueMicrotask(() => this.loadAnalysis());
-    return true;
-  })();
-
-  loadIncome() {
-    this.tab.set('income');
-    if (!this.income()) firstValueFrom(this.api.income()).then(r => this.income.set(r)).catch(e => this.error.set(errorMessage(e)));
-  }
   perf = signal<Performance | null>(null);
   loading = signal(false);
   error = signal<string | null>(null);

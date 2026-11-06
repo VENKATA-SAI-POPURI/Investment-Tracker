@@ -153,7 +153,7 @@
       <section class="card">
         <div class="card-head"><div><h2>What's driving returns</h2>
           @if (drivers(); as dr) { <span class="hint">{{ dr.winners }} holdings added {{ dr.gains | inr }}; {{ dr.losers }} took away {{ (dr.losses < 0 ? -dr.losses : dr.losses) | inr }} (booked and unbooked)</span> }</div>
-          <a routerLink="/analytics" [queryParams]="{ tab: 'analysis' }" class="small">Full analysis →</a></div>
+          <a routerLink="/markets" class="small">Performance →</a></div>
         @if (drivers(); as dr) {
           <div class="drv">
             @for (r of dr.rows; track r.id) {
@@ -217,7 +217,7 @@
     </div>
 
     @if (takeaways().length) {
-      <div class="sec-head"><h2>Habits and milestones</h2><span>More in <a routerLink="/analytics" [queryParams]="{ tab: 'analysis' }">Analytics</a></span></div>
+      <div class="sec-head"><h2>Habits and milestones</h2></div>
       <app-takeaways [items]="takeaways()" />
     }
   }
