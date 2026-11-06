@@ -134,3 +134,41 @@ def test_story_rhythm_milestones_and_attribution():
     keys = [t["key"] for t in s["takeaways"]]
     assert keys[:3] == ["market", "driver", "drag"] and "ahead" in s["takeaways"][0]["value"]
     assert lakh_label(2.5e5) == "₹2.5 lakh" and lakh_label(1e7) == "₹1 crore"
+
+
+def test_bonus_and_split_adjust_fifo_lots():
+    txns = [T(1, 1, "2025-01-01", d.BUY, 10, 1000), T(2, 1, "2025-06-01", d.SPLIT, 5),
+            T(3, 1, "2025-07-01", d.BONUS, 50), T(4, 1, "2025-08-01", d.SELL, 60, 1200)]
+    lots, realized, unmatched = run_fifo(1, txns)
+    assert unmatched == 0
+    # the 50 split shares keep the original cost and date; 10 bonus shares are zero-cost, dated at allotment
+    assert realized[0].buy_date == "2025-01-01" and realized[0].qty == pytest.approx(50) and realized[0].cost == pytest.approx(1000)
+    assert realized[1].buy_date == "2025-07-01" and realized[1].cost == 0
+    assert sum(l.qty for l in lots) == pytest.approx(40)
+
+
+def test_epf_balance_interest_and_exempt_tax():
+    inst = [I(1, d.EPF, "EPF – UAN 1001", rate=8.25)]
+    txns = [T(1, 1, "2025-04-30", d.BUY, None, 10000), T(2, 1, "2026-03-31", d.CREDIT, None, 800),
+            T(3, 1, "2026-04-30", d.BUY, None, 10000)]
+    port = compute_portfolio(inst, txns, None, today=date(2026, 10, 31))
+    p = port["positions"][0]
+    assert p["segment"] == d.SEG_EPF and p["tax_class"] == d.TAX_EXEMPT
+    assert p["interest_credited"] == 800 and p["cost"] == 20000
+    assert 0 < p["accrued_interest"] < 1100  # ~7 months of 8.25% on ~₹20.8K
+    assert p["value"] == pytest.approx(20800 + p["accrued_interest"], abs=0.01)
+
+
+def test_nps_units_at_manual_nav():
+    inst = [I(1, d.NPS, "SBI Pension Fund Scheme E - Tier I", last_price=45.0)]
+    txns = [T(1, 1, "2025-05-01", d.BUY, 100, 4000), T(2, 1, "2025-11-01", d.BUY, 50, 2100)]
+    port = compute_portfolio(inst, txns, None, today=date(2026, 5, 1))
+    p = port["positions"][0]
+    assert p["value"] == pytest.approx(150 * 45) and p["unrealized"] == pytest.approx(6750 - 6100)
+    assert port["realized_lots"] == []
+
+
+def test_cas_name_normalisation():
+    from tracker.importers.cas_import import clean_scheme_name, norm_name
+    assert norm_name("Axis ELSS Tax Saver Fund - Direct Growth") == norm_name("Axis ELSS Tax Saver Fund")
+    assert clean_scheme_name("K123-Kotak Flexicap Fund - Direct Plan - Growth - ISIN: INF174K01LS2") == "Kotak Flexicap Fund - Direct Plan - Growth"

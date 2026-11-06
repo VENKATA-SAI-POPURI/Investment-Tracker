@@ -58,7 +58,8 @@ export class HoldingDetailComponent {
   taxLabel = computed(() => TAX_CLASSES.find(t => t[0] === this.p()?.tax_class)?.[1] ?? this.p()?.tax_class ?? '—');
   backLink = computed(() => {
     const ac = this.p()?.asset_class;
-    return ac === 'p2p' ? '/p2p' : ac === 'fixed_deposit' ? '/fixed-deposits' : ac === 'cash' ? '/forex' : `/holdings/${ac ?? 'equity'}`;
+    return ac === 'p2p' ? '/p2p' : ac === 'fixed_deposit' ? '/fixed-deposits' : ac === 'cash' ? '/forex' : ac === 'epf' ? '/epf' : ac === 'nps' ? '/nps'
+      : `/holdings/${ac ?? 'equity'}`;
   });
   lotsView = computed(() => (this.p()?.open_lots ?? []).map(l => {
     const lt = this.p()?.tax_class === 'foreign_equity' ? 730 : 365;
@@ -85,6 +86,7 @@ export class HoldingDetailComponent {
     const kind = p.asset_class === 'p2p' ? 'p2p_repayment' : p.asset_class === 'cash' ? 'forex' : type === 'DIVIDEND' ? 'dividend' : p.asset_class;
     this.dialog.add(kind as any, { instrumentId: p.id, type });
   }
+  corporateAction() { this.dialog.add('corporate_action', { instrumentId: this.p()!.id, type: 'BONUS' }); }
 
   async remove(t: Transaction) {
     if (!(await this.confirm.ask('Delete transaction?', `${TXN_LABEL[t.type]} on ${t.date} for ₹${t.amount.toLocaleString('en-IN')} will be removed, along with any capital-flow entry created from it.`, 'Delete'))) return;

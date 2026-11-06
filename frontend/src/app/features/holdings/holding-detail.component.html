@@ -19,6 +19,14 @@
             <button class="btn primary" (click)="add('BUY')"><app-icon name="plus" [size]="16" /> Buy</button>
             <button class="btn" (click)="add('SELL')" [disabled]="!p.is_open">Sell</button>
             @if (p.asset_class !== 'commodity') { <button class="btn" (click)="add('DIVIDEND')">Dividend</button> }
+            @if (p.asset_class === 'equity') { <button class="btn" (click)="corporateAction()">Bonus / split</button> }
+          } @else if (p.asset_class === 'nps') {
+            <button class="btn primary" (click)="add('BUY')"><app-icon name="plus" [size]="16" /> Contribution</button>
+            <button class="btn" (click)="add('SELL')" [disabled]="!p.is_open">Withdrawal</button>
+          } @else if (p.asset_class === 'epf') {
+            <button class="btn primary" (click)="add('BUY')"><app-icon name="plus" [size]="16" /> Contribution</button>
+            <button class="btn" (click)="add('CREDIT')">Interest credited</button>
+            <button class="btn" (click)="add('SELL')">Withdrawal</button>
           } @else if (p.asset_class === 'p2p') {
             <button class="btn primary" (click)="add('REPAYMENT')"><app-icon name="plus" [size]="16" /> Repayment</button>
           }
@@ -43,6 +51,20 @@
         <div class="kpi"><span class="chip blue sm"><app-icon name="users" [size]="15" /></span><span class="label">Lent</span><span class="value">{{ p.invested | inr }}</span><span class="meta">{{ p.rate ? p.rate + '% · ' : '' }}{{ p.tenure_months }} months</span></div>
         <div class="kpi"><span class="chip violet sm"><app-icon name="refresh" [size]="15" /></span><span class="label">Principal back</span><span class="value">{{ p.principal_repaid | inr }}</span><span class="meta">{{ p.outstanding | inr }} outstanding</span></div>
         <div class="kpi"><span class="chip green sm"><app-icon name="trend" [size]="15" /></span><span class="label">Interest earned</span><span class="value pos">{{ p.interest | inr: 2 }}</span><span class="meta">fees {{ p.fees | inr: 2 }}</span></div>
+      } @else if (p.asset_class === 'nps') {
+        <div class="kpi"><span class="chip violet sm"><app-icon name="layers" [size]="15" /></span><span class="label">Units</span><span class="value">{{ p.quantity | qty }}</span>
+          <span class="meta">avg cost {{ p.avg_cost | inr: 4 }}</span></div>
+        <div class="kpi"><span class="chip amber sm"><app-icon name="chart" [size]="15" /></span><span class="label">NAV</span><span class="value">{{ p.price ? (p.price | inr: 4) : '—' }}</span>
+          <span class="meta">{{ p.price_at ? 'as of ' + (p.price_at | dt) : 'set it on the NPS page' }}</span></div>
+        <div class="kpi"><span class="chip green sm"><app-icon name="trend" [size]="15" /></span><span class="label">Gain</span><span class="value" [class]="p.unrealized | sign">{{ p.unrealized | inr: 0 : true }}</span>
+          <span class="meta">{{ p.unrealized_pct | pct }} on {{ p.cost | inr }}</span></div>
+      } @else if (p.asset_class === 'epf') {
+        <div class="kpi"><span class="chip blue sm"><app-icon name="wallet" [size]="15" /></span><span class="label">Contributed</span><span class="value">{{ p.invested | inr }}</span>
+          <span class="meta">{{ p.proceeds ? (p.proceeds | inr) + ' withdrawn' : 'employee + employer' }}</span></div>
+        <div class="kpi"><span class="chip green sm"><app-icon name="trend" [size]="15" /></span><span class="label">Interest credited</span><span class="value pos">{{ p.interest_credited | inr }}</span>
+          <span class="meta">{{ p.accrued_interest | inr }} accruing this year</span></div>
+        <div class="kpi"><span class="chip amber sm"><app-icon name="chart" [size]="15" /></span><span class="label">Rate</span><span class="value">{{ p.rate }}%</span>
+          <span class="meta">XIRR {{ p.xirr | pct }}</span></div>
       } @else if (p.asset_class === 'fixed_deposit') {
         <div class="kpi"><span class="chip blue sm"><app-icon name="bank" [size]="15" /></span><span class="label">Deposit</span><span class="value">{{ p.invested | inr }}</span><span class="meta">{{ p.rate }}% a year</span></div>
         <div class="kpi"><span class="chip green sm"><app-icon name="trend" [size]="15" /></span><span class="label">Interest accrued</span><span class="value pos">{{ p.accrued_interest | inr }}</span></div>

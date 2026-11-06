@@ -24,3 +24,4 @@ New Text Document.txt
 *.code-workspace
 Thumbs.db
 .DS_Store
+docs

@@ -75,8 +75,8 @@
   </section>
 
   @if (auth.isAdmin()) {
-    <section class="card flush">
-      <div class="card-head"><div><h2>People with access</h2><span class="hint">Users see only their own data; admins and guests see everything; guests are read-only</span></div></div>
+    <section class="card flush" id="people">
+      <div class="card-head"><div><h2>Family members</h2><span class="hint">Each member signs in with Google and gets their own portfolio. Users see only theirs; admins and guests can switch to any member or the whole family; guests are read-only</span></div></div>
       <div class="table-wrap">
         <table class="table">
           <thead><tr><th>Person</th><th>Role</th><th class="hide-sm">Last sign-in</th><th></th></tr></thead>

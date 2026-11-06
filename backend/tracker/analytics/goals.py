@@ -16,6 +16,8 @@ ASSUMPTIONS = {
     d.SEG_COMMODITY: (0.08, 0.15),
     d.SEG_P2P: (0.10, 0.06),
     d.SEG_FD: (0.07, 0.01),
+    d.SEG_EPF: (0.0825, 0.005),   # declared EPF rate; credited yearly
+    d.SEG_NPS: (0.10, 0.12),      # typical active-choice equity/debt mix
 }
 
 

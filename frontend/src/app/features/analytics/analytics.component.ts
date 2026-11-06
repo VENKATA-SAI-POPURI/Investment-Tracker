@@ -1,22 +1,25 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { FORMAT_PIPES, inr, inrCompact } from '../../core/format';
 import { errorMessage } from '../../core/http';
-import { Benchmark, Income, Performance, SEGMENTS } from '../../core/models';
+import { Benchmark, Income, Performance, Pulse, SEGMENTS } from '../../core/models';
 import { StoreService } from '../../core/store.service';
 import { LineChartComponent, LineSeries } from '../../shared/charts/line-chart.component';
 import { Bar, BarChartComponent } from '../../shared/charts/bar-chart.component';
 import { IconComponent } from '../../shared/icon.component';
+import { HealthCardComponent } from '../overview/pulse.components';
+import { DriversComponent, MarketComponent, MilestonesComponent, RhythmComponent } from '../overview/story.components';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 @Component({
   selector: 'app-analytics',
   standalone: true,
-  imports: [FormsModule, RouterLink, IconComponent, LineChartComponent, BarChartComponent, ...FORMAT_PIPES],
+  imports: [FormsModule, RouterLink, IconComponent, LineChartComponent, BarChartComponent, HealthCardComponent, DriversComponent, MarketComponent,
+    RhythmComponent, MilestonesComponent, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './analytics.component.html',
   styles: [`
@@ -39,7 +42,8 @@ export class AnalyticsComponent {
   range = signal('1Y');
   segment = signal('');
   bench = signal('NIFTY50');
-  tab = signal<'growth' | 'returns' | 'risk' | 'income'>('growth');
+  tab = signal<'growth' | 'returns' | 'risk' | 'income' | 'analysis'>('growth');
+  pulse = signal<Pulse | null>(null);
   income = signal<Income | null>(null);
   incomeBars = computed<Bar[]>(() => (this.income()?.months ?? []).slice(-18).map(m => {
     const d = new Date(m.month + '-01T00:00:00');
@@ -52,6 +56,16 @@ export class AnalyticsComponent {
     return [{ label: 'Dividends', value: s('dividends'), color: 'var(--s1)' }, { label: 'P2P interest', value: s('p2p_interest'), color: 'var(--s5)' },
       { label: 'FD interest', value: s('fd_interest'), color: 'var(--s6)' }].filter(x => x.value > 0);
   });
+  /** What drove returns, market comparison, rhythm, milestones and the health score. */
+  loadAnalysis() {
+    this.tab.set('analysis');
+    if (!this.pulse()) firstValueFrom(this.api.pulse()).then(r => this.pulse.set(r)).catch(e => this.error.set(errorMessage(e)));
+  }
+  private openTab = (() => {
+    if (inject(ActivatedRoute).snapshot.queryParamMap.get('tab') === 'analysis') queueMicrotask(() => this.loadAnalysis());
+    return true;
+  })();
+
   loadIncome() {
     this.tab.set('income');
     if (!this.income()) firstValueFrom(this.api.income()).then(r => this.income.set(r)).catch(e => this.error.set(errorMessage(e)));

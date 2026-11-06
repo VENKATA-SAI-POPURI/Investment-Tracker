@@ -7,7 +7,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 
 from .. import domain as d
-from .portfolio import EPS, fd_accrued, run_fifo, to_date, _f
+from .portfolio import EPS, epf_balance, fd_accrued, run_fifo, to_date, _f
 from .xirr import xirr
 
 RISK_FREE = 0.065  # ~ Indian 1-year T-bill
@@ -77,16 +77,34 @@ def build_history(instruments: list[dict], txns: list[dict], price_hist: dict[st
                     flows_by_day[day] -= amt
             elif typ in (d.DIVIDEND, d.INTEREST, d.REPAYMENT, d.MATURITY):
                 flows_by_day[day] -= amt
-        if ac in d.TRADABLE:
-            q, qe, ce = 0.0, [], []
+        if ac in d.UNITISED:
+            q, qe, ce, factors = 0.0, [], [], []
             dates = sorted({str(t["date"])[:10] for t in ts})
             for day in dates:
                 todays = [t for t in ts if str(t["date"])[:10] == day]
-                q += sum(_f(t["quantity"]) * (1 if t["type"] == d.BUY else -1) for t in todays if t["type"] in (d.BUY, d.SELL))
+                for t in sorted(todays, key=lambda x: 0 if x["type"] == d.SPLIT else 1):
+                    qty = _f(t["quantity"])
+                    if t["type"] == d.SPLIT and qty > EPS:
+                        factors.append((day, qty))
+                        q *= qty
+                    elif t["type"] == d.BONUS and qty > EPS:
+                        factors.append((day, (q + qty) / q if q > EPS else 1.0))
+                        q += qty
+                    elif t["type"] in (d.BUY, d.SELL):
+                        q += qty if t["type"] == d.BUY else -qty
                 qe.append((day, max(q, 0.0)))
                 lots, _, _ = run_fifo(iid, [t for t in ts if str(t["date"])[:10] <= day])
                 ce.append((day, sum(l.cost for l in lots)))
-            qty_events[iid], cost_events[iid] = qe, ce
+            # Market prices are back-adjusted for splits and bonuses, so express earlier
+            # holdings in today's units: multiply by every action that happened later.
+            adjusted = []
+            for day, qty in qe:
+                mult = 1.0
+                for fday, f in factors:
+                    if fday > day:
+                        mult *= f
+                adjusted.append((day, qty * mult))
+            qty_events[iid], cost_events[iid] = adjusted, ce
 
     def wallet_fc_events(inst):
         events = defaultdict(float)
@@ -120,12 +138,14 @@ def build_history(instruments: list[dict], txns: list[dict], price_hist: dict[st
         for iid, ts in by_inst.items():
             inst = inst_map[iid]
             ac = inst["asset_class"]
-            if ac in d.TRADABLE:
+            if ac in d.UNITISED:
                 q = qty_series[iid].at(iso) or 0.0
                 c = cost_series[iid].at(iso) or 0.0
                 if q <= EPS:
                     continue
                 px = price_series.get(inst.get("symbol") or "", Series([])).at(iso) if inst.get("symbol") else None
+                if not px and day == today and inst.get("last_price"):
+                    px = _f(inst["last_price"])  # manually priced holdings (NPS) are known only for today
                 mult = fx_at(iso) if inst.get("currency") == "USD" else 1.0
                 value += q * px * mult if px and mult else c
                 cost += c
@@ -138,6 +158,11 @@ def build_history(instruments: list[dict], txns: list[dict], price_hist: dict[st
                     out = 0.0
                 value += out
                 cost += out
+            elif ac == d.EPF:
+                bal = epf_balance(ts, iso)
+                if bal > EPS:
+                    value += bal
+                    cost += bal
             elif ac == d.FIXED_DEPOSIT:
                 if any(t["type"] == d.MATURITY and str(t["date"])[:10] <= iso for t in ts):
                     continue

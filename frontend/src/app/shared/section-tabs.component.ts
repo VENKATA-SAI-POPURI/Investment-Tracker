@@ -12,6 +12,8 @@ const GROUPS: Record<string, { path: string; label: string; classes?: string[] }
     { path: '/p2p', label: 'P2P', classes: ['p2p'] },
     { path: '/fixed-deposits', label: 'FDs', classes: ['fixed_deposit'] },
     { path: '/forex', label: 'USD wallet', classes: ['cash'] },
+    { path: '/epf', label: 'EPF', classes: ['epf'] },
+    { path: '/nps', label: 'NPS', classes: ['nps'] },
   ],
   activity: [
     { path: '/transactions', label: 'Transactions' },

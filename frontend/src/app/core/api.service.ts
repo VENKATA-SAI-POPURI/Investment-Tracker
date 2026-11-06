@@ -4,7 +4,7 @@ import { Observable } from 'rxjs';
 import { environment } from '../../environments/environment';
 import {
   AllowlistUser, CashMovement, Goal, Income, Insight, Instrument, Benchmark, PerfMetrics, Performance, Portfolio,
-  PriceHistory, Pulse, RebalancePlan, Settings, SymbolHit, TaxReport, Transaction,
+  PriceHistory, Pulse, RebalancePlan, Settings, SymbolHit, TaxReport, Transaction, Member, Notice, Report, ReportMeta, CasPreview, LendenPreview,
 } from './models';
 
 type Params = Record<string, string | number | boolean | null | undefined>;
@@ -26,6 +26,17 @@ export class ApiService {
   delete<T>(path: string): Observable<T> { return this.http.delete<T>(this.base + path); }
 
   ping() { return this.get<{ ok: boolean }>('/ping'); }
+
+  // family, reminders, reports, statement import
+  portfolios() { return this.get<{ family: boolean; members: Member[] }>('/portfolios'); }
+  notifications() { return this.get<{ items: Notice[] }>('/notifications'); }
+  reportCatalog() { return this.get<{ reports: ReportMeta[]; years: string[]; asset_classes: string[] }>('/reports'); }
+  report(key: string, p?: Params) { return this.get<Report>(`/reports/${key}`, p); }
+  reportXlsx(key: string, p?: Params) {
+    return this.http.get(`${this.base}/reports/${key}/export.xlsx`, { params: this.params(p), responseType: 'blob' });
+  }
+  casPreview(file: string, password: string) { return this.post<CasPreview>('/import/cas/preview', { file, password }); }
+  casCommit(body: unknown) { return this.post<{ imported: number; results: { name: string; ok: boolean; imported?: number; error?: string; updated?: string }[] }>('/import/cas/commit', body); }
 
   // portfolio & analytics
   portfolio() { return this.get<Portfolio>('/portfolio'); }
@@ -57,10 +68,10 @@ export class ApiService {
   suggestions() { return this.get<Record<string, any>>('/suggestions'); }
 
   addLoan(body: unknown) { return this.post<Instrument>('/p2p/loans', body); }
-  orderReportPreview(fileData: string) { return this.post<any>('/p2p/import/order-report/preview', { file_data: fileData }); }
-  orderReportCommit(rows: unknown[]) { return this.post<any>('/p2p/import/order-report/commit', { rows }); }
-  statementPreview(fileData: string) { return this.post<any>('/p2p/import/statement/preview', { file_data: fileData }); }
-  statementCommit(rows: unknown[], statusUpdates: unknown[]) { return this.post<any>('/p2p/import/statement/commit', { rows, status_updates: statusUpdates }); }
+  lendenPreview(files: { name: string; file_data: string }[]) { return this.post<LendenPreview>('/p2p/import/preview', { files }); }
+  lendenCommit(body: unknown) {
+    return this.post<{ loans_added: number; repayments: number; status_updated: number; details_filled: number; errors: { loan_id: string; error: string }[] }>('/p2p/import/commit', body);
+  }
   addFd(body: unknown) { return this.post<Instrument>('/fixed-deposits', body); }
   matureFd(id: number, body: unknown) { return this.post(`/fixed-deposits/${id}/mature`, body); }
   addForex(body: unknown) { return this.post<Transaction>('/forex', body); }

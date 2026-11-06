@@ -32,6 +32,17 @@ def me():
                     "real_email": g.real_email, "real_role": g.real_role, "impersonating": g.impersonating})
 
 
+@bp.get("/portfolios")
+def portfolios():
+    """Family members the caller may switch between: everyone for admins and guests, just themselves for users."""
+    rows = _dir().list() if g.real_role != "user" else [r for r in _dir().list() if r["email"].lower() == g.real_email.lower()]
+    me = g.real_email.lower()
+    out = [{"email": r["email"], "name": r.get("name") or r["email"].split("@")[0], "role": r["role"],
+            "self": r["email"].lower() == me} for r in rows]
+    out.sort(key=lambda r: (not r["self"], r["name"].lower()))
+    return jsonify({"family": g.real_role != "user", "members": out})
+
+
 @bp.get("/admin/users")
 @admin_required
 def list_users():

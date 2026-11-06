@@ -1,7 +1,8 @@
 import { Injectable, signal } from '@angular/core';
 import { AssetClass, Transaction } from './models';
 
-export type AddKind = 'equity' | 'mutual_fund' | 'commodity' | 'p2p_loan' | 'p2p_repayment' | 'fixed_deposit' | 'forex' | 'dividend';
+export type AddKind = 'equity' | 'mutual_fund' | 'commodity' | 'p2p_loan' | 'p2p_repayment' | 'fixed_deposit' | 'forex' | 'dividend'
+  | 'epf' | 'nps' | 'corporate_action';
 
 export interface TxnDialogState {
   mode: 'add' | 'edit';

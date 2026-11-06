@@ -61,7 +61,8 @@ class RealizedLot:
         return (to_date(self.sell_date) - to_date(self.buy_date)).days
 
 
-_ORDER = {d.BUY: 0, d.SELL: 1}
+_ORDER = {d.SPLIT: -1, d.BUY: 0, d.BONUS: 0, d.SELL: 1}
+EPF_DEFAULT_RATE = 8.25  # % a year, the EPFO rate for FY2024-25
 
 
 def run_fifo(instrument_id: int, txns: list[dict]) -> tuple[list[Lot], list[RealizedLot], float]:
@@ -75,6 +76,17 @@ def run_fifo(instrument_id: int, txns: list[dict]) -> tuple[list[Lot], list[Real
             q = _f(t["quantity"])
             if q > EPS:
                 lots.append(Lot(str(t["date"])[:10], q, _f(t["amount"]), _f(t["amount_fc"]), t.get("id") or 0))
+        elif t["type"] == d.BONUS:
+            # Bonus shares: a new lot at zero cost, held from the allotment date (Indian tax treatment)
+            q = _f(t["quantity"])
+            if q > EPS:
+                lots.append(Lot(str(t["date"])[:10], q, 0.0, 0.0, t.get("id") or 0))
+        elif t["type"] == d.SPLIT:
+            # Split: every open lot keeps its cost and date; only the unit count changes
+            ratio = _f(t["quantity"])
+            if ratio > EPS:
+                for lot in lots:
+                    lot.qty *= ratio
         elif t["type"] == d.SELL:
             sell_qty = _f(t["quantity"])
             if sell_qty <= EPS:
@@ -131,9 +143,10 @@ def compute_portfolio(instruments: list[dict], txns: list[dict], usd_inr: float 
     for inst in instruments:
         ts = sorted(by_inst.get(inst["id"], []), key=lambda x: (str(x["date"])[:10], x.get("id") or 0))
         ac = inst["asset_class"]
-        if ac in d.TRADABLE:
+        if ac in d.UNITISED:
             pos, realized = _tradable_position(inst, ts, fx, today)
-            realized_all += realized
+            if ac in d.TRADABLE:  # NPS withdrawals are not capital gains
+                realized_all += realized
             if inst.get("currency") == "USD":
                 for t in ts:
                     if t["type"] in (d.BUY, d.SELL):
@@ -143,6 +156,8 @@ def compute_portfolio(instruments: list[dict], txns: list[dict], usd_inr: float 
             pos = _p2p_position(inst, ts, today)
         elif ac == d.FIXED_DEPOSIT:
             pos = _fd_position(inst, ts, today)
+        elif ac == d.EPF:
+            pos = _epf_position(inst, ts, today)
         elif ac == d.CASH:
             wallets.append((inst, ts))
             continue
@@ -317,6 +332,64 @@ def _fd_position(inst: dict, ts: list[dict], today: date) -> dict:
         "days_to_maturity": (mat - today).days if mat and not matured else None,
         "maturity_value": r2(fd_accrued(principal, rate, start, mat)) if mat and rate and not matured else None,
         "is_open": not matured and principal > 0, "txn_count": len(ts),
+    })
+    return pos
+
+
+def epf_balance(ts: list[dict], until: str | None = None) -> float:
+    """Contributions plus interest credited, less withdrawals, up to a date."""
+    bal = 0.0
+    for t in ts:
+        if until and str(t["date"])[:10] > until:
+            break
+        amt = _f(t["amount"])
+        bal += amt if t["type"] in (d.BUY, d.CREDIT) else -amt if t["type"] == d.SELL else 0.0
+    return bal
+
+
+def epf_accrued(ts: list[dict], rate_pct: float, today: date) -> float:
+    """Interest earned since the last credit (or the first contribution) but not yet credited.
+    EPFO credits interest once a year; until then it accrues on the running balance."""
+    if not ts or not rate_pct:
+        return 0.0
+    credits = [t for t in ts if t["type"] == d.CREDIT]
+    anchor = to_date(credits[-1]["date"]) if credits else to_date(ts[0]["date"])
+    bal = epf_balance(ts, anchor.isoformat())
+    accrued, cur = 0.0, anchor
+    for t in ts:
+        day = to_date(t["date"])
+        if day <= anchor or t["type"] == d.CREDIT:
+            continue
+        accrued += bal * rate_pct / 100 * (day - cur).days / 365
+        amt = _f(t["amount"])
+        bal += amt if t["type"] == d.BUY else -amt if t["type"] == d.SELL else 0.0
+        cur = day
+    accrued += bal * rate_pct / 100 * max((today - cur).days, 0) / 365
+    return max(accrued, 0.0)
+
+
+def _epf_position(inst: dict, ts: list[dict], today: date) -> dict:
+    contributed = sum(_f(t["amount"]) for t in ts if t["type"] == d.BUY)
+    credited = sum(_f(t["amount"]) for t in ts if t["type"] == d.CREDIT)
+    withdrawn = sum(_f(t["amount"]) for t in ts if t["type"] == d.SELL)
+    rate = _f(inst.get("rate")) or EPF_DEFAULT_RATE
+    balance = contributed + credited - withdrawn
+    accrued = epf_accrued(ts, rate, today) if balance > EPS else 0.0
+    value = max(balance + accrued, 0.0)
+    net_in = max(contributed - withdrawn, 0.0)
+    flows = [(to_date(t["date"]), -_f(t["amount"]) if t["type"] == d.BUY else _f(t["amount"]))
+             for t in ts if t["type"] in (d.BUY, d.SELL)]
+    if value > EPS:
+        flows.append((today, value))
+    gain = value - net_in
+    pos = _base(inst)
+    pos.update({
+        "quantity": None, "cost": r2(net_in), "value": r2(value), "invested": r2(contributed), "proceeds": r2(withdrawn),
+        "interest_credited": r2(credited), "accrued_interest": r2(accrued), "rate": rate,
+        "income": 0.0, "realized": 0.0, "unrealized": r2(gain), "unrealized_pct": r2(gain / net_in * 100) if net_in > EPS else None,
+        "has_price": False, "total_return": r2(gain), "xirr": _pct(xirr(flows)), "day_change": 0.0,
+        "first_date": ts[0]["date"] if ts else None, "last_date": ts[-1]["date"] if ts else None,
+        "is_open": value > EPS, "txn_count": len(ts),
     })
     return pos
 

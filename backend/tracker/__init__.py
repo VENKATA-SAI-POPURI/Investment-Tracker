@@ -41,7 +41,7 @@ def create_app(db: Database | None = None) -> Flask:
 
     extra = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
     CORS(app, resources={r"/api/*": {"origins": DEFAULT_ORIGINS + extra}},
-         allow_headers=["Authorization", "Content-Type", "X-View-As"])
+         allow_headers=["Authorization", "Content-Type", "X-View-As", "X-Portfolio"])
 
     @app.before_request
     def guard():
@@ -78,7 +78,7 @@ def create_app(db: Database | None = None) -> Flask:
         traceback.print_exc()
         return jsonify({"error": "Something went wrong on the server. Please try again."}), 500
 
-    from .api import analytics_api, auth_api, ledger_api
-    for bp in (auth_api.bp, ledger_api.bp, analytics_api.bp):
+    from .api import analytics_api, auth_api, ledger_api, reports_api
+    for bp in (auth_api.bp, ledger_api.bp, analytics_api.bp, reports_api.bp):
         app.register_blueprint(bp, url_prefix="/api")
     return app

@@ -62,6 +62,11 @@ def pulse():
     return jsonify(S().pulse(g.scope, S().settings()))
 
 
+@bp.get("/notifications")
+def notifications():
+    return jsonify({"items": S().notifications(g.scope, S().settings())})
+
+
 @bp.get("/income")
 def income():
     return jsonify(S().income(g.scope))
@@ -113,14 +118,14 @@ def goals():
 @bp.post("/goals")
 @write_required
 def add_goal():
-    L().save_goal(g.email, g.scope, body())
+    L().save_goal(g.owner, g.scope, body())
     return jsonify(S().goals(g.scope, S().settings())), 201
 
 
 @bp.put("/goals/<int:gid>")
 @write_required
 def update_goal(gid):
-    L().save_goal(g.email, g.scope, body(), gid)
+    L().save_goal(g.owner, g.scope, body(), gid)
     return jsonify(S().goals(g.scope, S().settings()))
 
 
