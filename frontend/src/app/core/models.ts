@@ -84,6 +84,16 @@ export interface LendenPreview { files: LendenFile[]; new_loans: LendenNewLoan[]
   details: { instrument_id: number; loan_id: string; ref: string; fields: Record<string, string | number> }[];
   review: { loan_id: string; ref: string; name: string; message: string }[]; overdue: { loan_id: string; ref: string; dpd: string }[]; }
 
+/** Zerodha tradebook import: Kite's day-by-day trades against the app's entries, stock by stock. */
+export interface KiteDay { date: string; type: 'BUY' | 'SELL'; quantity: number; amount: number; price: number; fills: number; exchanges: string[]; }
+export interface KiteEntry { id: number; date: string; type: 'BUY' | 'SELL'; quantity: number; amount: number; notes: string | null; }
+export interface KiteBlock { type: 'BUY' | 'SELL'; remove: KiteEntry[]; add: KiteDay[]; selected: boolean; message?: string; }
+export interface KiteStock { symbol: string; name: string; instrument_id: number | null; new_instrument: Record<string, string | null> | null;
+  isin: string | null; matched: number; add: (KiteDay & { selected: boolean })[]; split: KiteBlock[]; review: KiteBlock[];
+  corrections: { txn_id: number; date: string; type: string; quantity: number; app_amount: number; kite_amount: number; selected: boolean }[];
+  kept: KiteEntry[]; kite_net: number; app_net: number; }
+export interface KitePreview { from_date: string; to_date: string; client_ids: string[]; trades: number; stocks: KiteStock[]; }
+
 export interface AuthUser {
   email: string;
   name?: string | null;

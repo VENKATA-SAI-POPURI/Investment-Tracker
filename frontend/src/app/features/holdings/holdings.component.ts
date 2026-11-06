@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth.service';
 import { FORMAT_PIPES, downloadCsv } from '../../core/format';
 import { AssetClass, CLASS_LABEL, Position, SEGMENT_COLOR, CLASS_COLOR } from '../../core/models';
@@ -15,7 +15,7 @@ interface Group { key: string; value: number; pct: number; count: number; }
 @Component({
   selector: 'app-holdings',
   standalone: true,
-  imports: [FormsModule, IconComponent, SectionTabsComponent, ...FORMAT_PIPES],
+  imports: [FormsModule, RouterLink, IconComponent, SectionTabsComponent, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './holdings.component.html',
   styles: [`

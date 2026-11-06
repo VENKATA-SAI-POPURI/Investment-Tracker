@@ -293,14 +293,24 @@ class Ledger:
         return self.db.one("SELECT * FROM transactions WHERE id = ?", (res.lastrowid,))
 
     def bulk_add(self, owner: str, entries: list[dict], status_updates: list[tuple[int, str]] = (),
-                 check_holdings: bool = True, field_updates: list[tuple[int, dict]] = ()) -> int:
+                 check_holdings: bool = True, field_updates: list[tuple[int, dict]] = (),
+                 remove_txns: list[int] = (), txn_updates: list[tuple[int, dict]] = ()) -> int:
         """Insert many transactions (optionally with new instruments) in ONE atomic batch.
         entry: {"instrument": dict (existing row) | None, "new_instrument": dict | None,
                 "txn": dict | "txns": [dict, ...], "source": str}
         New instruments must carry a unique `ref` so later statements can find their id.
-        field_updates: (instrument id, {field: value}) applied in the same batch."""
+        field_updates: (instrument id, {field: value}); remove_txns: transaction ids deleted first, with their
+        linked cash movements; txn_updates: (transaction id, {field: value}). Callers validate the end state
+        (e.g. FIFO holdings) before calling, since rows removed here are still in the database meanwhile."""
         ts = now_iso()
         stmts = []
+        for tid in remove_txns:
+            stmts += [("DELETE FROM cash_movements WHERE transaction_id = ?", (tid,)), ("DELETE FROM transactions WHERE id = ?", (tid,))]
+        for tid, fields in txn_updates:
+            f = _clean(fields, TXN_FIELDS)
+            if f:
+                stmts.append((f"UPDATE transactions SET {', '.join(f'{k} = ?' for k in f)}, updated_at = ? WHERE id = ?",
+                              [*f.values(), ts, tid]))
         auto = self._auto_enabled(owner)
         for e in entries:
             if e.get("new_instrument"):

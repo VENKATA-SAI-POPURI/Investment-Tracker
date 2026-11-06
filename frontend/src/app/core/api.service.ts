@@ -4,7 +4,7 @@ import { Observable } from 'rxjs';
 import { environment } from '../../environments/environment';
 import {
   AllowlistUser, CashMovement, Goal, Income, Insight, Instrument, Benchmark, PerfMetrics, Performance, Portfolio,
-  PriceHistory, Pulse, RebalancePlan, Settings, SymbolHit, TaxReport, Transaction, Member, Notice, Report, ReportMeta, CasPreview, LendenPreview,
+  PriceHistory, Pulse, RebalancePlan, Settings, SymbolHit, TaxReport, Transaction, Member, Notice, Report, ReportMeta, CasPreview, LendenPreview, KitePreview,
 } from './models';
 
 type Params = Record<string, string | number | boolean | null | undefined>;
@@ -36,6 +36,10 @@ export class ApiService {
     return this.http.get(`${this.base}/reports/${key}/export.xlsx`, { params: this.params(p), responseType: 'blob' });
   }
   casPreview(file: string, password: string) { return this.post<CasPreview>('/import/cas/preview', { file, password }); }
+  tradebookPreview(files: { name: string; file_data: string }[]) { return this.post<KitePreview>('/import/tradebook/preview', { files }); }
+  tradebookCommit(stocks: unknown[]) {
+    return this.post<{ added: number; removed: number; corrected: number; results: { symbol: string; ok: boolean; error?: string }[] }>('/import/tradebook/commit', { stocks });
+  }
   casCommit(body: unknown) { return this.post<{ imported: number; results: { name: string; ok: boolean; imported?: number; error?: string; updated?: string }[] }>('/import/cas/commit', body); }
 
   // portfolio & analytics

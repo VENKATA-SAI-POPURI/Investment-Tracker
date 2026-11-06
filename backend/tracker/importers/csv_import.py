@@ -1,9 +1,8 @@
-"""CSV transaction import: the app's own template or a Zerodha Console tradebook."""
+"""CSV transaction import in the app's own template. Broker tradebooks go through importers.tradebook."""
 from __future__ import annotations
 
 import csv
 import io
-from collections import defaultdict
 from datetime import date
 
 from .. import domain as d
@@ -36,7 +35,8 @@ def parse(text: str) -> dict:
     reader = csv.DictReader(io.StringIO(text.lstrip("﻿")))
     headers = {h.strip().lower(): h for h in (reader.fieldnames or [])}
     if {"trade_date", "trade_type", "symbol", "quantity", "price"} <= set(headers):
-        return _zerodha(reader, headers)
+        raise ValueError("This is a Zerodha tradebook: import it from Tools → Import statements → Kite tradebook, "
+                         "which also reconciles it with the trades you already have")
     missing = {"date", "type", "name", "amount"} - set(headers)
     if missing:
         raise ValueError("CSV is missing columns: " + ", ".join(sorted(missing))
@@ -61,26 +61,3 @@ def parse(text: str) -> dict:
             errors.append({"line": n, "error": str(e)})
     return {"format": "template", "rows": rows, "errors": errors}
 
-
-def _zerodha(reader, headers) -> dict:
-    agg: dict[tuple, dict] = defaultdict(lambda: {"quantity": 0.0, "amount": 0.0})
-    errors = []
-    for n, raw in enumerate(reader, start=2):
-        r = {k: (raw.get(orig) or "").strip() for k, orig in headers.items()}
-        try:
-            seg = (r.get("segment") or "EQ").upper()
-            if seg not in ("EQ", ""):
-                continue  # F&O / currency segments are out of scope
-            sym, ex = r["symbol"].upper(), (r.get("exchange") or "NSE").upper()
-            typ = d.BUY if r["trade_type"].lower() == "buy" else d.SELL
-            key = (_date(r["trade_date"]), typ, sym, ex)
-            q, p = _num(r["quantity"]), _num(r["price"])
-            agg[key]["quantity"] += q
-            agg[key]["amount"] += q * p
-        except (ValueError, KeyError) as e:
-            errors.append({"line": n, "error": str(e)})
-    rows = [{"line": None, "date": k[0], "type": k[1], "asset_class": d.COMMODITY if k[2].endswith("BEES") else d.EQUITY,
-             "name": k[2], "symbol": f"{k[2]}.{'BO' if k[3] == 'BSE' else 'NS'}", "quantity": round(v["quantity"], 6),
-             "amount": round(v["amount"], 2), "amount_fc": None, "market": "India", "sector": None, "market_cap": None,
-             "category": None, "notes": "Zerodha tradebook import"} for k, v in sorted(agg.items())]
-    return {"format": "zerodha", "rows": rows, "errors": errors}

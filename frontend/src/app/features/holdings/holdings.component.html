@@ -4,6 +4,9 @@
       <h1>Holdings</h1>
       <div class="row">
         <button class="btn ghost sm" (click)="export()"><app-icon name="download" [size]="15" /> Export</button>
+        @if (auth.canWrite() && (assetClass() === 'equity' || assetClass() === 'commodity')) {
+          <a class="btn ghost sm" routerLink="/import" [queryParams]="{ source: 'kite' }"><app-icon name="upload" [size]="15" /> Import Kite tradebook</a>
+        }
         @if (auth.canWrite()) { <button class="btn sm" (click)="add()"><app-icon name="plus" [size]="15" /> Add {{ title().toLowerCase() }}</button> }
       </div>
     </div>
