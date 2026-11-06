@@ -48,6 +48,42 @@
     </div>
   </section>
 
+  <section class="card" id="alerts">
+    <div class="card-head"><div><h2>Price alerts</h2>
+      <span class="hint">For your Indian stocks, ETFs and watchlist, checked every 30 minutes while the market is open. Alerts appear under the bell and, if you turn them on, as notifications on this device.</span></div></div>
+    <div class="alerts-grid">
+      <div class="form">
+        <label class="check"><input type="checkbox" [(ngModel)]="alerts.enabled" [disabled]="!auth.canWrite()" /> Watch my holdings for big moves</label>
+        <div class="cols">
+          <div class="field"><label for="al-day">Alert when a holding moves in a day by</label>
+            <div class="row"><input id="al-day" class="input num" style="max-width:90px" type="number" min="1" max="20" step="0.5" [(ngModel)]="alerts.day" [disabled]="!alerts.enabled || !auth.canWrite()" /> %</div></div>
+          <div class="field"><label for="al-week">…or in a week by</label>
+            <div class="row"><input id="al-week" class="input num" style="max-width:90px" type="number" min="2" max="40" step="0.5" [(ngModel)]="alerts.week" [disabled]="!alerts.enabled || !auth.canWrite()" /> %</div></div>
+        </div>
+        <label class="check"><input type="checkbox" [(ngModel)]="alerts.push" [disabled]="!alerts.enabled || !auth.canWrite()" /> Send them as push notifications</label>
+        @if (auth.canWrite()) { <div><button class="btn primary sm" (click)="saveAlerts()" [disabled]="saving()">Save alert settings</button></div> }
+      </div>
+      <div class="device">
+        <b>This device</b>
+        @if (!push.deviceSupported) {
+          <p class="small muted">This browser can't receive push notifications here. On an iPhone, add the app to your Home Screen first (Share → Add to Home Screen), then open it from there. On a computer, use the installed site rather than a preview.</p>
+        } @else if (push.serverReady() === false) {
+          <p class="small muted">Push isn't set up on the server yet, so alerts show only under the bell for now.</p>
+        } @else if (push.subscribed()) {
+          <p class="small"><app-icon name="checkCircle" [size]="14" class="pos" /> Notifications are on for this device{{ push.devices() > 1 ? ' and ' + (push.devices() - 1) + ' other' + (push.devices() > 2 ? 's' : '') : '' }}.</p>
+          <div class="row wrap"><button class="btn sm" (click)="testPush()" [disabled]="push.busy()">Send a test</button>
+            <button class="btn ghost sm" (click)="push.disable()" [disabled]="push.busy()">Turn off here</button>
+            @if (push.devices() > 1) { <button class="btn ghost sm" (click)="push.disable(true)" [disabled]="push.busy()">Turn off everywhere</button> }</div>
+        } @else {
+          <p class="small muted">{{ push.blocked() ? 'Notifications are blocked for this site; allow them in the browser's site settings first.' : 'Get alerts here even when the app is closed.' }}
+            {{ push.devices() ? 'On for ' + push.devices() + ' other device' + (push.devices() > 1 ? 's' : '') + '.' : '' }}</p>
+          <button class="btn sm" (click)="enablePush()" [disabled]="push.busy() || push.blocked() || push.serverReady() === null"><app-icon name="bell" [size]="14" /> Turn on notifications</button>
+        }
+        @if (push.error()) { <p class="small neg">{{ push.error() }}</p> }
+      </div>
+    </div>
+  </section>
+
   <section class="card flush" id="prices">
     <div class="card-head">
       <div><h2>Prices & tickers</h2><span class="hint">Last refresh {{ rel(store.portfolio()?.prices?.last_refresh) }} · USD/INR {{ store.portfolio()?.usd_inr ?? '—' }}</span></div>

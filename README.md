@@ -19,6 +19,7 @@ member signs in to their own portfolio; admins switch between members or see the
 | Tax | Realized STCG/LTCG per financial year on FIFO lots, loss set-off, ₹1.25L equity exemption, estimated tax, loss harvesting, tax-free LTCG harvesting, "wait N days" alerts |
 | Goals | Earmark parts of the portfolio, Monte Carlo probability of success, required SIP |
 | Insights | Rule-based alerts (drift, concentration, P2P overdue/defaults, FD maturities, tax, stale prices, SIP gaps, reviews), rebalancing planner, optional AI analyst |
+| Markets | Nifty 200 scan of 1-week / 1-month price moves read two ways (momentum, dip & reversal), your stocks with live moves, top movers, sector heat, rebalancing hints, a watchlist with buy/sell prices, an IPO tracker with reminders, and push alerts for big moves (checked every 30 minutes in market hours) |
 | Imports | CAS PDF (CAMS / KFintech mutual fund history, NSDL NPS schemes, demat holdings check) via `casparser`; Zerodha Kite tradebook (.xlsx or .csv), reconciled with existing trades, combined entries split into the real trades; CSV template; LenDenClub investment reports (Manual, Lumpsum) and order report, several files in one upload, reconciled on the net cash sent to the bank |
 
 ## Project layout
@@ -88,7 +89,22 @@ python manage.py backup      # read-only copy of every table into backups/backup
 python manage.py migrate     # apply pending migrations (also runs automatically at start-up)
 python manage.py verify      # legacy tables vs ledger control totals
 python manage.py status
+python manage.py vapid-keys  # key pair for push notifications
+python manage.py job-token   # secret for the scheduled market scan
 ```
+
+### Price alerts and push notifications
+
+The workflow in `.github/workflows/market-scan.yml` calls `POST /api/jobs/market-scan` every 30 minutes while NSE is open.
+It refreshes prices, warms the Markets page and sends alerts. To turn it on:
+
+1. On the API host, set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` (from `manage.py vapid-keys`) and `JOB_TOKEN`
+   (from `manage.py job-token`).
+2. In the GitHub repository, add the secrets `API_URL` (the API's base URL) and `JOB_TOKEN` (the same value).
+3. On each phone or computer, open Settings → Price alerts → Turn on notifications. On an iPhone, add the app to the
+   Home Screen first and open it from there.
+
+Without the keys, alerts still appear under the bell; without the secrets, nothing is scheduled.
 
 Environment variables are listed in `backend/.env.example`. Secrets (Turso token, JWT secret, AI keys) belong in the
 Render dashboard or a local `.env`, never in the repository.

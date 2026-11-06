@@ -4,6 +4,7 @@ import { ApiService } from './api.service';
 import { AuthService } from './auth.service';
 import { errorMessage } from './http';
 import { Portfolio, Settings } from './models';
+import { readSnapshot, snapshotKey, writeSnapshot } from './snapshot';
 import { ToastService } from './toast.service';
 
 /** App-wide data: portfolio snapshot + settings. Pages read signals; writes call `reload()`. */
@@ -24,6 +25,8 @@ export class StoreService {
   readonly positions = computed(() => this.portfolio()?.positions ?? []);
   readonly openPositions = computed(() => this.positions().filter(p => p.is_open));
   readonly targets = computed(() => this.settings().targetAllocation ?? {});
+  /** Snapshot key for the identity and portfolio on screen; pages use it for their own cached data. */
+  readonly scopeKey = computed(() => `${this.auth.user()?.email ?? ''}|${this.auth.viewAs()?.email ?? ''}|${this.auth.portfolio() ?? ''}`);
 
   constructor() {
     // Reload whenever the signed-in identity, "view as" or the selected family member changes
@@ -31,7 +34,10 @@ export class StoreService {
       const key = `${this.auth.token()}|${this.auth.viewAs()?.email ?? ''}|${this.auth.portfolio() ?? ''}`;
       if (this.auth.token()) {
         void key;
-        this.portfolio.set(null);
+        // Draw straight away from what this device saw last time; the fetch below refreshes it
+        const snap = readSnapshot<{ portfolio: Portfolio; settings: Settings }>(snapshotKey('store', this.scopeKey()));
+        this.portfolio.set(snap?.portfolio ?? null);
+        if (snap?.settings) this.settings.set(snap.settings);
         queueMicrotask(() => this.init());
       }
     });
@@ -51,6 +57,7 @@ export class StoreService {
       this.portfolio.set(p);
       this.settings.set(s);
       this.error.set(null);
+      writeSnapshot(snapshotKey('store', this.scopeKey()), { portfolio: p, settings: s });
     } catch (e) {
       this.error.set(errorMessage(e));
     } finally {

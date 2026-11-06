@@ -79,6 +79,14 @@
             <div class="row" style="gap:10px"><span class="chip blue sm"><app-icon name="trend" [size]="15" /></span><h2>Price & your trades</h2></div>
             <div class="legend"><span><i class="swatch" style="background:#059669;border-radius:50%"></i>Buy</span><span><i class="swatch" style="background:#dc2626;border-radius:50%"></i>Sell</span></div>
           </div>
+          @if (moves(); as m) {
+            <div class="moves">
+              <span>1 week <span class="chg" [class]="m.w1 | sign">{{ m.w1 | pct }}</span></span>
+              <span>1 month <span class="chg" [class]="m.m1 | sign">{{ m.m1 | pct }}</span></span>
+              <span class="hide-sm">Month's range {{ priceFmt(m.low) }} <span class="rb"><i [style.left.%]="m.pos"></i></span> {{ priceFmt(m.high) }}</span>
+              @if (p.asset_class !== 'mutual_fund') { <a routerLink="/markets" class="small">Signals in Markets →</a> }
+            </div>
+          }
           <app-line-chart [labels]="hLabels()" [series]="hSeries()" [markers]="hMarkers()" [height]="300" [yFormat]="priceAxis" [tipFormat]="priceFmt" [ariaLabel]="'Price history of ' + p.name" />
         </section>
       }
@@ -91,7 +99,12 @@
           <dt>Dividends / interest</dt><dd>{{ p.income | inr }}</dd>
           <dt>Unrealized</dt><dd [class]="p.unrealized | sign">{{ p.unrealized | inr: 0 : true }}</dd>
           <dt><b>Total return</b></dt><dd [class]="p.total_return | sign"><b>{{ p.total_return | inr: 0 : true }}</b></dd>
-          <dt>XIRR</dt><dd [class]="p.xirr | sign">{{ p.xirr | pct }}</dd>
+          @if (heldDays() >= 365 || p.asset_class === 'p2p' || p.asset_class === 'fixed_deposit') {
+            <dt>XIRR</dt><dd [class]="p.xirr | sign">{{ p.xirr | pct }}</dd>
+          } @else {
+            <dt>Return on money in</dt><dd [class]="simpleReturn() | sign">{{ simpleReturn() | pct }}</dd>
+            <dt class="small muted">XIRR</dt><dd class="small muted">shown after a year ({{ 365 - heldDays() }} days to go)</dd>
+          }
           @if (p.fx_gain !== undefined) {
             <dt>— from the stock (in $)</dt><dd [class]="p.stock_gain | sign">{{ p.stock_gain | inr: 0 : true }}</dd>
             <dt>— from the rupee</dt><dd [class]="p.fx_gain | sign">{{ p.fx_gain | inr: 0 : true }}</dd>

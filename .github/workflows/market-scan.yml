@@ -1,0 +1,35 @@
+# Every 30 minutes while NSE is open (09:15–15:30 IST = 03:45–10:00 UTC, Monday–Friday), ask the API to
+# refresh prices, warm the Markets page and send price alerts. Needs two repository secrets:
+#   API_URL    e.g. https://investment-tracker-nrm5.onrender.com
+#   JOB_TOKEN  the same value as the JOB_TOKEN environment variable on the API host
+name: Market scan
+
+on:
+  schedule:
+    - cron: "45 3 * * 1-5"
+    - cron: "15,45 4-9 * * 1-5"
+    - cron: "15 10 * * 1-5"
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Run the scan
+        env:
+          API_URL: ${{ secrets.API_URL }}
+          JOB_TOKEN: ${{ secrets.JOB_TOKEN }}
+        run: |
+          if [ -z "$API_URL" ] || [ -z "$JOB_TOKEN" ]; then
+            echo "API_URL and JOB_TOKEN secrets are not set; nothing to do"; exit 0
+          fi
+          # A sleeping host can take a minute to wake; retry once before giving up
+          for attempt in 1 2; do
+            code=$(curl -s -o out.json -w "%{http_code}" --max-time 240 -X POST \
+              -H "X-Job-Token: $JOB_TOKEN" "$API_URL/api/jobs/market-scan")
+            echo "attempt $attempt: HTTP $code"; cat out.json; echo
+            [ "$code" = "200" ] && exit 0
+            sleep 20
+          done
+          exit 1

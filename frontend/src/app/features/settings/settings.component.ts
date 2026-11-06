@@ -6,6 +6,7 @@ import { AuthService } from '../../core/auth.service';
 import { FORMAT_PIPES, relTime } from '../../core/format';
 import { errorMessage } from '../../core/http';
 import { AllowlistUser, CLASS_LABEL, Position, Role, SEGMENTS, SEGMENT_COLOR } from '../../core/models';
+import { PushService } from '../../core/push.service';
 import { StoreService } from '../../core/store.service';
 import { ToastService } from '../../core/toast.service';
 import { IconComponent } from '../../shared/icon.component';
@@ -18,6 +19,12 @@ import { ConfirmService } from '../../shared/ui';
   imports: [FormsModule, IconComponent, InstrumentEditComponent, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './settings.component.html',
+  styles: [`
+    .alerts-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 28px; }
+    .device { padding: 14px 16px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; align-self: start; }
+    .device p { margin: 0; }
+    @media (max-width: 800px) { .alerts-grid { grid-template-columns: minmax(0, 1fr); } }
+  `],
 })
 export class SettingsComponent {
   store = inject(StoreService);
@@ -25,6 +32,8 @@ export class SettingsComponent {
   private api = inject(ApiService);
   private toast = inject(ToastService);
   private confirm = inject(ConfirmService);
+  push = inject(PushService);
+  alerts = { enabled: true, push: true, day: 5, week: 10 };
 
   segments = SEGMENTS;
   colorOf = (s: string) => SEGMENT_COLOR[s];
@@ -52,7 +61,9 @@ export class SettingsComponent {
       this.targets = Object.fromEntries(SEGMENTS.map(seg => [seg, s.targetAllocation?.[seg] ?? 0]));
       this.slab = +(s.taxSlabRate ?? 30);
       this.autoFlows = String(s.autoCapitalFlows ?? 'true') !== 'false';
+      this.alerts = { enabled: true, push: true, day: 5, week: 10, ...(s.marketAlerts ?? {}) };
     });
+    void this.push.load();
     if (this.auth.isAdmin()) this.loadUsers();
   }
 
@@ -71,6 +82,13 @@ export class SettingsComponent {
     const diff = 100 - this.targetSum();
     const biggest = SEGMENTS.reduce((a, b) => (this.targets[a] >= this.targets[b] ? a : b));
     this.targets[biggest] += diff;
+  }
+  saveAlerts() { return this.put('marketAlerts', { ...this.alerts }, 'Alert settings saved'); }
+  async enablePush() {
+    if (await this.push.enable()) this.toast.ok('Notifications are on for this device');
+  }
+  async testPush() {
+    if (await this.push.test()) this.toast.ok('Test sent; it should arrive in a few seconds');
   }
   saveSlab() { return this.put('taxSlabRate', this.slab, 'Tax slab saved'); }
   saveAuto() { return this.put('autoCapitalFlows', this.autoFlows ? 'true' : 'false', 'Saved'); }

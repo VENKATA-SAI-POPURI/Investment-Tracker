@@ -4,7 +4,7 @@ import { Observable } from 'rxjs';
 import { environment } from '../../environments/environment';
 import {
   AllowlistUser, CashMovement, Goal, Income, Insight, Instrument, Benchmark, PerfMetrics, Performance, Portfolio,
-  PriceHistory, Pulse, RebalancePlan, Settings, SymbolHit, TaxReport, Transaction, Member, Notice, Report, ReportMeta, CasPreview, LendenPreview, KitePreview,
+  PriceHistory, Pulse, RebalancePlan, Settings, SymbolHit, TaxReport, Transaction, Member, Notice, Report, ReportMeta, CasPreview, LendenPreview, KitePreview, MarketOverview, WatchItem, Ipo, MarketAlert, PushConfig,
 } from './models';
 
 type Params = Record<string, string | number | boolean | null | undefined>;
@@ -36,6 +36,20 @@ export class ApiService {
     return this.http.get(`${this.base}/reports/${key}/export.xlsx`, { params: this.params(p), responseType: 'blob' });
   }
   casPreview(file: string, password: string) { return this.post<CasPreview>('/import/cas/preview', { file, password }); }
+  // markets: overview, watchlist, IPO tracker, alerts and push
+  markets() { return this.get<MarketOverview>('/markets'); }
+  addWatch(body: unknown) { return this.post<WatchItem>('/watchlist', body); }
+  updateWatch(id: number, body: unknown) { return this.put<WatchItem>(`/watchlist/${id}`, body); }
+  deleteWatch(id: number) { return this.delete<{ message: string }>(`/watchlist/${id}`); }
+  ipos() { return this.get<Ipo[]>('/ipos'); }
+  addIpo(body: unknown) { return this.post<Ipo>('/ipos', body); }
+  updateIpo(id: number, body: unknown) { return this.put<Ipo>(`/ipos/${id}`, body); }
+  deleteIpo(id: number) { return this.delete<{ message: string }>(`/ipos/${id}`); }
+  marketAlerts() { return this.get<MarketAlert[]>('/markets/alerts'); }
+  pushConfig() { return this.get<PushConfig>('/push/config'); }
+  pushSubscribe(subscription: unknown) { return this.post<{ devices: number }>('/push/subscribe', { subscription }); }
+  pushUnsubscribe(endpoint: string | null, all = false) { return this.post<{ devices: number }>('/push/unsubscribe', { endpoint, all }); }
+  pushTest() { return this.post<{ sent: number }>('/push/test', {}); }
   tradebookPreview(files: { name: string; file_data: string }[]) { return this.post<KitePreview>('/import/tradebook/preview', { files }); }
   tradebookCommit(stocks: unknown[]) {
     return this.post<{ added: number; removed: number; corrected: number; results: { symbol: string; ok: boolean; error?: string }[] }>('/import/tradebook/commit', { stocks });

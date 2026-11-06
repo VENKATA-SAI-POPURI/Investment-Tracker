@@ -50,7 +50,9 @@ def _yahoo_quote(symbol: str) -> dict | None:
     if price is None:
         return None
     prev = closes[-2] if len(closes) >= 2 else meta.get("chartPreviousClose")
-    return {"price": float(price), "prev_close": float(prev) if prev else None, "currency": meta.get("currency")}
+    when = meta.get("regularMarketTime")
+    day = datetime.fromtimestamp(when + (meta.get("gmtoffset") or 0), tz=timezone.utc).date().isoformat() if when else None
+    return {"price": float(price), "prev_close": float(prev) if prev else None, "currency": meta.get("currency"), "date": day}
 
 
 def _amfi_quote(symbol: str) -> dict | None:

@@ -94,6 +94,39 @@ export interface KiteStock { symbol: string; name: string; instrument_id: number
   kept: KiteEntry[]; kite_net: number; app_net: number; }
 export interface KitePreview { from_date: string; to_date: string; client_ids: string[]; trades: number; stocks: KiteStock[]; }
 
+/** Markets: 1-week / 1-month price signals over the Nifty 200, holdings and watchlist. */
+export type SignalKey = 'momentum_buy' | 'momentum_sell' | 'dip_buy' | 'profit_book';
+export interface PriceMetrics { price: number; d1: number | null; w1: number | null; m1: number | null; vol: number | null;
+  high_1m: number; low_1m: number; spark: number[]; }
+export interface Signal { signal: SignalKey; title: string; note: string; }
+export interface MarketIdea extends Signal { symbol: string; name: string; industry: string | null; metrics: PriceMetrics;
+  held: boolean; watching: boolean; score: number; }
+export interface MarketMover { symbol: string; name: string; industry: string | null; metrics: PriceMetrics; held: boolean; }
+export interface MarketHolding { id: number; name: string; symbol: string; segment: string; value: number; weight: number;
+  gain_pct: number | null; quantity: number | null; metrics: PriceMetrics | null; signals: Signal[]; }
+export interface WatchItem { id: number; owner: string; symbol: string; name: string; target_buy: number | null; target_sell: number | null;
+  added_price: number | null; notes: string | null; created_at: string; industry: string | null; metrics: PriceMetrics | null;
+  target_hit: 'buy' | 'sell' | null; since_added: number | null; held: boolean; signals: Signal[]; }
+export interface MarketAlertsConfig { enabled: boolean; push: boolean; day: number; week: number; }
+export interface RebalanceHint extends MarketHolding { why: string; }
+export interface MarketOverview { as_of: string; universe: string; universe_size: number; covered: number;
+  index: { name: string; metrics: PriceMetrics | null }; breadth: { up: number; down: number; total: number };
+  holdings: MarketHolding[]; watchlist: WatchItem[]; ideas: Record<SignalKey, MarketIdea[]>;
+  movers: { day: { up: MarketMover[]; down: MarketMover[] }; week: { up: MarketMover[]; down: MarketMover[] } };
+  sectors: { industry: string; count: number; w1: number; m1: number }[];
+  rebalance: { has_targets: boolean; segments: { segment: string; pct: number; target: number; drift: number }[];
+    trim: RebalanceHint[]; add: RebalanceHint[]; new_ideas: MarketIdea[] };
+  alerts_config: MarketAlertsConfig; rules: Record<SignalKey, { m1: number; w1: number }>; }
+export interface MarketAlert { id: number; owner: string; key: string; kind: 'move' | 'target'; symbol: string | null; title: string;
+  body: string | null; severity: string; link: string | null; pushed: number; created_at: string; }
+export interface Ipo { id: number; owner: string; name: string; symbol: string | null; board: string | null;
+  open_date: string | null; close_date: string | null; allotment_date: string | null; listing_date: string | null;
+  price_low: number | null; price_high: number | null; lot_size: number | null; issue_size_cr: number | null; gmp: number | null;
+  subscription: string | null; applied: boolean; lots_applied: number | null; lots_allotted: number | null; listing_price: number | null;
+  notes: string | null; status: 'upcoming' | 'open' | 'closed' | 'listed'; min_investment: number | null; gmp_pct?: number;
+  listing_gain_pct?: number; }
+export interface PushConfig { available: boolean; public_key: string | null; devices: number; }
+
 export interface AuthUser {
   email: string;
   name?: string | null;
@@ -287,6 +320,13 @@ export interface PerfMetrics {
   twr: number | null; twr_annualised: number | null; xirr: number | null; volatility: number | null; max_drawdown: number | null;
   current_drawdown: number | null; sharpe: number | null; best_day: number | null; worst_day: number | null; positive_days_pct: number | null;
 }
+/** Drops the stretch before money really went in (a few hundred rupees for months), which otherwise
+ *  flattens the rest of a value chart; keeps one point before the start for context. */
+export function activeSeries(points: PerfPoint[], share = 0.05): PerfPoint[] {
+  const peak = Math.max(0, ...points.map(p => Math.max(p.value, p.net_invested)));
+  const first = points.findIndex(p => Math.max(p.value, p.net_invested) >= peak * share);
+  return first > 1 ? points.slice(first - 1) : points;
+}
 export interface Performance { series: PerfPoint[]; metrics: PerfMetrics; benchmarks: Benchmark[]; monthly: { month: string; return: number | null }[]; segment?: string | null; }
 
 export interface RealizedLotTax {
@@ -341,6 +381,7 @@ export interface Settings {
   reviewSnapshot?: Record<string, number>;
   dismissedInsights?: Record<string, string>;
   autoCapitalFlows?: string;
+  marketAlerts?: Partial<MarketAlertsConfig>;
   segments: string[];
 }
 

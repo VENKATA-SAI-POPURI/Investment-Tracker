@@ -4,6 +4,8 @@
     python manage.py migrate            apply pending schema migrations
     python manage.py verify             re-check legacy -> ledger control totals
     python manage.py status             applied migrations and row counts
+    python manage.py vapid-keys         new key pair for push notifications (set both in the host's env)
+    python manage.py job-token          a random secret for the scheduled market scan (JOB_TOKEN)
 """
 import os
 import sqlite3
@@ -45,6 +47,17 @@ def backup(db, out_dir: str):
 def main():
     load_dotenv(os.path.join(BASE, ".env"))
     cmd = sys.argv[1] if len(sys.argv) > 1 else "status"
+    if cmd == "vapid-keys":
+        from tracker.push import generate_keys
+        public, private = generate_keys()
+        print(f"VAPID_PUBLIC_KEY={public}")
+        print(f"VAPID_PRIVATE_KEY={private}")
+        print("VAPID_SUBJECT=mailto:you@example.com")
+        return
+    if cmd == "job-token":
+        import secrets
+        print(f"JOB_TOKEN={secrets.token_urlsafe(32)}")
+        return
     db = connect_from_env(BASE)
     print("database:", "Turso" if os.environ.get("TURSO_DATABASE_URL") else os.environ.get("DATABASE_PATH", "investments.db"))
     if cmd == "backup":
