@@ -7,8 +7,8 @@ from flask import Blueprint, current_app, g, jsonify, request
 
 from .. import domain as d
 from .. import prices as px
-from ..analytics.portfolio import run_fifo
-from ..importers import cas_import, csv_import, lenden, tradebook
+from ..analytics.portfolio import EPF_DEFAULT_RATE, run_fifo
+from ..importers import cas_import, csv_import, epf_passbook, lenden, tradebook
 from ..ledger import ValidationError
 from ..security import write_required
 
@@ -236,6 +236,72 @@ def tradebook_commit():
     ok = [r for r in results if r["ok"]]
     return jsonify({"results": results, "added": sum(r["added"] for r in ok), "removed": sum(r["removed"] for r in ok),
                     "corrected": sum(r["corrected"] for r in ok)})
+
+
+# ── EPF passbook import ──
+
+def _epf_key(t: dict) -> tuple:
+    return (str(t["date"])[:10], t["type"], round(float(t["amount"] or 0)))
+
+
+def _epf_account(insts: list[dict], uan: str | None) -> dict | None:
+    """The EPF holding for this UAN, or the only EPF holding when it has no UAN yet."""
+    epf = [i for i in insts if i["asset_class"] == d.EPF]
+    return next((i for i in epf if uan and i.get("ref2") == uan), None) or (epf[0] if len(epf) == 1 and not epf[0].get("ref2") else None)
+
+
+def _epf_plan() -> tuple[dict, dict | None, set]:
+    files = body().get("files") or []
+    if not files:
+        raise ValidationError("No file uploaded")
+    statements = []
+    for f in files:
+        name = f.get("name") or "passbook.pdf"
+        try:
+            statements.append(epf_passbook.parse(epf_passbook.pdf_text(_decode(f.get("file_data")), f.get("password"))))
+        except ValidationError:
+            raise
+        except ValueError as e:
+            raise ValidationError(f"{name}: {e}")
+        except Exception as e:  # noqa: BLE001
+            raise ValidationError(f"{name}: could not read the PDF ({e})")
+    try:
+        plan = epf_passbook.plan(statements)
+    except ValueError as e:
+        raise ValidationError(str(e))
+    data = L().load(g.scope)
+    inst = _epf_account(data["instruments"], plan["uan"])
+    have = {_epf_key(t) for t in data["transactions"] if inst and t["instrument_id"] == inst["id"]}
+    return plan, inst, have
+
+
+@bp.post("/import/epf/preview")
+@write_required
+def epf_preview():
+    plan, inst, have = _epf_plan()
+    for t in plan["transactions"]:
+        t["duplicate"] = _epf_key(t) in have
+    plan["account"] = {"id": inst["id"], "name": inst["name"]} if inst else None
+    plan["new_count"] = sum(1 for t in plan["transactions"] if not t["duplicate"])
+    return jsonify(plan)
+
+
+@bp.post("/import/epf/commit")
+@write_required
+def epf_commit():
+    plan, inst, have = _epf_plan()  # re-read the files rather than trust amounts sent back
+    fresh = [t for t in plan["transactions"] if _epf_key(t) not in have]
+    txns = [{"type": t["type"], "date": t["date"], "amount": t["amount"], "notes": t["notes"]} for t in fresh]
+    if txns:
+        if inst:
+            entry = {"instrument": inst, "txns": txns, "source": "import:epf"}
+        else:
+            entry = {"new_instrument": {"asset_class": d.EPF, "name": "EPF", "platform": "EPFO", "rate": EPF_DEFAULT_RATE,
+                                        "ref": f"epf:{plan['uan'] or 'account'}", "ref2": plan["uan"],
+                                        "notes": f"UAN {plan['uan']}" if plan["uan"] else None},
+                     "txns": txns, "source": "import:epf"}
+        L().bulk_add(g.owner, [entry], check_holdings=False)
+    return jsonify({"imported": len(txns), "skipped": len(plan["transactions"]) - len(txns), "balance": plan["closing_balance"]})
 
 
 # ── CAS (consolidated account statement) import ──

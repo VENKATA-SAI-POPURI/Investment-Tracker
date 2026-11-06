@@ -127,6 +127,15 @@ export interface Ipo { id: number; owner: string; name: string; symbol: string |
   listing_gain_pct?: number; }
 export interface PushConfig { available: boolean; public_key: string | null; devices: number; }
 
+/** EPFO passbook import: one EPF holding per UAN, built from the uploaded statements. */
+export interface EpfTxn { date: string; type: 'BUY' | 'SELL' | 'CREDIT'; amount: number; notes: string; member_id: string;
+  kind: 'opening' | 'contribution' | 'withdrawal' | 'interest' | 'transfer_in' | 'transfer_out'; duplicate: boolean; }
+export interface EpfSide { computed: number; statement: number | null; ok: boolean; }
+export interface EpfPreview { uan: string | null; name: string | null; closing_balance: number; notes: string[]; new_count: number;
+  account: { id: number; name: string } | null; transactions: EpfTxn[];
+  statements: { member_id: string; establishment: string | null; fy: string; entries: number; closing: number;
+    check: { ok: boolean; employee: EpfSide; employer: EpfSide } }[]; }
+
 export interface AuthUser {
   email: string;
   name?: string | null;
@@ -248,6 +257,8 @@ export interface SegmentSummary {
   open_count: number;
   pct: number;
   target: number | null;
+  /** Share of the classes that have a target; drift is measured against this. */
+  mix_pct: number | null;
   drift: number | null;
   unrealized_pct: number | null;
   total_return: number;

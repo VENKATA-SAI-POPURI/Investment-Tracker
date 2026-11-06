@@ -254,7 +254,7 @@ def rebalance_hints(port: dict, holdings: list[dict], ideas: dict, targets: dict
             trim.append({**h, "why": ("Price signal says ease off" + (f"; {h['segment']} is {drift[h['segment']]:+.1f} pts over target" if over else ""))})
         elif sigs & {"momentum_buy", "dip_buy"}:
             add.append({**h, "why": ("Price signal favours adding" + (f"; {h['segment']} is {drift[h['segment']]:+.1f} pts under target" if under else ""))})
-    segs = [{"segment": s["segment"], "pct": s.get("pct"), "target": s.get("target"), "drift": s.get("drift")}
+    segs = [{"segment": s["segment"], "pct": s.get("mix_pct"), "target": s.get("target"), "drift": s.get("drift")}
             for s in port["segments"] if s.get("target") is not None]
     fresh = [i for i in ideas["momentum_buy"] + ideas["dip_buy"] if not i["held"]][:6]
     return {"has_targets": bool(targets), "segments": segs, "trim": trim, "add": add, "new_ideas": fresh}

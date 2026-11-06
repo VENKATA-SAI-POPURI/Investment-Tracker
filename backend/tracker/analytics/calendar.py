@@ -43,14 +43,14 @@ def _segment(port: dict, name: str) -> dict | None:
 
 def _gold_nudge(port: dict) -> str:
     seg = _segment(port, d.SEG_COMMODITY)
-    total = float(port["totals"]["value"] or 0)
-    if not seg or seg.get("target") is None or total <= 0:
+    total = sum(float(s["value"] or 0) for s in port["segments"] if s.get("target") is not None)
+    if not seg or seg.get("mix_pct") is None or total <= 0:
         return "Traditionally an auspicious day to buy gold. Gold ETFs or sovereign gold bonds avoid making charges and storage."
-    gap = (float(seg["target"]) - float(seg["pct"])) / 100 * total
+    gap = (float(seg["target"]) - float(seg["mix_pct"])) / 100 * total
     if gap > 500:
-        return (f"Traditionally an auspicious day to buy gold — and your gold & silver is {seg['pct']:.1f}% vs a "
+        return (f"Traditionally an auspicious day to buy gold — and your gold & silver is {seg['mix_pct']:.1f}% vs a "
                 f"{seg['target']:g}% target. About {_inr(gap)} would bring it to target.")
-    return (f"Traditionally an auspicious day to buy gold. Your gold & silver is already at {seg['pct']:.1f}% "
+    return (f"Traditionally an auspicious day to buy gold. Your gold & silver is already at {seg['mix_pct']:.1f}% "
             f"(target {seg['target']:g}%), so there's no need to add more just for the occasion.")
 
 

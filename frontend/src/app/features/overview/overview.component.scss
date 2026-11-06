@@ -163,3 +163,4 @@ tr.open .caret { transform: rotate(180deg); }
 .nm-ideas .badge { text-decoration: none; }
 .main-grid.even { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 @media (max-width: 1000px) { .main-grid, .main-grid.even { grid-template-columns: minmax(0, 1fr); } }
+.al-out { margin: 14px 0 0; padding-top: 10px; border-top: 1px solid var(--border); }

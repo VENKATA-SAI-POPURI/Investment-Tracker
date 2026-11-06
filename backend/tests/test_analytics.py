@@ -102,8 +102,8 @@ def test_rebalance_new_money_only_goes_to_underweight():
 def test_calendar_gold_nudge_and_theme():
     from tracker.analytics.calendar import build_calendar
     port = {"totals": {"value": 100000}, "positions": [],
-            "segments": [{"segment": d.SEG_COMMODITY, "value": 5000, "pct": 5.0, "target": 10},
-                         {"segment": d.SEG_EQ_IN, "value": 95000, "pct": 95.0, "target": 90}]}
+            "segments": [{"segment": d.SEG_COMMODITY, "value": 5000, "pct": 5.0, "mix_pct": 5.0, "target": 10},
+                         {"segment": d.SEG_EQ_IN, "value": 95000, "pct": 95.0, "mix_pct": 95.0, "target": 90}]}
     cal = build_calendar(port, None, [], today=date(2026, 11, 3))
     dhanteras = next(e for e in cal["events"] if e["key"] == "dhanteras")
     assert "₹5,000" in dhanteras["note"] and cal["theme"] == "diwali"
@@ -172,3 +172,17 @@ def test_cas_name_normalisation():
     from tracker.importers.cas_import import clean_scheme_name, norm_name
     assert norm_name("Axis ELSS Tax Saver Fund - Direct Growth") == norm_name("Axis ELSS Tax Saver Fund")
     assert clean_scheme_name("K123-Kotak Flexicap Fund - Direct Plan - Growth - ISIN: INF174K01LS2") == "Kotak Flexicap Fund - Direct Plan - Growth"
+
+
+def test_untargeted_classes_stay_outside_the_target_mix():
+    from tracker.analytics.goals import rebalance_plan
+    inst = [I(1, d.EQUITY, "A", last_price=60.0, sector="IT", market="India"), I(2, d.MUTUAL_FUND, "F", last_price=40.0, category="Equity"),
+            I(3, d.EPF, "EPF")]
+    txns = [T(1, 1, "2025-01-01", d.BUY, 100, 6000), T(2, 2, "2025-01-01", d.BUY, 100, 4000), T(3, 3, "2025-01-01", d.BUY, None, 90000)]
+    port = compute_portfolio(inst, txns, None, {d.SEG_EQ_IN: 50, d.SEG_MF: 50}, today=date(2025, 1, 2))
+    seg = {s["segment"]: s for s in port["segments"]}
+    # EPF is 90% of the portfolio but has no target: equity is judged within the 10,000 that does
+    assert seg[d.SEG_EQ_IN]["pct"] < 10 and seg[d.SEG_EQ_IN]["mix_pct"] == 60 and seg[d.SEG_EQ_IN]["drift"] == 10
+    assert seg[d.SEG_EPF]["drift"] is None and seg[d.SEG_EPF]["mix_pct"] is None
+    plan = rebalance_plan(port["segments"], {d.SEG_EQ_IN: 50, d.SEG_MF: 50}, new_money=2000)
+    assert {r["segment"]: r["amount"] for r in plan["rows"] if r["action"] == "buy"} == {d.SEG_MF: 2000}

@@ -126,7 +126,7 @@
       </section>
 
       <section class="card">
-        <div class="card-head"><div><h2>Allocation vs target</h2><span class="hint">{{ hasTargets() ? 'Bar: share now · mark: your target' : 'Share of the portfolio' }}</span></div>
+        <div class="card-head"><div><h2>Allocation vs target</h2><span class="hint">{{ hasTargets() ? 'Share of the classes you set targets for · mark: target' : 'Share of the portfolio' }}</span></div>
           <a [routerLink]="hasTargets() ? '/insights' : '/settings'" [fragment]="hasTargets() ? 'rebalance' : undefined" class="small">{{ hasTargets() ? 'Rebalance →' : 'Set targets →' }}</a></div>
         <div class="alloc">
           @for (a of allocation().rows; track a.segment) {
@@ -141,6 +141,10 @@
             </div>
           }
         </div>
+        @if (allocation().outside.length) {
+          <p class="small muted al-out">Not in your targets, so left out of this mix: @for (o of allocation().outside; track o.segment) { {{ o.label }} {{ o.value | inrc }}{{ $last ? '' : ',' }} }
+            · <a routerLink="/settings">add a target</a> to include it.</p>
+        }
       </section>
     </div>
 

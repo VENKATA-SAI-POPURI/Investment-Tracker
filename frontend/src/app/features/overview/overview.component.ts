@@ -94,11 +94,16 @@ export class OverviewComponent {
 
   /** Current share against target per asset class, with the rupees it is over or under. */
   allocation = computed(() => {
-    const total = this.t()?.value || 0;
-    const rows = this.assets().map(a => ({ segment: a.segment, label: a.label, color: a.color, pct: a.pct, target: a.target,
-      drift: a.drift, gap: a.drift !== null ? a.drift / 100 * total : null }));
+    const targeted = this.hasTargets();
+    const mixTotal = this.assets().filter(a => a.target !== null).reduce((s, a) => s + a.value, 0);
+    const inMix = this.assets().filter(a => !targeted || a.target !== null);
+    // With targets, shares are within the classes that have one; classes without a target sit outside the mix
+    const rows = inMix.map(a => ({ segment: a.segment, label: a.label, color: a.color, pct: targeted ? (a.mix_pct ?? 0) : a.pct,
+      target: a.target, drift: a.drift, gap: a.drift !== null ? a.drift / 100 * mixTotal : null }));
+    const outside = targeted ? this.assets().filter(a => a.target === null) : [];
     const scale = Math.max(1, ...rows.map(r => Math.max(r.pct, r.target ?? 0)));
-    return { rows: rows.sort((x, y) => Math.abs(y.drift ?? 0) - Math.abs(x.drift ?? 0)), scale };
+    return { rows: rows.sort((x, y) => Math.abs(y.drift ?? 0) - Math.abs(x.drift ?? 0)), scale, outside,
+      outsideValue: outside.reduce((s, a) => s + a.value, 0) };
   });
 
   /** Holdings that added or took away the most, for a diverging bar. */
