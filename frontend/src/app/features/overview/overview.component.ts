@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../core/api.service';
@@ -7,20 +8,18 @@ import { AuthService } from '../../core/auth.service';
 import { FORMAT_PIPES, inr, inrCompact, inrWords } from '../../core/format';
 import { errorMessage } from '../../core/http';
 import { readSnapshot, snapshotKey, writeSnapshot } from '../../core/snapshot';
-import { Performance, Pulse, SEGMENT_COLOR, SEGMENT_META, activeSeries, MarketOverview } from '../../core/models';
+import { Performance, Pulse, SEGMENT_COLOR, SEGMENT_META, activeSeries, MarketOverview, RebalancePlan } from '../../core/models';
 import { StoreService } from '../../core/store.service';
 import { TxnDialogService } from '../../core/txn-dialog.service';
-import { DonutChartComponent, Slice } from '../../shared/charts/donut-chart.component';
 import { LineChartComponent, LineSeries } from '../../shared/charts/line-chart.component';
 import { IconComponent } from '../../shared/icon.component';
-import { MandalaComponent } from '../../shared/motifs';
-import { FestivalStripComponent, MoneyCalendarComponent } from './pulse.components';
+import { MoneyCalendarComponent } from './pulse.components';
 import { TakeawaysComponent } from './story.components';
 
 @Component({
   selector: 'app-overview',
   standalone: true,
-  imports: [RouterLink, DecimalPipe, IconComponent, LineChartComponent, DonutChartComponent, MandalaComponent, FestivalStripComponent, MoneyCalendarComponent,
+  imports: [FormsModule, RouterLink, DecimalPipe, IconComponent, LineChartComponent, MoneyCalendarComponent,
     TakeawaysComponent, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './overview.component.html',
@@ -52,7 +51,9 @@ export class OverviewComponent {
     .sort((a, b) => (b.signals.length - a.signals.length) || Math.abs(b.metrics?.d1 ?? 0) - Math.abs(a.metrics?.d1 ?? 0)).slice(0, 4));
   signalTone(k: string) { return ({ momentum_buy: 'good', momentum_sell: 'bad', dip_buy: 'info', profit_book: 'warn' } as Record<string, string>)[k]; }
   story = computed(() => this.pulse()?.story ?? null);
-  compare = signal(false);
+  /** Market comparison, biggest driver and drag have their own charts above; keep what they don't show. */
+  takeaways = computed(() => (this.story()?.takeaways ?? []).filter(t => !['market', 'driver', 'drag'].includes(t.key)));
+  compare = signal(true);
   words = inrWords;
   inrc = (v: number) => inrCompact(v);
   inrFull = (v: number) => inr(v);
@@ -64,27 +65,12 @@ export class OverviewComponent {
     const name = (this.auth.viewAs()?.name || this.auth.user()?.name || '').split(' ')[0];
     return `Namaste${name ? ', ' + name : ''}`;
   });
-  festival = computed(() => {
-    const c = this.pulse()?.calendar;
-    const f = c?.next_festival;
-    return f && (f.days <= 21 || c?.theme) ? f : null;
-  });
   scopeTitle = computed(() => {
     const l = this.auth.portfolioLabel();
     return l === 'Family' ? 'Family portfolio' : `${l}'s portfolio`;
   });
-  /** Family view only: one line per member who holds something. */
+  /** Family view: label holdings with their owner. */
   showMember = computed(() => this.auth.canSwitch() && !this.auth.portfolio());
-  members = computed(() => {
-    if (!this.showMember()) return [];
-    const total = this.t()?.value || 1;
-    return this.auth.members().map(m => {
-      const mine = this.store.positions().filter(p => p.owner.toLowerCase() === m.email.toLowerCase());
-      const value = mine.reduce((a, p) => a + p.value, 0);
-      const gain = mine.reduce((a, p) => a + p.total_return, 0);
-      return { ...m, value, gain, count: mine.filter(p => p.is_open).length, share: value / total * 100 };
-    }).sort((a, b) => b.value - a.value);
-  });
   memberName = (owner: string) => this.auth.members().find(m => m.email.toLowerCase() === owner.toLowerCase())?.name ?? owner.split('@')[0];
   holdingsOf = (segment: string) => this.store.positions().filter(p => p.segment === segment && p.is_open)
     .sort((a, b) => b.value - a.value).slice(0, 8);
@@ -95,8 +81,59 @@ export class OverviewComponent {
     ...s, ...(SEGMENT_META[s.segment] ?? { label: s.segment, icon: 'layers', route: '/' }),
     color: SEGMENT_COLOR[s.segment] ?? 'var(--s7)',
   })));
-  slices = computed<Slice[]>(() => this.assets().map(a => ({ label: a.label, value: a.value, color: a.color })));
   hasTargets = computed(() => this.assets().some(a => a.target !== null));
+
+  /** Your money against the same deposits and withdrawals put into the Nifty 50, over the chart's range. */
+  vsNifty = computed(() => {
+    const pf = this.perf();
+    const b = pf?.benchmarks.find(x => x.key === 'NIFTY50');
+    if (!pf || !b) return null;
+    const diff = pf.metrics.end_value - b.end_value;
+    return { you: pf.metrics.end_value, nifty: b.end_value, diff, ahead: diff >= 0, youXirr: pf.metrics.xirr, niftyXirr: b.xirr };
+  });
+
+  /** Current share against target per asset class, with the rupees it is over or under. */
+  allocation = computed(() => {
+    const total = this.t()?.value || 0;
+    const rows = this.assets().map(a => ({ segment: a.segment, label: a.label, color: a.color, pct: a.pct, target: a.target,
+      drift: a.drift, gap: a.drift !== null ? a.drift / 100 * total : null }));
+    const scale = Math.max(1, ...rows.map(r => Math.max(r.pct, r.target ?? 0)));
+    return { rows: rows.sort((x, y) => Math.abs(y.drift ?? 0) - Math.abs(x.drift ?? 0)), scale };
+  });
+
+  /** Holdings that added or took away the most, for a diverging bar. */
+  drivers = computed(() => {
+    const a = this.story()?.attribution;
+    if (!a) return null;
+    const rows = [...a.gainers.slice(0, 5), ...a.losers.slice(0, 5).reverse()];
+    const max = Math.max(1, ...rows.map(r => Math.abs(r.gain)));
+    return { rows, max, gains: a.gross_gains, losses: a.gross_losses, winners: a.winners, losers: a.losers_count };
+  });
+
+  /** Where the next sum should go to move toward the targets without selling. */
+  nextMoney = signal<number | null>(null);
+  plan = signal<RebalancePlan | null>(null);
+  planRows = computed(() => (this.plan()?.rows ?? []).filter(r => r.action === 'buy' && r.amount >= 1).sort((a, b) => b.amount - a.amount));
+  planMax = computed(() => Math.max(1, ...this.planRows().map(r => r.amount)));
+  segLabel = (seg: string) => SEGMENT_META[seg]?.label ?? seg;
+  segColor = (seg: string) => SEGMENT_COLOR[seg] ?? 'var(--s7)';
+  ideas = computed(() => {
+    const i = this.market()?.ideas;
+    if (!i) return [];
+    return [...i.momentum_buy, ...i.dip_buy].filter(x => !x.held).sort((a, b) => b.score - a.score).slice(0, 4);
+  });
+  trims = computed(() => (this.market()?.rebalance.trim ?? []).slice(0, 3));
+  private planTimer: ReturnType<typeof setTimeout> | undefined;
+  setNextMoney(v: number | null) {
+    this.nextMoney.set(v);
+    clearTimeout(this.planTimer);
+    this.planTimer = setTimeout(() => this.loadPlan(), 400);
+  }
+  async loadPlan() {
+    const amt = Math.max(0, Math.round(this.nextMoney() ?? 0));
+    if (!this.hasTargets() || !amt) { this.plan.set(null); return; }
+    try { this.plan.set(await firstValueFrom(this.api.rebalance(amt, false))); } catch { this.plan.set(null); }
+  }
 
   hasBench = computed(() => !!this.perf()?.benchmarks.some(b => b.key === 'NIFTY50'));
   points = computed(() => activeSeries(this.perf()?.series ?? []));
@@ -112,15 +149,6 @@ export class OverviewComponent {
     ];
   });
 
-  /** White sparkline for the hero banner (last points of the loaded range). */
-  spark = computed(() => {
-    const vals = (this.perf()?.series ?? []).map(p => p.value).slice(-90);
-    if (vals.length < 2) return null;
-    const w = 240, h = 64, lo = Math.min(...vals), hi = Math.max(...vals), span = hi - lo || 1;
-    const pts = vals.map((v, i) => [(i / (vals.length - 1)) * w, h - 4 - ((v - lo) / span) * (h - 8)] as const);
-    const line = pts.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`).join('');
-    return { line, area: `${line}L${w},${h}L0,${h}Z`, end: pts[pts.length - 1] };
-  });
 
   constructor() {
     // Both start as soon as someone is signed in, in parallel with the portfolio, and begin from this
@@ -180,6 +208,8 @@ export class OverviewComponent {
       if (key !== this.insightsKey) return;
       this.pulse.set(pulse);
       writeSnapshot(snapshotKey('pulse', scope), pulse);
+      if (this.nextMoney() === null) this.nextMoney.set(Math.max(10000, Math.round((pulse.story.rhythm.pace || 0) / 1000) * 1000));
+      void this.loadPlan();
     } catch { /* optional on the home screen */ }
     try {  // after the rest of the page: the first market scan of the day takes a few seconds
       const market = await firstValueFrom(this.api.markets());
