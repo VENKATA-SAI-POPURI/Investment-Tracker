@@ -1,8 +1,8 @@
-export type AssetClass = 'equity' | 'mutual_fund' | 'commodity' | 'p2p' | 'fixed_deposit' | 'cash';
-export type TxnType = 'BUY' | 'SELL' | 'DIVIDEND' | 'INTEREST' | 'REPAYMENT' | 'MATURITY' | 'FX_IN' | 'FX_OUT';
+export type AssetClass = 'equity' | 'mutual_fund' | 'commodity' | 'p2p' | 'fixed_deposit' | 'cash' | 'epf' | 'nps';
+export type TxnType = 'BUY' | 'SELL' | 'DIVIDEND' | 'INTEREST' | 'REPAYMENT' | 'MATURITY' | 'FX_IN' | 'FX_OUT' | 'CREDIT' | 'BONUS' | 'SPLIT';
 export type Role = 'admin' | 'user' | 'guest';
 
-export const SEGMENTS = ['Equity (India)', 'Equity (USA)', 'Mutual Funds', 'Commodity', 'P2P', 'Fixed Deposits'] as const;
+export const SEGMENTS = ['Equity (India)', 'Equity (USA)', 'Mutual Funds', 'Commodity', 'P2P', 'Fixed Deposits', 'EPF', 'NPS'] as const;
 export type Segment = typeof SEGMENTS[number];
 
 /** Fixed categorical slot per segment — colour follows the entity, never its rank. */
@@ -13,6 +13,8 @@ export const SEGMENT_COLOR: Record<string, string> = {
   'Commodity': 'var(--s4)',
   'P2P': 'var(--s5)',
   'Fixed Deposits': 'var(--s6)',
+  'EPF': 'var(--s7)',
+  'NPS': 'var(--s8)',
 };
 
 /** Friendly name, icon and page for each segment. */
@@ -23,22 +25,49 @@ export const SEGMENT_META: Record<string, { label: string; icon: string; route: 
   'Commodity': { label: 'Gold & silver', icon: 'coins', route: '/holdings/commodity' },
   'P2P': { label: 'P2P lending', icon: 'users', route: '/p2p' },
   'Fixed Deposits': { label: 'Fixed deposits', icon: 'bank', route: '/fixed-deposits' },
+  'EPF': { label: 'EPF', icon: 'shield', route: '/epf' },
+  'NPS': { label: 'NPS', icon: 'lotus', route: '/nps' },
 };
 
 /** Accent per asset class, matching the segment slots. */
 export const CLASS_COLOR: Record<AssetClass, string> = {
   equity: 'var(--s1)', mutual_fund: 'var(--s3)', commodity: 'var(--s4)', p2p: 'var(--s5)', fixed_deposit: 'var(--s6)', cash: 'var(--s2)',
+  epf: 'var(--s7)', nps: 'var(--s8)',
 };
 
 export const CLASS_LABEL: Record<AssetClass, string> = {
   equity: 'Stocks', mutual_fund: 'Mutual funds', commodity: 'Commodities', p2p: 'P2P lending',
-  fixed_deposit: 'Fixed deposits', cash: 'USD wallet',
+  fixed_deposit: 'Fixed deposits', cash: 'USD wallet', epf: 'EPF', nps: 'NPS',
 };
 
 export const TXN_LABEL: Record<TxnType, string> = {
   BUY: 'Buy', SELL: 'Sell', DIVIDEND: 'Dividend', INTEREST: 'Interest', REPAYMENT: 'Repayment',
-  MATURITY: 'Maturity', FX_IN: 'USD deposit', FX_OUT: 'USD withdrawal',
+  MATURITY: 'Maturity', FX_IN: 'USD deposit', FX_OUT: 'USD withdrawal', CREDIT: 'Interest credited', BONUS: 'Bonus', SPLIT: 'Split',
 };
+
+export interface Member { email: string; name: string; role: Role; self: boolean; }
+
+export interface Notice { id: string; kind: string; title: string; body: string; date: string | null; days: number | null;
+  link: string | null; severity: 'critical' | 'warning' | 'info'; }
+
+export type ColType = 'text' | 'date' | 'inr' | 'num' | 'pct' | 'qty';
+export interface ReportColumn { key: string; label: string; type: ColType; }
+export interface ReportMeta { key: string; group: string; title: string; description: string; filters: string[]; }
+export interface Report extends ReportMeta {
+  columns: ReportColumn[]; rows: Record<string, any>[]; totals: Record<string, any> | null; note?: string | null;
+  subtitle: string | null; generated_at: string; portfolio: string;
+}
+
+export interface CasTxn { date: string; type: TxnType; quantity: number | null; amount: number; notes: string | null; duplicate?: boolean; }
+export interface CasFund { key: string; name: string; amc: string | null; folio: string | null; amfi: string | null; isin: string | null;
+  category: string | null; closing_units: number; value: number | null; nav: number | null; opening_only: boolean; skipped: number;
+  transactions: CasTxn[]; matched_id: number | null; matched_name: string | null; new_count: number; duplicate_count: number; selected: boolean; }
+export interface CasNps { key: string; pran: string; name: string; tier: string | null; fund_manager: string | null; units: number;
+  nav: number | null; value: number | null; matched_id: number | null; action: 'update_nav' | 'create'; selected: boolean; }
+export interface CasDemat { name: string; isin: string; symbol: string | null; units: number; price: number | null; value: number | null;
+  account: string | null; app_units: number | null; app_name: string | null; status: 'match' | 'differs' | 'missing'; mutual_fund?: boolean; }
+export interface CasPreview { file_type: string; cas_type: string; investor: string | null; period: { from: string | null; to: string | null };
+  funds: CasFund[]; nps: CasNps[]; demat: CasDemat[]; warnings: string[]; }
 
 export interface AuthUser {
   email: string;
@@ -139,6 +168,8 @@ export interface Position {
   accrued_interest?: number;
   days_to_maturity?: number | null;
   maturity_value?: number | null;
+  // EPF
+  interest_credited?: number;
   // wallet
   balance_usd?: number;
   avg_rate?: number | null;

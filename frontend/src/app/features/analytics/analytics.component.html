@@ -25,6 +25,7 @@
       <button [class.on]="tab() === 'returns'" (click)="tab.set('returns')">Returns</button>
       <button [class.on]="tab() === 'risk'" (click)="tab.set('risk')">Risk</button>
       <button [class.on]="tab() === 'income'" (click)="loadIncome()">Passive income</button>
+      <button [class.on]="tab() === 'analysis'" (click)="loadAnalysis()">Analysis</button>
     </div>
 
     <div [class.loading-fade]="loading()" style="display:flex;flex-direction:column;gap:20px">
@@ -80,6 +81,19 @@
               </div>
             </div>
           </section>
+        }
+        @case ('analysis') {
+          @if (pulse(); as pl) {
+            <div class="duo">
+              <app-drivers [data]="pl.story.attribution" />
+              @if (pl.story.market) { <app-market [data]="pl.story.market" /> } @else { <app-health-card [health]="pl.health" /> }
+            </div>
+            <div class="duo">
+              <app-rhythm [data]="pl.story.rhythm" />
+              <app-milestones [data]="pl.story.milestones" />
+            </div>
+            @if (pl.story.market) { <div class="grid grid-3"><app-health-card [health]="pl.health" /></div> }
+          } @else { <div class="card"><div class="skeleton" style="height:320px"></div></div> }
         }
         @case ('income') {
           @if (income(); as inc) {

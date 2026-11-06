@@ -11,6 +11,7 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   if (token) headers['Authorization'] = `Bearer ${token}`;
   const viewAs = auth.viewAs();
   if (viewAs) headers['X-View-As'] = viewAs.email;
+  else if (auth.canSwitch() && auth.portfolio()) headers['X-Portfolio'] = auth.portfolio()!;
   return next(req.clone({ setHeaders: headers })).pipe(
     catchError((err: HttpErrorResponse) => {
       if (err.status === 401 && token && !req.url.endsWith('/auth/google-login')) {

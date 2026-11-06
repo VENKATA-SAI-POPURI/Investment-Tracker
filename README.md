@@ -1,7 +1,8 @@
 # Investment Tracker
 
-A personal portfolio tracker for Indian investors: stocks (India and US), mutual funds, gold/silver ETFs, P2P loans,
-fixed deposits and a USD broker wallet — with returns, risk, tax and goal analysis on top.
+A family portfolio tracker for Indian investors: stocks (India and US), mutual funds, gold/silver ETFs, P2P loans,
+fixed deposits, EPF, NPS and a USD broker wallet — with returns, risk, tax and goal analysis on top. Each family
+member signs in to their own portfolio; admins switch between members or see the whole family.
 
 - **Frontend:** Angular 19 (standalone components, signals, lazy routes), deployed on Netlify. Installable as a PWA.
 - **Backend:** Flask API (`backend/tracker`), deployed on Render. Data in Turso (libSQL) or a local SQLite file.
@@ -10,13 +11,15 @@ fixed deposits and a USD broker wallet — with returns, risk, tax and goal anal
 
 | Area | Highlights |
 |---|---|
-| Overview | Net worth, today's change, unrealized / total gain, XIRR, value vs money invested, allocation vs target, top insights |
-| Holdings | Per-holding quantity, FIFO cost, live price, unrealized P&L, XIRR, weight; stock vs currency gain for US shares; ELSS lock-in |
-| Performance | Time-weighted and money-weighted returns, volatility, drawdown, Sharpe, monthly returns, comparison with Nifty 50 / Nifty 500 / S&P 500 / gold using your own cash flows |
+| Dashboard | Current value, today's change, asset-class summary with drill-down to holdings, allocation vs target, family members, value over time, money calendar, highlights |
+| Family | Portfolio switcher (Family or any member); writes land in the selected member's portfolio; reminders at sign-in and under the bell |
+| Holdings | Per-holding quantity, FIFO cost, live price, unrealized P&L, XIRR, weight; stock vs currency gain for US shares; ELSS lock-in; bonus and split corporate actions; EPF (interest accrual) and NPS (units at a NAV you update) |
+| Reports | Portfolio summary (by asset class or member), holdings, historical valuation, performance review (periods, MoM/QoQ/YoY), XIRR, capital gains, ITR Schedule 112A, unrealised gains, income, transactions, holding statement, cash flow — Excel export and print to PDF |
+| Analytics | Time-weighted and money-weighted returns, volatility, drawdown, Sharpe, monthly returns, comparison with Nifty 50 / Nifty 500 / S&P 500 / gold using your own cash flows |
 | Tax | Realized STCG/LTCG per financial year on FIFO lots, loss set-off, ₹1.25L equity exemption, estimated tax, loss harvesting, tax-free LTCG harvesting, "wait N days" alerts |
 | Goals | Earmark parts of the portfolio, Monte Carlo probability of success, required SIP |
 | Insights | Rule-based alerts (drift, concentration, P2P overdue/defaults, FD maturities, tax, stale prices, SIP gaps, reviews), rebalancing planner, optional AI analyst |
-| Imports | CSV template or Zerodha tradebook; LenDenClub order report and statement |
+| Imports | CAS PDF (CAMS / KFintech mutual fund history, NSDL NPS schemes, demat holdings check) via `casparser`; CSV template or Zerodha tradebook; LenDenClub order report and statement |
 
 ## Project layout
 
@@ -32,20 +35,22 @@ backend/
     prices.py            Yahoo Finance + AMFI quotes and cached daily history
     services.py          use-cases composed from the pieces above
     analytics/           portfolio (FIFO, valuation, XIRR), history, tax, goals, insights
-    importers/           LenDen and CSV parsers
+    reports.py           reports centre (one table shape, Excel export)
+    importers/           CAS, LenDen and CSV parsers
     api/                 Flask blueprints
   tests/                 pytest suite
 frontend/src/app/
   core/                  API client, auth, store (signals), formatting
   shared/                charts, transaction form, dialogs, icons
-  layout/                app shell (sidebar, top bar, mobile bottom nav)
+  layout/                app shell (top navigation, portfolio switcher, reminders, mobile bottom nav)
   features/              one folder per page
 ```
 
 ## Data model
 
 Everything is a **ledger**: `instruments` (a stock, fund, ETF, P2P loan, FD or the USD wallet) and `transactions`
-(BUY, SELL, DIVIDEND, INTEREST, REPAYMENT, MATURITY, FX_IN, FX_OUT). `cash_movements` keeps capital flows and the
+(BUY, SELL, DIVIDEND, INTEREST, REPAYMENT, MATURITY, FX_IN, FX_OUT, plus CREDIT for EPF interest and BONUS / SPLIT
+corporate actions). `cash_movements` keeps capital flows and the
 P2P escrow; entries created from a transaction are linked to it and follow edits and deletes.
 
 The original per-asset tables (`equity`, `mutual_funds`, `p2p`, …) are copied into the ledger once by migration 2,

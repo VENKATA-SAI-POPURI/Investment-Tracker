@@ -3,16 +3,17 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { tap } from 'rxjs';
 import { environment } from '../../environments/environment';
-import { AuthUser } from './models';
+import { AuthUser, Member } from './models';
 
 const TOKEN_KEY = 'auth_token';
 const USER_KEY = 'auth_user';
 const VIEW_AS_KEY = 'view_as';
+const PORTFOLIO_KEY = 'portfolio';
 
 function read<T>(key: string): T | null {
   try {
     const raw = localStorage.getItem(key);
-    return raw ? (key === TOKEN_KEY ? (raw as T) : JSON.parse(raw)) : null;
+    return raw ? (key === TOKEN_KEY || key === PORTFOLIO_KEY ? (raw as T) : JSON.parse(raw)) : null;
   } catch {
     return null;
   }
@@ -27,6 +28,16 @@ export class AuthService {
   readonly user = signal<AuthUser | null>(read<AuthUser>(USER_KEY));
   /** Admin "view as": the email whose data is shown; requests carry X-View-As. */
   readonly viewAs = signal<AuthUser | null>(read<AuthUser>(VIEW_AS_KEY));
+  /** Portfolio switcher: a member's email, or null for the whole family. Requests carry X-Portfolio. */
+  readonly portfolio = signal<string | null>(read<string>(PORTFOLIO_KEY));
+  /** Family members this login can switch between (filled in by the shell). */
+  readonly members = signal<Member[]>([]);
+  readonly canSwitch = computed(() => this.realRole() !== 'user' && !this.viewAs());
+  readonly portfolioLabel = computed(() => {
+    const email = this.portfolio();
+    if (!email || !this.canSwitch()) return this.canSwitch() ? 'Family' : (this.viewAs()?.name || this.user()?.name || 'My portfolio');
+    return this.members().find(m => m.email.toLowerCase() === email.toLowerCase())?.name ?? email;
+  });
 
   readonly isAuthenticated = computed(() => !!this.token());
   readonly realRole = computed(() => this.user()?.role ?? 'guest');
@@ -45,6 +56,11 @@ export class AuthService {
       }));
   }
 
+  selectPortfolio(email: string | null) {
+    this.store(PORTFOLIO_KEY, email);
+    this.portfolio.set(email);
+  }
+
   startViewAs(user: AuthUser) {
     this.store(VIEW_AS_KEY, user);
     this.viewAs.set(user);
@@ -56,10 +72,13 @@ export class AuthService {
   }
 
   logout(reason?: string) {
-    for (const k of [TOKEN_KEY, USER_KEY, VIEW_AS_KEY]) this.store(k, null);
+    for (const k of [TOKEN_KEY, USER_KEY, VIEW_AS_KEY, PORTFOLIO_KEY]) this.store(k, null);
     this.token.set(null);
     this.user.set(null);
     this.viewAs.set(null);
+    this.portfolio.set(null);
+    this.members.set([]);
+    try { sessionStorage.removeItem('reminders_shown'); } catch { /* storage unavailable */ }
     this.router.navigate(['/login'], reason ? { queryParams: { reason } } : {});
   }
 

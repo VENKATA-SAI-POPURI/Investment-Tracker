@@ -20,6 +20,9 @@ const KINDS: { kind: AddKind; label: string; hint: string; icon: string }[] = [
   { kind: 'p2p_repayment', label: 'P2P repayment', hint: 'Principal and interest received', icon: 'refresh' },
   { kind: 'fixed_deposit', label: 'Fixed deposit', hint: 'Open a new FD', icon: 'bank' },
   { kind: 'forex', label: 'USD transfer', hint: 'Move money to or from your US account', icon: 'globe' },
+  { kind: 'epf', label: 'EPF', hint: 'Contribution, interest credited or withdrawal', icon: 'shield' },
+  { kind: 'nps', label: 'NPS', hint: 'Contribution or withdrawal in scheme units', icon: 'lotus' },
+  { kind: 'corporate_action', label: 'Bonus / split', hint: 'Bonus shares or a stock split', icon: 'sparkle' },
 ];
 
 const SECTORS = ['Information Technology', 'Financials', 'Health Care', 'Consumer Discretionary', 'Consumer Staples', 'Industrials',
@@ -68,7 +71,7 @@ export class TxnFormComponent implements OnInit {
   private blank() {
     return { type: 'BUY', date: today(), name: '', instrument_id: null, quantity: null, amount: null, amount_fc: null, notes: '',
       market: 'India', sector: '', market_cap: '', category: '', sub_category: '', symbol: '', principal: null, interest: null,
-      fees: null, platform: 'LenDen', ref2: '', rate: null, tenure_months: null, maturity_date: '', direction: 'FX_IN' };
+      fees: null, platform: 'LenDen', ref2: '', rate: null, tenure_months: null, maturity_date: '', direction: 'FX_IN', tier: 'Tier I' };
   }
 
   isEdit = computed(() => this.state().mode === 'edit');
@@ -79,8 +82,8 @@ export class TxnFormComponent implements OnInit {
   });
   assetClass = computed<AssetClass | null>(() => {
     const k = this.kind();
-    if (k === 'equity' || k === 'mutual_fund' || k === 'commodity') return k;
-    if (k === 'dividend') return 'equity';
+    if (k === 'equity' || k === 'mutual_fund' || k === 'commodity' || k === 'epf' || k === 'nps') return k;
+    if (k === 'dividend' || k === 'corporate_action') return 'equity';
     return null;
   });
   holdings = computed(() => {
@@ -98,7 +101,8 @@ export class TxnFormComponent implements OnInit {
       const t = s.txn;
       const ac = t.asset_class;
       this.kind.set(ac === 'p2p' ? (t.type === 'BUY' ? 'p2p_loan' : 'p2p_repayment') : ac === 'fixed_deposit' ? 'fixed_deposit'
-        : ac === 'cash' ? 'forex' : t.type === 'DIVIDEND' ? 'dividend' : (ac as AddKind));
+        : ac === 'cash' ? 'forex' : t.type === 'DIVIDEND' ? 'dividend' : t.type === 'BONUS' || t.type === 'SPLIT' ? 'corporate_action'
+        : (ac as AddKind));
       Object.assign(this.f, {
         type: t.type, date: t.date, name: t.instrument_name, instrument_id: t.instrument_id, quantity: t.quantity, amount: t.amount,
         amount_fc: t.amount_fc, notes: t.notes ?? '', principal: t.principal, fees: t.fees, direction: t.type,
@@ -113,11 +117,20 @@ export class TxnFormComponent implements OnInit {
     }
     if (s.type) this.f.type = s.type;
     if (s.kind === 'dividend') this.f.type = 'DIVIDEND';
+    if (s.kind === 'corporate_action' && !s.type) this.f.type = 'BONUS';
+    if (s.kind === 'epf' && !this.f.instrument_id) this.prefillEpf();
   }
 
   pick(k: AddKind) {
     this.kind.set(k);
-    this.f.type = k === 'dividend' ? 'DIVIDEND' : 'BUY';
+    this.f.type = k === 'dividend' ? 'DIVIDEND' : k === 'corporate_action' ? 'BONUS' : 'BUY';
+    if (k === 'epf') this.prefillEpf();
+  }
+
+  /** Most people have one EPF account: pick it, or suggest a name for the first. */
+  private prefillEpf() {
+    const acct = this.store.positions().find(p => p.asset_class === 'epf');
+    if (acct) { this.f.instrument_id = acct.id; this.f.name = acct.name; } else { this.f.name = 'EPF'; this.f.rate = 8.25; }
   }
 
   /** The existing holding matching the typed name, if any. */
@@ -177,7 +190,7 @@ export class TxnFormComponent implements OnInit {
         const body: any = { date: f.date, notes: f.notes, quantity: f.quantity, amount: f.amount, amount_fc: f.amount_fc, fees: f.fees };
         if (t.type === 'REPAYMENT') { body.principal = +f.principal || 0; body.amount = this.repaymentTotal(); }
         if (t.type === 'FX_IN' || t.type === 'FX_OUT') body.type = f.direction;
-        if (t.type === 'BUY' || t.type === 'SELL') body.type = f.type;
+        if (['BUY', 'SELL', 'CREDIT', 'BONUS', 'SPLIT'].includes(t.type)) body.type = f.type;
         await firstValueFrom(this.api.updateTransaction(t.id, body));
         msg = 'Transaction updated';
       } else if (k === 'equity' || k === 'mutual_fund' || k === 'commodity' || k === 'dividend') {
@@ -193,6 +206,31 @@ export class TxnFormComponent implements OnInit {
           market_cap: f.market_cap, category: f.category, sub_category: f.sub_category, symbol: f.symbol };
         await firstValueFrom(this.api.addTransaction(body));
         msg = `${this.typeLabel(f.type)} of ${f.name.trim()} saved · ${inr(+f.amount)}`;
+      } else if (k === 'epf') {
+        this.require(!!f.name?.trim(), 'Enter the account name');
+        this.require(+f.amount > 0, 'Enter the amount');
+        const ex = this.existing();
+        const body: any = { type: f.type, date: f.date, amount: f.amount, notes: f.notes };
+        if (ex) body.instrument_id = ex.id;
+        else body.instrument = { asset_class: 'epf', name: f.name.trim(), rate: f.rate || 8.25, platform: 'EPFO' };
+        await firstValueFrom(this.api.addTransaction(body));
+        msg = `EPF ${this.typeLabel(f.type).toLowerCase()} of ${inr(+f.amount)} saved`;
+      } else if (k === 'nps') {
+        this.require(!!f.name?.trim(), 'Enter the scheme');
+        this.require(+f.amount > 0, 'Enter the amount');
+        this.require(+f.quantity > 0, 'Enter the units allotted (shown on your NPS statement)');
+        const ex = this.existing();
+        const body: any = { type: f.type, date: f.date, quantity: f.quantity, amount: f.amount, notes: f.notes };
+        if (ex) body.instrument_id = ex.id;
+        else body.instrument = { asset_class: 'nps', name: f.name.trim(), platform: f.platform === 'LenDen' ? '' : f.platform, category: f.tier };
+        await firstValueFrom(this.api.addTransaction(body));
+        msg = `NPS ${this.typeLabel(f.type).toLowerCase()} saved · ${inr(+f.amount)}`;
+      } else if (k === 'corporate_action') {
+        const ex = this.existing();
+        this.require(!!ex, 'Choose one of your stocks');
+        this.require(+f.quantity > 0, f.type === 'BONUS' ? 'Enter the bonus shares received' : 'Enter the split ratio');
+        await firstValueFrom(this.api.addTransaction({ instrument_id: ex!.id, type: f.type, date: f.date, quantity: f.quantity, amount: 0, notes: f.notes }));
+        msg = f.type === 'BONUS' ? `${f.quantity} bonus shares of ${ex!.name} added` : `${ex!.name} split 1:${f.quantity} recorded`;
       } else if (k === 'p2p_loan') {
         this.require(+f.amount > 0, 'Enter the loan amount');
         this.require(!!(f.name || f.ref2), 'Enter the borrower name or loan id');

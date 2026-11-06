@@ -26,9 +26,9 @@ export class StoreService {
   readonly targets = computed(() => this.settings().targetAllocation ?? {});
 
   constructor() {
-    // Reload whenever the signed-in identity or "view as" changes
+    // Reload whenever the signed-in identity, "view as" or the selected family member changes
     effect(() => {
-      const key = `${this.auth.token()}|${this.auth.viewAs()?.email ?? ''}`;
+      const key = `${this.auth.token()}|${this.auth.viewAs()?.email ?? ''}|${this.auth.portfolio() ?? ''}`;
       if (this.auth.token()) {
         void key;
         this.portfolio.set(null);
@@ -38,6 +38,8 @@ export class StoreService {
   }
 
   async init() {
+    // a new identity or family member: pages holding their own data refetch too
+    this.version.update(v => v + 1);
     await this.reload();
     void this.refreshPrices(false);
   }

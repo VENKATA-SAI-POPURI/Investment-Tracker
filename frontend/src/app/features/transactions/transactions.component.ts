@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
@@ -61,7 +61,8 @@ export class TransactionsComponent {
   });
 
   // import
-  importing = signal(false);
+  // opened directly from Tools → Import with ?import=1
+  importing = signal(inject(ActivatedRoute).snapshot.queryParamMap.has('import'));
   csv = '';
   preview = signal<{ format: string; rows: any[]; errors: { line: number; error: string }[] } | null>(null);
   busy = signal(false);

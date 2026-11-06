@@ -83,6 +83,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .span-2 { grid-column: span 2; }
 .grid.top { align-items: start; }
+/* wide + narrow pair used for analysis rows */
+.duo { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 20px; }
+@media (max-width: 1000px) { .duo { grid-template-columns: minmax(0, 1fr); } }
 .main-aside { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 20px; align-items: start; }
 .main-aside > aside { display: flex; flex-direction: column; gap: 20px; position: sticky; top: 80px; }
 @media (max-width: 1100px) { .main-aside { grid-template-columns: minmax(0, 1fr); } .main-aside > aside { position: static; } }

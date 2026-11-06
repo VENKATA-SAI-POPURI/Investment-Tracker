@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { TitleCasePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
@@ -96,6 +96,13 @@ export class P2pComponent {
     }
     return [...m.values()].sort((a, b) => b.month.localeCompare(a.month));
   });
+
+  // Tools → Import links here with ?import=order|statement
+  private importParam = (() => {
+    const k = inject(ActivatedRoute).snapshot.queryParamMap.get('import');
+    if (k === 'order' || k === 'statement') queueMicrotask(() => this.startImport(k));
+    return k;
+  })();
 
   open(p: Position) { this.router.navigate(['/holding', p.id]); }
 

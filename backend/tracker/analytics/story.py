@@ -167,13 +167,16 @@ def takeaways(port: dict, attr: dict, market: dict | None, rhythm: dict, miles: 
                     "link": f"/holding/{l['id']}"})
     out.append({"key": "rhythm", "icon": "calendar", "tone": "pos" if rhythm["active_months"] >= 9 else "neutral",
                 "label": "Investing rhythm", "value": f"{rhythm['active_months']} of 12 months",
-                "note": (f"{_inr(rhythm['net'])} of fresh money in the last year; a typical month lately adds {_inr(rhythm['pace'])}"
+                "note": (f"{_inr(rhythm['net'])} of fresh money in the last year; "
+                         + (f"a typical month lately adds {_inr(rhythm['pace'])}" if rhythm["pace"] >= 500 else "little new money in recent months")
                          + (f" ({rhythm['streak']}-month streak)." if rhythm["streak"] > 1 else ".")),
                 "link": "/transactions"})
     if miles["ahead"]:
         m = miles["ahead"][0]
         out.append({"key": "milestone", "icon": "target", "tone": "neutral", "label": "Next milestone", "value": m["label"],
-                    "note": (f"In about {m['in']} adding {_inr(miles['monthly'])} a month at an assumed {miles['assumed_return']:g}% a year."
+                    "note": ((f"In about {m['in']} adding {_inr(miles['monthly'])} a month at an assumed {miles['assumed_return']:g}% a year."
+                              if miles["monthly"] >= 500 else
+                              f"In about {m['in']} from growth alone at an assumed {miles['assumed_return']:g}% a year; a monthly SIP gets there sooner.")
                              if m["in"] else "Out of reach at today's pace — a monthly SIP would bring it closer."),
                     "link": "/goals"})
     return out

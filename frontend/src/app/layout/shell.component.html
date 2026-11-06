@@ -1,66 +1,155 @@
 @if (auth.viewAs(); as v) {
   <div class="viewas no-print">
     <app-icon name="eye" [size]="15" />
-    <span>Viewing <b>{{ v.name || v.email }}</b>'s portfolio</span>
+    <span>Viewing <b>{{ v.name || v.email }}</b>'s portfolio as them</span>
     <button class="btn sm" (click)="auth.stopViewAs()">Exit</button>
   </div>
 }
 
-<div class="layout">
-  <aside class="sidebar" [class.open]="menuOpen()">
+<header class="appbar no-print">
+  <div class="bar">
+    <button class="icon-btn menu-btn" (click)="drawer.set(true)" aria-label="Open menu"><app-icon name="menu" /></button>
     <a routerLink="/" class="brand">
-      <span class="logo"><app-icon name="lotus" [size]="19" /></span>
+      <span class="logo"><app-icon name="lotus" [size]="18" /></span>
       <span class="brand-text">Investments<small>Shubh Labh</small></span>
     </a>
-    <nav>
-      @for (it of nav; track it.path) {
-        <a [routerLink]="it.path" class="nav" [class.active]="active(it)">
-          <app-icon [name]="it.icon" [size]="17" /> <span>{{ it.label }}</span>
-        </a>
-      }
-    </nav>
-    <app-mandala class="side-mandala" [size]="260" />
-    <div class="me">
-      @if (auth.user()?.picture) {
-        <img [src]="auth.user()!.picture" alt="" referrerpolicy="no-referrer" class="avatar" />
-      } @else {
-        <span class="avatar initials">{{ initials() }}</span>
-      }
-      <div class="who"><div class="ellipsis">{{ auth.user()?.name || auth.user()?.email }}</div><small>{{ auth.realRole() }}</small></div>
-      <button class="btn ghost icon sm" (click)="auth.logout()" title="Sign out" aria-label="Sign out"><app-icon name="logout" [size]="16" /></button>
-    </div>
-  </aside>
-  @if (menuOpen()) { <div class="scrim" (click)="menuOpen.set(false)"></div> }
 
-  <div class="main">
-    <header class="topbar no-print">
-      <button class="btn ghost icon menu-btn" (click)="menuOpen.set(true)" aria-label="Open menu"><app-icon name="menu" /></button>
-      <span class="title">{{ title() }}</span>
-      <span class="spacer"></span>
-      <button class="prices" (click)="store.refreshPrices(true)" [disabled]="store.refreshingPrices()" title="Refresh market prices">
-        @if (store.refreshingPrices()) { <span class="spin"><app-icon name="refresh" [size]="14" /></span> } @else { <span class="dot"></span> }
-        <span class="hide-sm">{{ store.refreshingPrices() ? 'Updating prices…' : 'Live prices · ' + pricesAge() }}</span>
+    <!-- Portfolio switcher -->
+    <div class="pop-wrap">
+      <button class="switcher" [class.static]="!auth.canSwitch()" (click)="auth.canSwitch() && toggle('portfolio')" [attr.aria-expanded]="menu() === 'portfolio'">
+        <span class="sw-avatar" [class.family]="!selected() && auth.canSwitch()">
+          @if (!selected() && auth.canSwitch()) { <app-icon name="users" [size]="14" /> } @else { {{ initials(auth.portfolioLabel()) }} }
+        </span>
+        <span class="sw-text"><small>Portfolio</small><b>{{ auth.portfolioLabel() }}</b></span>
+        @if (auth.canSwitch()) { <app-icon name="chevronDown" [size]="14" /> }
       </button>
-      @if (auth.canWrite()) {
-        <button class="btn primary add-btn" (click)="dialog.add()"><app-icon name="plus" [size]="16" /> Add transaction</button>
+      @if (menu() === 'portfolio') {
+        <div class="pop switch-pop" role="menu">
+          <div class="pop-title">Switch portfolio</div>
+          <button class="pop-item" [class.on]="!selected()" (click)="pick(null)">
+            <span class="sw-avatar family"><app-icon name="users" [size]="14" /></span>
+            <span class="pi-text"><b>Family</b><small>Every member, combined</small></span>
+            @if (!selected()) { <app-icon name="check" [size]="15" /> }
+          </button>
+          @for (m of auth.members(); track m.email) {
+            <button class="pop-item" [class.on]="selected() === m.email.toLowerCase()" (click)="pick(m)">
+              <span class="sw-avatar">{{ initials(m.name) }}</span>
+              <span class="pi-text"><b>{{ m.name }}@if (m.self) { <em>you</em> }</b><small>{{ m.email }}</small></span>
+              @if (selected() === m.email.toLowerCase()) { <app-icon name="check" [size]="15" /> }
+            </button>
+          }
+          @if (auth.isAdmin()) { <a class="pop-foot" routerLink="/settings" fragment="people"><app-icon name="plus" [size]="14" /> Add a family member</a> }
+        </div>
       }
-    </header>
-    @if (store.error() && !store.portfolio()) {
-      <div class="page"><div class="notice bad"><app-icon name="alert" /> <div><b>Couldn't load your portfolio.</b> {{ store.error() }}
-        <button class="btn sm" style="margin-left:8px" (click)="store.reload()">Retry</button></div></div></div>
+    </div>
+
+    <nav class="mainnav" aria-label="Primary">
+      @for (it of nav; track it.path) {
+        <a [routerLink]="it.path" class="nl" [class.on]="active(it)">{{ it.label }}</a>
+      }
+      <div class="pop-wrap">
+        <button class="nl" [class.on]="toolsActive()" (click)="toggle('tools')" [attr.aria-expanded]="menu() === 'tools'">Tools <app-icon name="chevronDown" [size]="13" /></button>
+        @if (menu() === 'tools') {
+          <div class="pop tools-pop" role="menu">
+            @for (t of tools; track t.path) {
+              <a class="pop-item" [routerLink]="t.path" [class.on]="active(t)">
+                <span class="chip sm indigo"><app-icon [name]="t.icon" [size]="15" /></span>
+                <span class="pi-text"><b>{{ t.label }}</b><small>{{ t.hint }}</small></span>
+              </a>
+            }
+          </div>
+        }
+      </div>
+    </nav>
+
+    <span class="spacer"></span>
+    <button class="prices hide-md" (click)="store.refreshPrices(true)" [disabled]="store.refreshingPrices()" title="Refresh market prices">
+      @if (store.refreshingPrices()) { <span class="spin"><app-icon name="refresh" [size]="13" /></span> } @else { <span class="dot"></span> }
+      {{ store.refreshingPrices() ? 'Updating…' : 'Prices · ' + pricesAge() }}
+    </button>
+
+    <!-- Reminders -->
+    <div class="pop-wrap">
+      <button class="icon-btn bell" (click)="toggleBell()" [attr.aria-expanded]="notify.open()" aria-label="Reminders">
+        <app-icon name="bell" [size]="18" />
+        @if (notify.unread().length) { <span class="count">{{ notify.unread().length }}</span> }
+      </button>
+      @if (notify.open()) {
+        <div class="pop bell-pop" role="dialog" aria-label="Reminders">
+          <div class="bell-head">
+            @if (notify.welcome()) {
+              <div><b>Namaste{{ auth.user()?.name ? ', ' + auth.user()!.name!.split(' ')[0] : '' }}</b><small>{{ notify.unread().length }} reminder{{ notify.unread().length === 1 ? '' : 's' }} since you were last here</small></div>
+            } @else {
+              <div><b>Reminders</b><small>{{ notify.items().length ? 'Coming up and needing attention' : 'Nothing due right now' }}</small></div>
+            }
+            <button class="btn ghost icon sm" (click)="notify.close()" aria-label="Close"><app-icon name="close" [size]="15" /></button>
+          </div>
+          <div class="bell-list">
+            @for (n of notify.items(); track n.id) {
+              <button class="notice" [class.unread]="!notify.seen().includes(n.id)" [class]="'sev-' + n.severity" (click)="go(n)">
+                <span class="n-ic"><app-icon [name]="noticeIcon(n)" [size]="15" /></span>
+                <span class="n-text"><b>{{ n.title }}</b><small>{{ n.body }}</small></span>
+                @if (when(n)) { <span class="n-when">{{ when(n) }}</span> }
+              </button>
+            } @empty { <p class="bell-empty">You're all caught up.</p> }
+          </div>
+          <div class="bell-foot">
+            @if (notify.systemSupported && !notify.systemAllowed()) {
+              <button class="btn ghost sm" (click)="notify.enableSystem()"><app-icon name="bell" [size]="14" /> Show these as desktop alerts</button>
+            } @else { <span class="small muted">Shown each time you sign in</span> }
+            <button class="btn sm" (click)="notify.close()">Mark all read</button>
+          </div>
+        </div>
+      }
+    </div>
+
+    @if (auth.canWrite()) {
+      <button class="btn add-btn" (click)="dialog.add()"><app-icon name="plus" [size]="15" /> <span class="hide-md">Add</span></button>
     }
-    <main><router-outlet /></main>
+
+    <div class="pop-wrap">
+      <button class="me" (click)="toggle('user')" aria-label="Account">
+        @if (auth.user()?.picture) { <img [src]="auth.user()!.picture" alt="" referrerpolicy="no-referrer" class="avatar" /> }
+        @else { <span class="avatar initials">{{ initials(auth.user()?.name || auth.user()?.email) }}</span> }
+      </button>
+      @if (menu() === 'user') {
+        <div class="pop user-pop" role="menu">
+          <div class="pop-title"><b>{{ auth.user()?.name || auth.user()?.email }}</b><small>{{ auth.user()?.email }} · {{ auth.realRole() }}</small></div>
+          <a class="pop-item" routerLink="/settings"><app-icon name="settings" [size]="15" /> <span class="pi-text"><b>Settings</b></span></a>
+          <button class="pop-item" (click)="auth.logout()"><app-icon name="logout" [size]="15" /> <span class="pi-text"><b>Sign out</b></span></button>
+        </div>
+      }
+    </div>
   </div>
+</header>
+@if (menu() || notify.open()) { <div class="backdrop" (click)="menu.set(null); notify.open() && notify.close()"></div> }
+
+<!-- Mobile drawer -->
+@if (drawer()) {
+  <div class="scrim" (click)="drawer.set(false)"></div>
+  <aside class="drawer" aria-label="Menu">
+    <div class="drawer-head"><span class="logo"><app-icon name="lotus" [size]="18" /></span><b>Investments</b>
+      <button class="icon-btn" (click)="drawer.set(false)" aria-label="Close menu"><app-icon name="close" /></button></div>
+    @for (it of nav; track it.path) { <a [routerLink]="it.path" class="dl" [class.on]="active(it)"><app-icon [name]="it.icon" [size]="17" />{{ it.label }}</a> }
+    <div class="drawer-sep">Tools</div>
+    @for (it of tools; track it.path) { <a [routerLink]="it.path" class="dl" [class.on]="active(it)"><app-icon [name]="it.icon" [size]="17" />{{ it.label }}</a> }
+  </aside>
+}
+
+<div class="main">
+  @if (store.error() && !store.portfolio()) {
+    <div class="page"><div class="notice bad"><app-icon name="alert" /> <div><b>Couldn't load your portfolio.</b> {{ store.error() }}
+      <button class="btn sm" style="margin-left:8px" (click)="store.reload()">Retry</button></div></div></div>
+  }
+  <main><router-outlet /></main>
 </div>
 
 <nav class="bottom-nav no-print" aria-label="Primary">
-  <a [routerLink]="mobileNav[0].path" [class.active]="active(mobileNav[0])"><app-icon name="home" /><span>Overview</span></a>
-  <a [routerLink]="mobileNav[1].path" [class.active]="active(mobileNav[1])"><app-icon name="layers" /><span>Holdings</span></a>
-  @if (auth.canWrite()) {
-    <button class="fab" (click)="dialog.add()" aria-label="Add transaction"><app-icon name="plus" [size]="22" /></button>
-  }
-  <a [routerLink]="mobileNav[2].path" [class.active]="active(mobileNav[2])"><app-icon name="bulb" /><span>Insights</span></a>
-  <button (click)="menuOpen.set(true)"><app-icon name="menu" /><span>More</span></button>
+  <a routerLink="/" [class.on]="active(nav[0])"><app-icon name="home" /><span>Dashboard</span></a>
+  <a routerLink="/holdings/equity" [class.on]="active(nav[1])"><app-icon name="layers" /><span>Holdings</span></a>
+  @if (auth.canWrite()) { <button class="fab" (click)="dialog.add()" aria-label="Add transaction"><app-icon name="plus" [size]="22" /></button> }
+  <a routerLink="/reports" [class.on]="active(nav[3])"><app-icon name="file" /><span>Reports</span></a>
+  <button (click)="drawer.set(true)"><app-icon name="menu" /><span>More</span></button>
 </nav>
 
 @if (dialog.state(); as s) {

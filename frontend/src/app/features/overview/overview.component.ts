@@ -5,23 +5,21 @@ import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { FORMAT_PIPES, inr, inrCompact, inrWords } from '../../core/format';
 import { errorMessage } from '../../core/http';
-import { Insight, Performance, Pulse, SEGMENT_COLOR, SEGMENT_META } from '../../core/models';
+import { Performance, Pulse, SEGMENT_COLOR, SEGMENT_META } from '../../core/models';
 import { StoreService } from '../../core/store.service';
 import { TxnDialogService } from '../../core/txn-dialog.service';
 import { DonutChartComponent, Slice } from '../../shared/charts/donut-chart.component';
 import { LineChartComponent, LineSeries } from '../../shared/charts/line-chart.component';
 import { IconComponent } from '../../shared/icon.component';
 import { MandalaComponent } from '../../shared/motifs';
-import { FestivalStripComponent, HealthCardComponent, MoneyCalendarComponent } from './pulse.components';
-import { DriversComponent, MarketComponent, MilestonesComponent, RhythmComponent, TakeawaysComponent } from './story.components';
-
-const SEV_ICON: Record<string, string> = { critical: 'alert', warning: 'alert', info: 'bulb', positive: 'checkCircle' };
+import { FestivalStripComponent, MoneyCalendarComponent } from './pulse.components';
+import { TakeawaysComponent } from './story.components';
 
 @Component({
   selector: 'app-overview',
   standalone: true,
-  imports: [RouterLink, IconComponent, LineChartComponent, DonutChartComponent, MandalaComponent, FestivalStripComponent, HealthCardComponent, MoneyCalendarComponent,
-    TakeawaysComponent, DriversComponent, MarketComponent, RhythmComponent, MilestonesComponent, ...FORMAT_PIPES],
+  imports: [RouterLink, IconComponent, LineChartComponent, DonutChartComponent, MandalaComponent, FestivalStripComponent, MoneyCalendarComponent,
+    TakeawaysComponent, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './overview.component.html',
   styleUrl: './overview.component.scss',
@@ -38,12 +36,11 @@ export class OverviewComponent {
   perf = signal<Performance | null>(null);
   perfLoading = signal(false);
   perfError = signal<string | null>(null);
-  insights = signal<Insight[]>([]);
+  expanded = signal<string | null>(null);
   pulse = signal<Pulse | null>(null);
   story = computed(() => this.pulse()?.story ?? null);
   compare = signal(false);
   words = inrWords;
-  sevIcon = SEV_ICON;
   inrc = (v: number) => inrCompact(v);
   inrFull = (v: number) => inr(v);
 
@@ -59,10 +56,26 @@ export class OverviewComponent {
     const f = c?.next_festival;
     return f && (f.days <= 21 || c?.theme) ? f : null;
   });
-  gainPct = computed(() => {
-    const t = this.t();
-    return t && t.cost ? (t.total_gain / t.cost) * 100 : null;
+  scopeTitle = computed(() => {
+    const l = this.auth.portfolioLabel();
+    return l === 'Family' ? 'Family portfolio' : `${l}'s portfolio`;
   });
+  /** Family view only: one line per member who holds something. */
+  showMember = computed(() => this.auth.canSwitch() && !this.auth.portfolio());
+  members = computed(() => {
+    if (!this.showMember()) return [];
+    const total = this.t()?.value || 1;
+    return this.auth.members().map(m => {
+      const mine = this.store.positions().filter(p => p.owner.toLowerCase() === m.email.toLowerCase());
+      const value = mine.reduce((a, p) => a + p.value, 0);
+      const gain = mine.reduce((a, p) => a + p.total_return, 0);
+      return { ...m, value, gain, count: mine.filter(p => p.is_open).length, share: value / total * 100 };
+    }).sort((a, b) => b.value - a.value);
+  });
+  memberName = (owner: string) => this.auth.members().find(m => m.email.toLowerCase() === owner.toLowerCase())?.name ?? owner.split('@')[0];
+  holdingsOf = (segment: string) => this.store.positions().filter(p => p.segment === segment && p.is_open)
+    .sort((a, b) => b.value - a.value).slice(0, 8);
+  toggle(segment: string) { this.expanded.set(this.expanded() === segment ? null : segment); }
 
   /** One card per asset class that holds money. */
   assets = computed(() => (this.p()?.segments ?? []).filter(s => s.value > 0).map(s => ({
@@ -128,15 +141,9 @@ export class OverviewComponent {
     if (this.insightsVersion === version) return;
     this.insightsVersion = version;
     try {
-      const r = await firstValueFrom(this.api.insights(false));
-      this.insights.set(r.insights.filter(i => i.severity !== 'positive').slice(0, 3));
-    } catch { /* optional on the home screen */ }
-    try {
       this.pulse.set(await firstValueFrom(this.api.pulse()));
     } catch { /* optional on the home screen */ }
   }
 
   go(route: string) { this.router.navigate([route]); }
-  link(i: Insight) { return (i.link ?? '/insights').split('#')[0]; }
-  frag(i: Insight) { return (i.link ?? '').split('#')[1] || undefined; }
 }

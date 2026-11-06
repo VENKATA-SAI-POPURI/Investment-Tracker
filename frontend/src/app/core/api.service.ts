@@ -4,7 +4,7 @@ import { Observable } from 'rxjs';
 import { environment } from '../../environments/environment';
 import {
   AllowlistUser, CashMovement, Goal, Income, Insight, Instrument, Benchmark, PerfMetrics, Performance, Portfolio,
-  PriceHistory, Pulse, RebalancePlan, Settings, SymbolHit, TaxReport, Transaction,
+  PriceHistory, Pulse, RebalancePlan, Settings, SymbolHit, TaxReport, Transaction, Member, Notice, Report, ReportMeta, CasPreview,
 } from './models';
 
 type Params = Record<string, string | number | boolean | null | undefined>;
@@ -26,6 +26,17 @@ export class ApiService {
   delete<T>(path: string): Observable<T> { return this.http.delete<T>(this.base + path); }
 
   ping() { return this.get<{ ok: boolean }>('/ping'); }
+
+  // family, reminders, reports, statement import
+  portfolios() { return this.get<{ family: boolean; members: Member[] }>('/portfolios'); }
+  notifications() { return this.get<{ items: Notice[] }>('/notifications'); }
+  reportCatalog() { return this.get<{ reports: ReportMeta[]; years: string[]; asset_classes: string[] }>('/reports'); }
+  report(key: string, p?: Params) { return this.get<Report>(`/reports/${key}`, p); }
+  reportXlsx(key: string, p?: Params) {
+    return this.http.get(`${this.base}/reports/${key}/export.xlsx`, { params: this.params(p), responseType: 'blob' });
+  }
+  casPreview(file: string, password: string) { return this.post<CasPreview>('/import/cas/preview', { file, password }); }
+  casCommit(body: unknown) { return this.post<{ imported: number; results: { name: string; ok: boolean; imported?: number; error?: string; updated?: string }[] }>('/import/cas/commit', body); }
 
   // portfolio & analytics
   portfolio() { return this.get<Portfolio>('/portfolio'); }
