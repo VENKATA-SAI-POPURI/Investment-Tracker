@@ -44,7 +44,8 @@
 }
 
 /* ── Chart + allocation ── */
-.main-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 20px; }
+/* every row of cards shares one split and equal heights, so gutters and bottoms line up down the page */
+.main-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: stretch; }
 .main-grid > .card { display: flex; flex-direction: column; }
 @media (max-width: 1000px) { .main-grid { grid-template-columns: minmax(0, 1fr); } }
 
@@ -82,7 +83,6 @@
 
 /* ── Asset class summary (drill-down table) ── */
 .side { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
-.main-grid { align-items: start; }
 .summary td { vertical-align: middle; }
 .summary tr.open > td { background: var(--surface-2); }
 .ac { display: flex; align-items: center; gap: 10px; }
@@ -161,6 +161,5 @@ tr.open .caret { transform: rotate(180deg); }
 .nm-bar > i { display: block; height: 100%; border-radius: 4px; }
 .nm-ideas { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
 .nm-ideas .badge { text-decoration: none; }
-.main-grid.even { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-@media (max-width: 1000px) { .main-grid, .main-grid.even { grid-template-columns: minmax(0, 1fr); } }
+
 .al-out { margin: 14px 0 0; padding-top: 10px; border-top: 1px solid var(--border); }

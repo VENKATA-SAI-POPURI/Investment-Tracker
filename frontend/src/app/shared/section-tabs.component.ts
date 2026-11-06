@@ -43,11 +43,12 @@ export class SectionTabsComponent {
 
   tabs = computed(() => {
     const pos = this.store.positions();
+    // Only asset classes you hold (and the page you're on); new ones appear once something is added
     return GROUPS[this.group()].map(t => {
       const color = t.classes ? CLASS_COLOR[t.classes[0] as AssetClass] : '';
-      if (!t.classes) return { ...t, value: '', color };
+      if (!t.classes) return { ...t, value: '', color, show: true };
       const v = pos.filter(p => t.classes!.includes(p.asset_class) && p.is_open).reduce((a, p) => a + p.value, 0);
-      return { ...t, value: v > 0 ? inrCompact(v) : '', color };
-    });
+      return { ...t, value: v > 0 ? inrCompact(v) : '', color, show: v > 0 || t.path === this.current() };
+    }).filter(t => t.show);
   });
 }

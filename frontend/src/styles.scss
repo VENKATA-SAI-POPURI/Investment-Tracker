@@ -112,7 +112,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
   min-width: 0;
 }
 .card-head h2 { font-size: 14.5px; font-weight: 600; }
-.card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+.card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+/* the title block takes the room and wraps its own hint, so a link or control stays top-right instead of dropping a line */
+.card-head > div:first-child { flex: 1 1 240px; min-width: 0; }
 .card-head .hint { color: var(--muted); font-size: 12.5px; }
 .card.flush { padding: 0; overflow: hidden; }
 .card.flush .card-head { padding: 18px 22px 0; }

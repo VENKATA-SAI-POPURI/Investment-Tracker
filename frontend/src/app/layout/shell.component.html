@@ -48,7 +48,7 @@
         <a [routerLink]="it.path" class="nl" [class.on]="active(it)">{{ it.label }}</a>
       }
       <div class="pop-wrap">
-        <button class="nl" [class.on]="toolsActive()" (click)="toggle('tools')" [attr.aria-expanded]="menu() === 'tools'">Tools <app-icon name="chevronDown" [size]="13" /></button>
+        <button class="nl" [class.on]="toolsActive()" (click)="toggle('tools')" [attr.aria-expanded]="menu() === 'tools'">More <app-icon name="chevronDown" [size]="13" /></button>
         @if (menu() === 'tools') {
           <div class="pop tools-pop" role="menu">
             @for (t of tools; track t.path) {
@@ -65,7 +65,7 @@
     <span class="spacer"></span>
     <button class="prices hide-md" (click)="store.refreshPrices(true)" [disabled]="store.refreshingPrices()" title="Refresh market prices">
       @if (store.refreshingPrices()) { <span class="spin"><app-icon name="refresh" [size]="13" /></span> } @else { <span class="dot"></span> }
-      {{ store.refreshingPrices() ? 'Updating…' : 'Prices · ' + pricesAge() }}
+      <span class="p-label">{{ store.refreshingPrices() ? 'Updating…' : 'Prices' }}</span>@if (!store.refreshingPrices()) { <span class="p-age">{{ pricesAge() }}</span> }
     </button>
 
     <!-- Reminders -->
@@ -131,7 +131,7 @@
     <div class="drawer-head"><span class="logo"><app-icon name="lotus" [size]="18" /></span><b>Investments</b>
       <button class="icon-btn" (click)="drawer.set(false)" aria-label="Close menu"><app-icon name="close" /></button></div>
     @for (it of nav; track it.path) { <a [routerLink]="it.path" class="dl" [class.on]="active(it)"><app-icon [name]="it.icon" [size]="17" />{{ it.label }}</a> }
-    <div class="drawer-sep">Tools</div>
+    <div class="drawer-sep">More</div>
     @for (it of tools; track it.path) { <a [routerLink]="it.path" class="dl" [class.on]="active(it)"><app-icon [name]="it.icon" [size]="17" />{{ it.label }}</a> }
   </aside>
 }
@@ -148,7 +148,7 @@
   <a routerLink="/" [class.on]="active(nav[0])"><app-icon name="home" /><span>Dashboard</span></a>
   <a routerLink="/holdings/equity" [class.on]="active(nav[1])"><app-icon name="layers" /><span>Holdings</span></a>
   @if (auth.canWrite()) { <button class="fab" (click)="dialog.add()" aria-label="Add transaction"><app-icon name="plus" [size]="22" /></button> }
-  <a routerLink="/markets" [class.on]="active(nav[5])"><app-icon name="zap" /><span>Markets</span></a>
+  <a routerLink="/markets" [class.on]="active(nav[2])"><app-icon name="zap" /><span>Markets</span></a>
   <button (click)="drawer.set(true)"><app-icon name="menu" /><span>More</span></button>
 </nav>
 
