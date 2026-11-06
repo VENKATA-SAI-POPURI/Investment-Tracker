@@ -3,8 +3,7 @@
     <h1>Holdings</h1>
     @if (auth.canWrite()) {
       <div class="row wrap">
-        <button class="btn ghost sm" (click)="startImport('order')"><app-icon name="upload" [size]="15" /> Order report</button>
-        <button class="btn ghost sm" (click)="startImport('statement')"><app-icon name="upload" [size]="15" /> Statement</button>
+        <button class="btn ghost sm" (click)="startImport()"><app-icon name="upload" [size]="15" /> Import LenDen reports</button>
         <button class="btn sm" (click)="dialog.add('p2p_repayment')">Repayment</button>
         <button class="btn sm" (click)="dialog.add('p2p_loan')"><app-icon name="plus" [size]="15" /> Loan</button>
       </div>
@@ -14,7 +13,7 @@
   <app-section-tabs group="holdings" current="/p2p" style="margin-top:-12px" />
   <section class="kpis">
     <div class="kpi"><span class="chip blue sm"><app-icon name="wallet" [size]="15" /></span><span class="label">Outstanding principal</span><span class="value">{{ stats().outstanding | inr }}</span><span class="meta">of {{ stats().lent | inr }} lent</span></div>
-    <div class="kpi"><span class="chip green sm"><app-icon name="coins" [size]="15" /></span><span class="label">Interest earned</span><span class="value pos">{{ stats().interest | inr }}</span><span class="meta">fees {{ stats().fees | inr }}</span></div>
+    <div class="kpi"><span class="chip green sm"><app-icon name="coins" [size]="15" /></span><span class="label">Interest earned</span><span class="value pos">{{ stats().interest | inr }}</span><span class="meta">after {{ stats().fees | inr }} platform fees</span></div>
     <div class="kpi"><span class="chip violet sm"><app-icon name="chart" [size]="15" /></span><span class="label">Realised return (XIRR)</span><span class="value" [class]="seg()?.xirr | sign">{{ seg()?.xirr | pct }}</span>
       <span class="meta">vs {{ stats().avgRate ? stats().avgRate!.toFixed(1) + '% stated' : 'stated rate' }}</span></div>
     <div class="kpi"><span class="chip red sm"><app-icon name="alert" [size]="15" /></span><span class="label">At risk (defaulted)</span><span class="value" [class.neg]="stats().atRisk > 0">{{ stats().atRisk | inr }}</span>
@@ -22,7 +21,7 @@
   </section>
 
   <section class="card">
-    <div class="card-head"><div><h2>Where your lending stands</h2><span class="hint">{{ stats().lent | inr }} lent across {{ loans().length }} loans · {{ stats().interest | inr }} interest earned</span></div></div>
+    <div class="card-head"><div><h2>Where your lending stands</h2><span class="hint">{{ stats().lent | inr }} lent across {{ loans().length }} loans · {{ stats().interest | inr }} interest earned after fees</span></div></div>
     <div class="stack" role="img" aria-label="Lent money split into repaid, outstanding and at risk">
       @for (p of split(); track p.key) { @if (p.value > 0) { <i [style.width.%]="p.pct" [style.background]="p.color" [title]="p.label"></i> } }
     </div>
@@ -30,8 +29,24 @@
       @for (p of split(); track p.key) {
         <div><small><i class="swatch" [style.background]="p.color"></i>{{ p.label }}</small><b>{{ p.value | inr }}</b><span>{{ p.pct | pct: 1 : false }} of lent</span></div>
       }
-      <div><small><i class="swatch" style="background:var(--gold-2)"></i>Interest after fees</small><b class="pos">{{ stats().interest - stats().fees | inr }}</b><span>{{ stats().fees | inr }} paid in fees</span></div>
+      <div><small><i class="swatch" style="background:var(--gold-2)"></i>Interest after fees</small><b class="pos">{{ stats().interest | inr }}</b><span>{{ stats().fees | inr }} paid in fees</span></div>
     </div>
+    @if (byType().length) {
+      <div class="types">
+        @for (g of byType(); track g.key) {
+          <div class="type">
+            <header><b>{{ g.label }}</b><small class="muted">{{ g.count }} loans · {{ g.closed }} closed</small></header>
+            <dl>
+              <dt>Lent</dt><dd>{{ g.lent | inr }}</dd>
+              <dt>Principal back</dt><dd>{{ g.back | inr }} <small class="muted">({{ g.lent ? (g.back / g.lent * 100 | pct: 0 : false) : '—' }})</small></dd>
+              <dt>Outstanding</dt><dd>{{ g.outstanding | inr }}</dd>
+              <dt>Interest after fees</dt><dd class="pos">{{ g.interest | inr }}</dd>
+              @if (g.defaulted) { <dt>Defaulted</dt><dd class="neg">{{ g.defaulted }}</dd> }
+            </dl>
+          </div>
+        }
+      </div>
+    }
   </section>
 
   <section class="card flush">
@@ -41,7 +56,15 @@
           <button [class.on]="tab() === t" (click)="tab.set($any(t))">{{ t | titlecase }} <span class="muted">{{ $any(counts())[t] }}</span></button>
         }
       </div>
-      <input class="input" style="max-width:220px;height:32px" placeholder="Search borrower or loan id" [ngModel]="q()" (ngModelChange)="q.set($event)" />
+      <div class="row wrap">
+        @if (types().length > 1) {
+          <div class="seg" role="group" aria-label="Lending type">
+            <button [class.on]="type() === 'all'" (click)="type.set('all')">All</button>
+            @for (t of types(); track t) { <button [class.on]="type() === t" (click)="type.set(t)">{{ t }}</button> }
+          </div>
+        }
+        <input class="input" style="max-width:220px;height:32px" placeholder="Search borrower, loan or order" [ngModel]="q()" (ngModelChange)="q.set($event)" />
+      </div>
     </div>
     <div class="table-wrap" style="max-height:560px">
       <table class="table">
@@ -58,7 +81,7 @@
         <tbody>
           @for (p of rows(); track p.id) {
             <tr class="clickable" (click)="open(p)">
-              <td class="name-cell"><div class="ellipsis">{{ p.name }}</div><div class="sub">{{ p.ref }} · {{ p.ref2 || '—' }}</div></td>
+              <td class="name-cell"><div class="ellipsis">{{ p.name }}</div><div class="sub">{{ p.ref }} · {{ p.ref2 || '—' }}{{ p.category ? ' · ' + p.category : '' }}</div></td>
               <td>{{ p.first_date | dt }}</td>
               <td class="num">{{ p.invested | inr }}</td>
               <td class="num">{{ p.outstanding | inr }}</td>
@@ -79,15 +102,19 @@
     </div>
   </section>
 
-  <details class="more"><summary>How each month's loans are performing</summary>
+  <details class="more"><summary>How each {{ groupBy() === 'month' ? "month's" : "order's" }} loans are performing</summary>
   <section class="card flush" style="margin-top:10px">
+    <div class="card-head"><span class="hint">Loans grouped by {{ groupBy() === 'month' ? 'the month they were disbursed' : 'the LenDen order that funded them' }}</span>
+      <div class="seg"><button [class.on]="groupBy() === 'month'" (click)="groupBy.set('month')">By month</button>
+        <button [class.on]="groupBy() === 'order'" (click)="groupBy.set('order')">By order</button></div></div>
     <div class="table-wrap">
       <table class="table">
-        <thead><tr><th>Month</th><th class="num">Loans</th><th class="num">Lent</th><th class="num">Principal back</th><th class="num">Repaid</th><th class="num">Interest</th><th class="num">Closed</th><th class="num">Defaulted</th></tr></thead>
+        <thead><tr><th>{{ groupBy() === 'month' ? 'Month' : 'Order' }}</th><th class="num">Loans</th><th class="num">Lent</th><th class="num">Principal back</th><th class="num">Repaid</th>
+          <th class="num hide-sm">Outstanding</th><th class="num">Interest</th><th class="num">Closed</th><th class="num">Defaulted</th></tr></thead>
         <tbody>
-          @for (c of cohorts(); track c.month) {
-            <tr><td>{{ c.month }}</td><td class="num">{{ c.count }}</td><td class="num">{{ c.lent | inr }}</td><td class="num">{{ c.back | inr }}</td>
-              <td class="num">{{ c.lent ? (c.back / c.lent * 100 | pct: 0 : false) : '—' }}</td><td class="num pos">{{ c.interest | inr }}</td>
+          @for (c of cohorts(); track c.key) {
+            <tr><td>{{ c.label }}@if (groupBy() === 'order' && c.sub) { <div class="sub">{{ c.sub }}</div> }</td><td class="num">{{ c.count }}</td><td class="num">{{ c.lent | inr }}</td><td class="num">{{ c.back | inr }}</td>
+              <td class="num">{{ c.lent ? (c.back / c.lent * 100 | pct: 0 : false) : '—' }}</td><td class="num hide-sm">{{ c.outstanding | inr }}</td><td class="num pos">{{ c.interest | inr }}</td>
               <td class="num">{{ c.closed }}</td><td class="num" [class.neg]="c.defaulted > 0">{{ c.defaulted }}</td></tr>
           }
         </tbody>
@@ -97,67 +124,130 @@
   </details>
 </div>
 
-@if (importKind()) {
-  <app-modal [title]="importKind() === 'order' ? 'Import LenDen order report' : 'Import LenDen statement'" [width]="900" (close)="importKind.set(null)">
+@if (importing()) {
+  <app-modal title="Import LenDenClub reports" [width]="980" (close)="importing.set(false)">
     @if (!preview()) {
       <div class="form">
-        <p class="text-2">
-          @if (importKind() === 'order') { Upload the ORDER_REPORT .xlsx from LenDenClub. New loans are added; loans you already have are skipped. }
-          @else { Upload the account statement .xlsx. Repayments not yet recorded are posted for each loan, and status changes are applied. }
-        </p>
-        <input type="file" accept=".xlsx" class="input" style="padding:6px" (change)="onFile($event)" [disabled]="importBusy()" />
-        @if (importBusy()) { <p class="muted">Reading file…</p> }
+        <p class="text-2" style="margin:0">Download these from LenDenClub → Reports and upload one or several at once. The app works out which report each file is.</p>
+        <div class="kinds">
+          <div><b>Investment report</b>Loan-level summary for Manual or Lumpsum lending. Posts the repayments not yet recorded, closes finished loans, and adds any new loans.</div>
+          <div><b>Order report</b>One row per loan funded. Adds new loans and fills in lending type, order and rate.</div>
+        </div>
+        <label class="drop">
+          <input type="file" accept=".xlsx" multiple (change)="onFiles($event)" [disabled]="importBusy()" aria-label="Choose LenDenClub report files" />
+          <span class="chip violet"><app-icon name="upload" [size]="18" /></span>
+          <span>@if (importBusy()) { Reading files… } @else { <b>Choose .xlsx files</b> or drop them here · Manual and Lumpsum reports together is fine }</span>
+        </label>
         @if (importError()) { <div class="notice bad">{{ importError() }}</div> }
       </div>
     } @else {
-      @let pv = preview();
-      <p class="small text-2" style="margin-bottom:10px">Period {{ pv.from_date || '?' }} → {{ pv.to_date || '?' }}{{ pv.skipped ? ' · ' + pv.skipped + ' pending/cancelled rows skipped' : '' }}</p>
-      @if (importKind() === 'order') {
-        <div class="table-wrap" style="max-height:420px">
-          <table class="table">
-            <thead><tr><th><input type="checkbox" checked (change)="toggleAll(pv.rows, $any($event.target).checked)" aria-label="Select all" /></th>
-              <th>Loan</th><th>Date</th><th class="num">Amount</th><th class="num">Tenure</th><th class="num">Rate</th><th>Status</th></tr></thead>
-            <tbody>
-              @for (r of pv.rows; track r.loan_id) {
-                <tr [class.muted]="r.already_exists">
-                  <td><input type="checkbox" [(ngModel)]="r.selected" [disabled]="r.already_exists" [attr.aria-label]="'Import ' + r.loan_id" /></td>
-                  <td>{{ r.loan_id }} <span class="sub">{{ r.lending_id || 'exists' }}</span></td><td>{{ r.date | dt }}</td>
-                  <td class="num">{{ r.amount | inr }}</td><td class="num">{{ r.tenure }} m</td><td class="num">{{ r.rate }}%</td><td>{{ r.status }}</td>
-                </tr>
-              }
-            </tbody>
-          </table>
-        </div>
-      } @else {
-        @for (w of pv.warnings; track w.loan_id + w.type) {
-          @if (w.type === 'status_change') {
-            <label class="check small" style="display:flex;margin-bottom:4px"><input type="checkbox" [(ngModel)]="w.apply" /> {{ w.message }}</label>
+      @let pv = preview()!;
+      <div class="files">
+        @for (f of pv.files; track f.name) {
+          <div class="file">
+            <header><b>{{ fileLabel(f) }}</b><small>{{ f.from_date | dt }} → {{ f.to_date | dt }}</small></header>
+            <small class="ellipsis" style="display:block" [title]="f.name">{{ f.name }}</small>
+            <small style="display:block">{{ f.loans }} loans{{ f.kind === 'order_report' && f.lending_types.length ? ' · ' + f.lending_types.join(', ') : '' }}{{ f.skipped ? ' · ' + f.skipped + ' cancelled/pending skipped' : '' }}</small>
+            @if (f.kind === 'investment_report') {
+              <table>
+                <thead><tr><th></th><th>Report</th><th>In app now</th><th>To import</th></tr></thead>
+                <tbody>
+                  <tr><td>Invested</td><td>{{ f.summary.invested | inr }}</td><td>{{ f.app.invested | inr }}</td><td [class.todo]="(f.summary.invested ?? 0) - f.app.invested > 0.5">{{ (f.summary.invested ?? 0) - f.app.invested | inr }}</td></tr>
+                  <tr><td>Principal back</td><td>{{ f.summary.principal | inr }}</td><td>{{ f.app.principal | inr }}</td><td [class.todo]="(f.summary.principal ?? 0) - f.app.principal > 0.5">{{ (f.summary.principal ?? 0) - f.app.principal | inr }}</td></tr>
+                  <tr><td>Net to bank</td><td>{{ f.summary.net | inr }}</td><td>{{ f.app.net | inr }}</td><td [class.todo]="(f.summary.net ?? 0) - f.app.net > 0.5">{{ (f.summary.net ?? 0) - f.app.net | inr }}</td></tr>
+                  <tr><td>Fees</td><td>{{ f.summary.fee | inr }}</td><td>{{ f.app.fee | inr }}</td><td>{{ (f.summary.fee ?? 0) - f.app.fee | inr }}</td></tr>
+                </tbody>
+              </table>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="tabs">
+        <button [class.on]="importTab() === 'repayments'" (click)="importTab.set('repayments')">Repayments<span class="n" [class.hot]="pv.repayments.length">{{ pv.repayments.length }}</span></button>
+        <button [class.on]="importTab() === 'new'" (click)="importTab.set('new')">New loans<span class="n" [class.hot]="pv.new_loans.length">{{ pv.new_loans.length }}</span></button>
+        <button [class.on]="importTab() === 'status'" (click)="importTab.set('status')">Status changes<span class="n" [class.hot]="pv.status_changes.length">{{ pv.status_changes.length }}</span></button>
+        <button [class.on]="importTab() === 'details'" (click)="importTab.set('details')">Loan details<span class="n" [class.hot]="pv.details.length">{{ pv.details.length }}</span></button>
+        <button [class.on]="importTab() === 'check'" (click)="importTab.set('check')">To check<span class="n" [class.hot]="pv.review.length + pv.overdue.length">{{ pv.review.length + pv.overdue.length }}</span></button>
+      </div>
+
+      <div class="pane">
+        @switch (importTab()) {
+          @case ('repayments') {
+            <p class="small muted" style="margin:0 0 8px">What each loan has received since the last recorded repayment, dated on the closure date or the latest EMI date.</p>
+            <div class="table-wrap" style="max-height:340px">
+              <table class="table">
+                <thead><tr><th><input type="checkbox" checked (change)="toggleAll(pv.repayments, $any($event.target).checked)" aria-label="Select all repayments" /></th>
+                  <th>Loan</th><th>Date</th><th class="num">Principal</th><th class="num">Interest</th><th class="num hide-sm">Fees</th><th class="num">To bank</th></tr></thead>
+                <tbody>
+                  @for (r of pv.repayments; track r.loan_id) {
+                    <tr>
+                      <td><input type="checkbox" [(ngModel)]="r.selected" [attr.aria-label]="'Post ' + r.loan_id" /></td>
+                      <td class="name-cell"><div class="ellipsis">{{ r.name }}</div><div class="sub">{{ r.ref }} · {{ r.loan_id }}{{ r.lending_type ? ' · ' + r.lending_type : '' }}@if (r.closes) { · <b>final</b> }</div></td>
+                      <td>{{ r.date | dt }}</td><td class="num">{{ r.principal | inr: 2 }}</td><td class="num pos">{{ r.interest | inr: 2 }}</td>
+                      <td class="num hide-sm muted">{{ r.fees | inr: 2 }}</td><td class="num"><b>{{ r.amount | inr: 2 }}</b></td>
+                    </tr>
+                  } @empty { <tr><td colspan="7"><div class="empty">Every repayment in these reports is already recorded.</div></td></tr> }
+                </tbody>
+              </table>
+            </div>
+          }
+          @case ('new') {
+            <div class="table-wrap" style="max-height:340px">
+              <table class="table">
+                <thead><tr><th><input type="checkbox" checked (change)="toggleAll(pv.new_loans, $any($event.target).checked)" aria-label="Select all new loans" /></th>
+                  <th>Loan</th><th>Disbursed</th><th class="num">Lent</th><th class="num hide-sm">Tenure</th><th class="num hide-sm">Rate</th><th class="num">Received so far</th></tr></thead>
+                <tbody>
+                  @for (r of pv.new_loans; track r.loan_id) {
+                    <tr>
+                      <td><input type="checkbox" [(ngModel)]="r.selected" [attr.aria-label]="'Add ' + r.loan_id" /></td>
+                      <td class="name-cell"><div>{{ r.loan_id }}</div><div class="sub">{{ r.ref }}{{ r.lending_type ? ' · ' + r.lending_type : '' }}{{ r.order_id ? ' · order ' + r.order_id : '' }}</div></td>
+                      <td>{{ r.date | dt }}</td><td class="num">{{ r.amount | inr }}</td><td class="num hide-sm">{{ r.tenure }} m</td>
+                      <td class="num hide-sm">{{ r.rate ? r.rate + '%' : '—' }}</td><td class="num">{{ r.repayment ? (r.repayment.amount | inr: 2) : '—' }}</td>
+                    </tr>
+                  } @empty { <tr><td colspan="7"><div class="empty">All loans in these reports are already in the app.</div></td></tr> }
+                </tbody>
+              </table>
+            </div>
+          }
+          @case ('status') {
+            @if (pv.status_changes.length) {
+              <div class="checks">
+                @for (s of pv.status_changes; track s.loan_id) {
+                  <label class="check small"><input type="checkbox" [(ngModel)]="s.apply" /> {{ s.ref }} · {{ s.name }} — {{ s.old_status }} → <b>{{ s.new_status }}</b></label>
+                }
+              </div>
+            } @else { <div class="empty">Every loan's status already matches the reports.</div> }
+          }
+          @case ('details') {
+            @if (pv.details.length) {
+              <label class="check"><input type="checkbox" [ngModel]="fillDetails()" (ngModelChange)="fillDetails.set($event)" />
+                Fill in missing details for {{ pv.details.length }} loan{{ pv.details.length === 1 ? '' : 's' }}</label>
+              <p class="small muted">Only empty fields are filled; nothing you've already entered is changed. Lending type and order let you filter and group loans on this page.</p>
+              <div class="checks" style="max-height:220px">
+                @for (d of pv.details.slice(0, 50); track d.loan_id) { <div class="small">{{ d.ref }} · {{ d.loan_id }} <span class="muted">— {{ fieldList(d.fields) }}</span></div> }
+                @if (pv.details.length > 50) { <div class="small muted">…and {{ pv.details.length - 50 }} more</div> }
+              </div>
+            } @else { <div class="empty">No missing loan details.</div> }
+          }
+          @case ('check') {
+            @for (r of pv.review; track r.loan_id) {
+              <div class="notice warn" style="margin-bottom:6px"><app-icon name="alert" [size]="15" /> <span><b>{{ r.ref }} · {{ r.loan_id }}</b> — {{ r.message }}. Left as is.</span></div>
+            }
+            @if (pv.overdue.length) {
+              <p class="small" style="margin:8px 0 4px"><b>{{ pv.overdue.length }} active loan{{ pv.overdue.length === 1 ? ' is' : 's are' }} past due</b> on LenDen (days past due):</p>
+              <div class="row wrap" style="gap:6px">@for (o of pv.overdue; track o.loan_id) { <span class="badge warn">{{ o.ref }} · {{ o.dpd }} days</span> }</div>
+            }
+            @if (!pv.review.length && !pv.overdue.length) { <div class="empty">Nothing needs a look.</div> }
           }
         }
-        <div class="table-wrap" style="max-height:380px;margin-top:8px">
-          <table class="table">
-            <thead><tr><th><input type="checkbox" checked (change)="toggleAll(pv.suggested, $any($event.target).checked)" aria-label="Select all" /></th>
-              <th>Loan</th><th class="num">New principal</th><th class="num">New interest</th><th class="num">Fee</th><th class="num">Credited</th></tr></thead>
-            <tbody>
-              @for (r of pv.suggested; track r.loan_id) {
-                <tr [class.muted]="r.delta_principal < 0 || r.delta_interest < 0">
-                  <td><input type="checkbox" [(ngModel)]="r.selected" [attr.aria-label]="'Post ' + r.loan_id" /></td>
-                  <td>{{ r.name }} <span class="sub">{{ r.loan_id }}</span></td>
-                  <td class="num">{{ r.delta_principal | inr: 2 }}</td><td class="num">{{ r.delta_interest | inr: 2 }}</td>
-                  <td class="num">{{ r.delta_fee | inr: 2 }}</td><td class="num">{{ r.delta_total | inr: 2 }}</td>
-                </tr>
-              } @empty { <tr><td colspan="6" class="muted">Everything in this statement is already recorded.</td></tr> }
-            </tbody>
-          </table>
-        </div>
-        @for (w of pv.warnings; track w.loan_id + w.type) {
-          @if (w.type === 'unmatched') { <p class="small muted">⚠ {{ w.message }}</p> }
-        }
-      }
+      </div>
+
       @if (importError()) { <div class="notice bad" style="margin-top:10px">{{ importError() }}</div> }
       <div class="form-actions" style="margin-top:14px">
-        <button class="btn" (click)="preview.set(null)">Choose another file</button>
-        <button class="btn primary" (click)="commit()" [disabled]="importBusy() || !selectedCount()">{{ importBusy() ? 'Importing…' : 'Import ' + selectedCount() + ' row(s)' }}</button>
+        <span class="small muted" style="margin-right:auto">{{ picked().cash ? (picked().cash | inr: 2) + ' received to record' : '' }}</span>
+        <button class="btn" (click)="preview.set(null)">Choose other files</button>
+        <button class="btn primary" (click)="commit()" [disabled]="importBusy() || !anyPicked()">{{ importBusy() ? 'Importing…' : commitLabel() }}</button>
       </div>
     }
   </app-modal>

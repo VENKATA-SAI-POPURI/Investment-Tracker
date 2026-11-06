@@ -69,6 +69,21 @@ export interface CasDemat { name: string; isin: string; symbol: string | null; u
 export interface CasPreview { file_type: string; cas_type: string; investor: string | null; period: { from: string | null; to: string | null };
   funds: CasFund[]; nps: CasNps[]; demat: CasDemat[]; warnings: string[]; }
 
+/** LenDenClub import: what the uploaded reports say versus what the app holds. */
+export interface LendenFile { name: string; kind: 'order_report' | 'investment_report'; from_date: string | null; to_date: string | null;
+  loans: number; skipped: number; lending_types: string[];
+  summary: Partial<Record<'invested' | 'principal' | 'interest' | 'fee' | 'net' | 'outstanding' | 'npa', number>>;
+  app: { loans: number; invested: number; principal: number; net: number; fee: number }; }
+export interface LendenRepayment { date: string; principal: number; interest: number; fees: number; amount: number; closes: boolean; }
+export interface LendenNewLoan { loan_id: string; ref: string; order_id: string | null; lending_type: string | null; date: string;
+  amount: number; tenure: number; rate: number | null; status: string; maturity_date: string | null; repayment: LendenRepayment | null; selected: boolean; }
+export interface LendenPosting extends LendenRepayment { loan_id: string; instrument_id: number; ref: string; name: string;
+  lending_type: string | null; selected: boolean; }
+export interface LendenStatus { loan_id: string; instrument_id: number; ref: string; name: string; old_status: string; new_status: string; apply: boolean; }
+export interface LendenPreview { files: LendenFile[]; new_loans: LendenNewLoan[]; repayments: LendenPosting[]; status_changes: LendenStatus[];
+  details: { instrument_id: number; loan_id: string; ref: string; fields: Record<string, string | number> }[];
+  review: { loan_id: string; ref: string; name: string; message: string }[]; overdue: { loan_id: string; ref: string; dpd: string }[]; }
+
 export interface AuthUser {
   email: string;
   name?: string | null;

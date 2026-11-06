@@ -34,7 +34,7 @@
           <div class="cols">
             <div class="field"><label for="tf-date">Received on</label><input id="tf-date" class="input" type="date" name="date" [(ngModel)]="f.date" /></div>
             <div class="field"><label for="tf-pr">Principal (₹)</label><input id="tf-pr" class="input num" type="number" step="0.01" min="0" name="principal" [(ngModel)]="f.principal" /></div>
-            <div class="field"><label for="tf-int">Interest (₹)</label><input id="tf-int" class="input num" type="number" step="0.01" min="0" name="interest" [(ngModel)]="f.interest" /></div>
+            <div class="field"><label for="tf-int">Interest after fee (₹)</label><input id="tf-int" class="input num" type="number" step="0.01" min="0" name="interest" [(ngModel)]="f.interest" /></div>
             <div class="field"><label for="tf-fee">Platform fee (₹)</label><input id="tf-fee" class="input num" type="number" step="0.01" min="0" name="fees" [(ngModel)]="f.fees" /><span class="hint">For your records; not deducted again</span></div>
           </div>
           <div class="calc">Credited: <b>{{ repaymentTotal() | inr: 2 }}</b></div>

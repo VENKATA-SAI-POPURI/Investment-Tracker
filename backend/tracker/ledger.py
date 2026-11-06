@@ -293,17 +293,16 @@ class Ledger:
         return self.db.one("SELECT * FROM transactions WHERE id = ?", (res.lastrowid,))
 
     def bulk_add(self, owner: str, entries: list[dict], status_updates: list[tuple[int, str]] = (),
-                 check_holdings: bool = True) -> int:
+                 check_holdings: bool = True, field_updates: list[tuple[int, dict]] = ()) -> int:
         """Insert many transactions (optionally with new instruments) in ONE atomic batch.
-        entry: {"instrument": dict (existing row) | None, "new_instrument": dict | None, "txn": dict, "source": str}
-        New instruments must carry a unique `ref` so later statements can find their id."""
+        entry: {"instrument": dict (existing row) | None, "new_instrument": dict | None,
+                "txn": dict | "txns": [dict, ...], "source": str}
+        New instruments must carry a unique `ref` so later statements can find their id.
+        field_updates: (instrument id, {field: value}) applied in the same batch."""
         ts = now_iso()
         stmts = []
         auto = self._auto_enabled(owner)
         for e in entries:
-            t = _clean(e["txn"], TXN_FIELDS)
-            t["type"] = (t.get("type") or "").upper()
-            t["source"] = e.get("source") or "manual"
             if e.get("new_instrument"):
                 spec = {**e["new_instrument"]}
                 ac = spec.pop("asset_class")
@@ -320,16 +319,25 @@ class Ledger:
             else:
                 inst = e["instrument"]
                 inst_sql, inst_params = "?", [inst["id"]]
-            self._validate_txn({**inst, "id": inst.get("id") or -1}, t, check_holdings=check_holdings)
-            cols = list(t.keys())
-            stmts.append((f"INSERT INTO transactions (owner, instrument_id, {','.join(cols)}, created_at, updated_at) "
-                          f"VALUES (?, {inst_sql}, {','.join('?' * len(cols))}, ?, ?)",
-                          [inst.get("owner") or owner, *inst_params, *t.values(), ts, ts]))
-            if auto:
-                stmts += self._auto_cash(inst, t, inst_params, inst.get("owner") or owner,
-                                         tid_sql=f"(SELECT MAX(id) FROM transactions WHERE instrument_id = {inst_sql})")
+            for raw in e.get("txns") or [e["txn"]]:
+                t = _clean(raw, TXN_FIELDS)
+                t["type"] = (t.get("type") or "").upper()
+                t["source"] = e.get("source") or "manual"
+                self._validate_txn({**inst, "id": inst.get("id") or -1}, t, check_holdings=check_holdings)
+                cols = list(t.keys())
+                stmts.append((f"INSERT INTO transactions (owner, instrument_id, {','.join(cols)}, created_at, updated_at) "
+                              f"VALUES (?, {inst_sql}, {','.join('?' * len(cols))}, ?, ?)",
+                              [inst.get("owner") or owner, *inst_params, *t.values(), ts, ts]))
+                if auto:
+                    stmts += self._auto_cash(inst, t, inst_params, inst.get("owner") or owner,
+                                             tid_sql=f"(SELECT MAX(id) FROM transactions WHERE instrument_id = {inst_sql})")
         for iid, status in status_updates:
             stmts.append(("UPDATE instruments SET status = ?, updated_at = ? WHERE id = ?", (status.lower(), ts, iid)))
+        for iid, fields in field_updates:
+            f = _clean(fields, INSTRUMENT_FIELDS)
+            if f:
+                stmts.append((f"UPDATE instruments SET {', '.join(f'{k} = ?' for k in f)}, updated_at = ? WHERE id = ?",
+                              [*f.values(), ts, iid]))
         if stmts:
             self.db.batch(stmts)
             self._bump()

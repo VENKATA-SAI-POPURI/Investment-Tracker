@@ -27,8 +27,8 @@ import { IconComponent } from '../../shared/icon.component';
           <div><b>CAS statement (PDF)</b><small>Mutual funds from CAMS / KFintech; NPS and demat holdings from NSDL / CDSL</small></div></div>
         <a class="src" routerLink="/transactions" [queryParams]="{ import: 1 }"><span class="chip blue"><app-icon name="table" [size]="18" /></span>
           <div><b>Broker tradebook / CSV</b><small>Zerodha Console tradebook, or the app's CSV template</small></div><app-icon name="chevronRight" [size]="16" /></a>
-        <a class="src" routerLink="/p2p" [queryParams]="{ import: 'statement' }"><span class="chip violet"><app-icon name="users" [size]="18" /></span>
-          <div><b>P2P statements</b><small>LenDen order report and account statement</small></div><app-icon name="chevronRight" [size]="16" /></a>
+        <a class="src" routerLink="/p2p" [queryParams]="{ import: 'lenden' }"><span class="chip violet"><app-icon name="users" [size]="18" /></span>
+          <div><b>P2P lending reports</b><small>LenDenClub investment reports (Manual, Lumpsum) and order report</small></div><app-icon name="chevronRight" [size]="16" /></a>
       </section>
 
       <section class="card">

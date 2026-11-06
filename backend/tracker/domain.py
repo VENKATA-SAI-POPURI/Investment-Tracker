@@ -22,7 +22,7 @@ BUY = "BUY"            # quantity, amount = INR cost (incl. charges), amount_fc 
 SELL = "SELL"          # quantity, amount = INR proceeds
 DIVIDEND = "DIVIDEND"  # amount = INR received
 INTEREST = "INTEREST"  # amount = INR interest paid out (e.g. FD payout)
-REPAYMENT = "REPAYMENT"  # P2P: amount = cash credited (principal + interest), principal, fees = platform fee
+REPAYMENT = "REPAYMENT"  # P2P: amount = cash sent to the bank (principal + interest after fees); fees kept for reference
 MATURITY = "MATURITY"  # FD: amount = total received, principal = deposit returned
 FX_IN = "FX_IN"        # cash wallet: amount = INR sent, amount_fc = USD received
 FX_OUT = "FX_OUT"      # cash wallet: amount = INR received, amount_fc = USD withdrawn
