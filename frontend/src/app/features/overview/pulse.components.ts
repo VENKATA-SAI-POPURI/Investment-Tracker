@@ -2,7 +2,6 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
 import { RouterLink } from '@angular/router';
 import { CalendarEvent, Health } from '../../core/models';
 import { IconComponent } from '../../shared/icon.component';
-import { MandalaComponent, ToranComponent } from '../../shared/motifs';
 
 const KIND = {
   festival: { icon: 'diya', bg: 'var(--gold-soft)', fg: 'var(--gold)', label: 'Festival' },
@@ -15,57 +14,6 @@ const KIND = {
 function split(link: string | null) {
   const [path, frag] = (link ?? '/').split('#');
   return { path, frag: frag || undefined };
-}
-
-/** Warm festive banner for the next festival with an investing angle. */
-@Component({
-  selector: 'app-festival-strip',
-  standalone: true,
-  imports: [RouterLink, IconComponent, MandalaComponent, ToranComponent],
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `
-    <section class="fest" [class.lit]="festive()">
-      @if (festive()) { <app-toran class="toran" /> }
-      <app-mandala class="mandala" [size]="220" />
-      <span class="diya"><app-icon name="diya" [size]="22" /></span>
-      <div class="body">
-        <div class="kicker">{{ festive() ? greeting() : 'Coming up' }}</div>
-        <div class="title">{{ event().title }} <span class="when">· {{ when() }}</span></div>
-        <p class="note">{{ event().note }}</p>
-      </div>
-      @if (event().link) { <a class="cta" [routerLink]="link().path" [fragment]="link().frag">Plan it <app-icon name="chevronRight" [size]="14" /></a> }
-    </section>`,
-  styles: [`
-    .fest { position: relative; overflow: hidden; display: flex; align-items: center; gap: 16px; padding: 16px 22px; border-radius: 14px; color: var(--text);
-      background: linear-gradient(100deg, #fdf6e9 0%, #fbf1df 60%, #f8ead2 100%); border: 1px solid #f0dfbd; }
-    .fest.lit { padding-top: 34px; }
-    .toran { position: absolute; top: 0; left: 0; right: 0; }
-    .mandala { position: absolute; right: -40px; top: 50%; transform: translateY(-50%); color: rgba(183, 134, 44, .13); }
-    .diya { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 46px; height: 46px; border-radius: 14px;
-      background: linear-gradient(145deg, #e3b350, #b7862c); color: #fff; box-shadow: 0 0 0 4px rgba(217, 164, 65, .18); position: relative; }
-    .body { flex: 1; min-width: 0; position: relative; }
-    .kicker { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--gold); }
-    .title { font-size: 17px; font-weight: 650; margin-top: 2px; }
-    .when { font-weight: 500; color: var(--muted); font-size: 14px; }
-    .note { font-size: 13px; color: var(--text-2); margin-top: 3px; max-width: 760px; }
-    .cta { position: relative; flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 8px 14px; border-radius: 8px;
-      background: #fff; color: #8a5a12; border: 1px solid #e6cf9f; font-weight: 600; font-size: 13px; text-decoration: none; }
-    .cta:hover { text-decoration: none; background: #fffaf0; }
-    @media (max-width: 640px) { .fest { flex-wrap: wrap; align-items: flex-start; } .body { flex: 1 1 calc(100% - 62px); } .cta { margin-left: 62px; } }
-  `],
-})
-export class FestivalStripComponent {
-  event = input.required<CalendarEvent>();
-  theme = input<string | null>(null);
-  festive = computed(() => this.theme() === 'diwali' || this.theme() === 'akshaya_tritiya');
-  greeting = computed(() => this.theme() === 'diwali' ? 'Shubh Deepavali' : 'Shubh Akshaya Tritiya');
-  link = computed(() => split(this.event().link));
-  when = computed(() => {
-    const d = new Date(this.event().date + 'T00:00:00');
-    const day = d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
-    const n = this.event().days;
-    return n === 0 ? `today, ${day}` : n === 1 ? `tomorrow, ${day}` : `${day}, in ${n} days`;
-  });
 }
 
 /** Semicircle gauge + component bars for the portfolio health score. */

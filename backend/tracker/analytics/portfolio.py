@@ -459,6 +459,9 @@ def _segments(positions: list[dict], by_inst: dict, instruments: list[dict], tod
             s["flows"] += position_flows(p, ts, today)
 
     total_value = sum(s["value"] for s in seg.values())
+    # Targets describe the mix of the classes they name; classes without one (often EPF / NPS, money that
+    # isn't moved around) stay outside it, so a large EPF balance doesn't make everything else look short
+    mix_value = sum(s["value"] for name, s in seg.items() if targets.get(name) is not None)
     out = []
     names = list(d.SEGMENTS) + [k for k in seg if k not in d.SEGMENTS]
     for name in names:
@@ -471,11 +474,13 @@ def _segments(positions: list[dict], by_inst: dict, instruments: list[dict], tod
             flows.append((today, s["value"]))
         pct = s["value"] / total_value * 100 if total_value > 0 else 0.0
         target = targets.get(name)
+        mix_pct = s["value"] / mix_value * 100 if target is not None and mix_value > 0 else None
         out.append({
             **{k: r2(v) if isinstance(v, float) else v for k, v in s.items()},
             "pct": round(pct, 2),
             "target": target,
-            "drift": round(pct - float(target), 2) if target is not None else None,
+            "mix_pct": round(mix_pct, 2) if mix_pct is not None else None,
+            "drift": round(mix_pct - float(target), 2) if mix_pct is not None else None,
             "unrealized_pct": r2(s["unrealized"] / s["cost"] * 100) if s["cost"] > EPS else None,
             "total_return": r2(s["unrealized"] + s["realized"] + s["income"]),
             "xirr": _pct(xirr(flows)),

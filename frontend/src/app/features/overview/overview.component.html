@@ -26,11 +26,9 @@
     </div>
   } @else {
     @let tt = t()!;
-    @if (festival(); as f) { <app-festival-strip [event]="f" [theme]="pulse()?.calendar?.theme ?? null" /> }
 
-    <!-- Summary banner -->
+    <!-- 1. How it's doing -->
     <section class="banner">
-      <app-mandala class="b-mandala" [size]="300" />
       <div class="b-main">
         <span class="b-label">Current value</span>
         <span class="b-value">{{ tt.value | inr }}</span>
@@ -41,18 +39,14 @@
           </span>
         } @else { <span class="b-pill">No change today</span> }
       </div>
-      @if (spark(); as sp) {
-        <svg class="b-spark" viewBox="0 0 240 64" preserveAspectRatio="none" aria-hidden="true">
-          <defs><linearGradient id="sparkFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".28" /><stop offset="1" stop-color="#fff" stop-opacity="0" /></linearGradient></defs>
-          <path [attr.d]="sp.area" fill="url(#sparkFill)" />
-          <path [attr.d]="sp.line" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" />
-        </svg>
-      }
       <div class="b-stats">
         <div><span>Invested</span><b>{{ tt.cost | inr }}</b><small>cost of holdings</small></div>
-        <div><span>Unrealised gain</span><b [class.up]="tt.unrealized > 0" [class.down]="tt.unrealized < 0">{{ tt.unrealized | inr: 0 : true }}</b><small>{{ tt.unrealized_pct | pct }}</small></div>
+        <div><span>Unrealised</span><b [class.up]="tt.unrealized > 0" [class.down]="tt.unrealized < 0">{{ tt.unrealized | inr: 0 : true }}</b><small>{{ tt.unrealized_pct | pct }}</small></div>
         <div><span>Realised + income</span><b [class.up]="tt.realized + tt.income > 0" [class.down]="tt.realized + tt.income < 0">{{ tt.realized + tt.income | inr: 0 : true }}</b><small>booked and received</small></div>
         <div><span>XIRR</span><b [class.up]="(tt.xirr ?? 0) > 0" [class.down]="(tt.xirr ?? 0) < 0">{{ tt.xirr | pct }}</b><small>a year, all time</small></div>
+        @if (vsNifty(); as v) {
+          <div><span>vs Nifty 50 · {{ range() }}</span><b [class.up]="v.ahead" [class.down]="!v.ahead">{{ (v.ahead ? v.diff : -v.diff) | inr }} {{ v.ahead ? 'ahead' : 'behind' }}</b><small>same money, same dates</small></div>
+        }
       </div>
     </section>
 
@@ -108,69 +102,100 @@
         </div>
       </section>
 
-    <!-- Value chart + allocation -->
+    <!-- 2. Against the market, and where the money sits -->
     <div class="main-grid">
       <section class="card">
         <div class="card-head">
-          <div><h2>Value over time</h2>
-            @if (perf(); as pf) { <span class="hint">{{ pf.metrics.gain >= 0 ? 'Up' : 'Down' }} <b [class]="pf.metrics.gain | sign">{{ (pf.metrics.gain < 0 ? -pf.metrics.gain : pf.metrics.gain) | inr }}</b> in this period</span> }
+          <div><h2>You vs the market</h2>
+            @if (vsNifty(); as v) {
+              <span class="hint">{{ range() === 'ALL' ? 'All time' : 'Last ' + range() }}: <b [class]="v.diff | sign">{{ (v.ahead ? v.diff : -v.diff) | inr }} {{ v.ahead ? 'ahead of' : 'behind' }}</b> the same money in the Nifty 50
+                @if (v.youXirr !== null && v.niftyXirr !== null) { · XIRR {{ v.youXirr | pct }} vs {{ v.niftyXirr | pct }} }</span>
+            } @else if (perf()) { <span class="hint">{{ perf()!.metrics.gain >= 0 ? 'Up' : 'Down' }} <b [class]="perf()!.metrics.gain | sign">{{ (perf()!.metrics.gain < 0 ? -perf()!.metrics.gain : perf()!.metrics.gain) | inr }}</b> in this period</span> }
           </div>
-          <div class="row wrap">
-            @if (hasBench()) { <button class="cmp" [class.on]="compare()" (click)="compare.set(!compare())" [attr.aria-pressed]="compare()"><i></i>vs Nifty 50</button> }
-            <div class="seg">@for (r of ranges; track r) { <button [class.on]="range() === r" (click)="range.set(r)">{{ r }}</button> }</div>
-          </div>
+          <div class="seg">@for (r of ranges; track r) { <button [class.on]="range() === r" (click)="range.set(r)">{{ r }}</button> }</div>
         </div>
         @if (perf(); as pf) {
           <div [class.loading-fade]="perfLoading()">
             @if (pf.series.length > 1) {
-              <app-line-chart [labels]="labels()" [series]="series()" [height]="300" [yFormat]="inrc" [tipFormat]="inrFull" ariaLabel="Portfolio value and money invested over time" />
+              <app-line-chart [labels]="labels()" [series]="series()" [height]="290" [yFormat]="inrc" [tipFormat]="inrFull" ariaLabel="Portfolio value, money invested and the same money in the Nifty 50" />
             } @else { <p class="muted">Not enough history yet.</p> }
           </div>
         } @else if (perfError()) {
           <p class="muted small">History unavailable right now. {{ perfError() }}</p>
-        } @else { <div class="skeleton" style="height:300px"></div> }
+        } @else { <div class="skeleton" style="height:290px"></div> }
       </section>
-      <section class="card">
-          <div class="card-head"><h2>Asset allocation</h2><a routerLink="/insights" fragment="rebalance" class="small">Rebalance →</a></div>
-          <div class="donut-wrap">
-            <app-donut-chart [slices]="slices()" [size]="160" [centerTop]="inrc(tt.value)" centerBottom="total" [valueFormat]="inrFull" ariaLabel="Allocation by asset class" />
-          </div>
-          <div class="legend-list">
-            @for (a of assets(); track a.segment) {
-              <div class="l-row" (click)="go(a.route)">
-                <i class="swatch" [style.background]="a.color"></i>
-                <span class="l-name">{{ a.label }}</span>
-                <span class="l-pct">{{ a.pct | pct: 1 : false }}</span>
-                @if (a.target !== null) {
-                  <span class="l-tgt" [class.over]="(a.drift ?? 0) >= 2.5" [class.under]="(a.drift ?? 0) <= -2.5" [title]="'Target ' + a.target + '%'">
-                    {{ (a.drift ?? 0) > 0 ? '+' : '' }}{{ (a.drift ?? 0).toFixed(1) }}
-                  </span>
-                } @else { <span></span> }
-              </div>
-            }
-          </div>
-          @if (hasTargets()) { <p class="small muted" style="margin-top:8px">Last column: points above (+) or below (−) target.</p> }
-        </section>
 
+      <section class="card">
+        <div class="card-head"><div><h2>Allocation vs target</h2><span class="hint">{{ hasTargets() ? 'Share of the classes you set targets for · mark: target' : 'Share of the portfolio' }}</span></div>
+          <a [routerLink]="hasTargets() ? '/insights' : '/settings'" [fragment]="hasTargets() ? 'rebalance' : undefined" class="small">{{ hasTargets() ? 'Rebalance →' : 'Set targets →' }}</a></div>
+        <div class="alloc">
+          @for (a of allocation().rows; track a.segment) {
+            <div class="al-row">
+              <div class="al-top"><span><i class="swatch" [style.background]="a.color"></i>{{ a.label }}</span>
+                <span class="num"><b>{{ a.pct | pct: 1 : false }}</b>@if (a.target !== null) { <small class="muted"> / {{ a.target }}%</small> }</span></div>
+              <div class="al-bar"><i [style.width.%]="a.pct / allocation().scale * 100" [style.background]="a.color"></i>
+                @if (a.target !== null) { <b class="al-tick" [style.left.%]="a.target / allocation().scale * 100" [title]="'Target ' + a.target + '%'"></b> }</div>
+              @if (a.gap !== null && a.drift !== null && (a.drift >= 1 || a.drift <= -1)) {
+                <small class="al-gap" [class.over]="a.drift > 0">{{ a.drift > 0 ? 'Over by' : 'Short by' }} {{ (a.gap < 0 ? -a.gap : a.gap) | inr }} ({{ a.drift > 0 ? '+' : '' }}{{ a.drift.toFixed(1) }} pts)</small>
+              }
+            </div>
+          }
+        </div>
+        @if (allocation().outside.length) {
+          <p class="small muted al-out">Not in your targets, so left out of this mix: @for (o of allocation().outside; track o.segment) { {{ o.label }} {{ o.value | inrc }}{{ $last ? '' : ',' }} }
+            · <a routerLink="/settings">add a target</a> to include it.</p>
+        }
+      </section>
     </div>
 
-    <!-- Calendar + family -->
-    <div class="main-grid">
-      @if (pulse(); as pl) { <app-money-calendar [events]="pl.calendar.events" /> }
-      @else { <section class="card"><div class="skeleton" style="height:18px;width:40%"></div><div class="skeleton" style="height:240px;margin-top:14px"></div></section> }
-      <div class="side">
-      @if (members().length) {
-        <section class="card">
-          <div class="card-head"><h2>Family members</h2><span class="hint">Tap to open their portfolio</span></div>
-          @for (m of members(); track m.email) {
-            <button class="mem" (click)="auth.selectPortfolio(m.email)">
-            <span class="m-av">{{ m.name.slice(0, 1).toUpperCase() }}</span>
-            <span class="m-txt"><b>{{ m.name }}@if (m.self) { <em>you</em> }</b><small>{{ m.count }} holdings · <span [class]="m.gain | sign">{{ m.gain | inr: 0 : true }}</span></small></span>
-            <span class="m-val"><b>{{ m.value | inrc }}</b><small>{{ m.share | pct: 0 : false }}</small></span>
-            </button>
-          }
-        </section>
-      }
+    <!-- 3. What's driving returns, and where to act next -->
+    <div class="main-grid even">
+      <section class="card">
+        <div class="card-head"><div><h2>What's driving returns</h2>
+          @if (drivers(); as dr) { <span class="hint">{{ dr.winners }} holdings added {{ dr.gains | inr }}; {{ dr.losers }} took away {{ (dr.losses < 0 ? -dr.losses : dr.losses) | inr }} (booked and unbooked)</span> }</div>
+          <a routerLink="/analytics" [queryParams]="{ tab: 'analysis' }" class="small">Full analysis →</a></div>
+        @if (drivers(); as dr) {
+          <div class="drv">
+            @for (r of dr.rows; track r.id) {
+              <a class="drv-row" [routerLink]="['/holding', r.id]">
+                <span class="ellipsis">{{ r.name }}<small class="muted"> · {{ segLabel(r.segment) }}</small></span>
+                <span class="drv-bar"><i [class.neg]="r.gain < 0" [style.width.%]="(r.gain < 0 ? -r.gain : r.gain) / dr.max * 50"
+                  [style.left.%]="r.gain < 0 ? 50 + r.gain / dr.max * 50 : 50"></i></span>
+                <span class="num" [class]="r.gain | sign">{{ r.gain | inr: 0 : true }}</span>
+              </a>
+            }
+          </div>
+        } @else { <div class="skeleton" style="height:260px"></div> }
+      </section>
+
+      <section class="card">
+        <div class="card-head"><div><h2>Where to put your next money</h2><span class="hint">Split to close the gaps to your targets, without selling</span></div></div>
+        @if (hasTargets()) {
+          <label class="nm-input">Investing ₹
+            <input class="input num" type="number" min="1000" step="1000" [ngModel]="nextMoney()" (ngModelChange)="setNextMoney($event)" aria-label="Amount to invest next" /></label>
+          @for (r of planRows(); track r.segment) {
+            <div class="nm-row"><span class="ellipsis"><i class="swatch" [style.background]="segColor(r.segment)"></i>{{ segLabel(r.segment) }}</span>
+              <span class="nm-bar"><i [style.width.%]="r.amount / planMax() * 100" [style.background]="segColor(r.segment)"></i></span>
+              <b class="num">{{ r.amount | inr }}</b></div>
+          } @empty { <p class="small muted">Already on target — spread it in your target proportions.</p> }
+        } @else { <p class="small muted">Set a target allocation in <a routerLink="/settings">Settings</a> to see how new money should be split.</p> }
+        @if (ideas().length || trims().length) {
+          <div class="nm-ideas">
+            @if (ideas().length) {
+              <small class="muted">Indian stocks with strong 1-week / 1-month price signals (not advice)</small>
+              <div class="row wrap" style="gap:6px">@for (i of ideas(); track i.symbol) { <a class="badge" [class]="i.signal === 'dip_buy' ? 'info' : 'good'" routerLink="/markets" [queryParams]="{ tab: 'ideas' }" [title]="i.note">{{ i.name }} · {{ i.title.toLowerCase() }}</a> }</div>
+            }
+            @if (trims().length) {
+              <small class="muted">Your holdings flashing a sell signal</small>
+              <div class="row wrap" style="gap:6px">@for (h of trims(); track h.id) { <a class="badge warn" [routerLink]="['/holding', h.id]" [title]="h.why">{{ h.name }}</a> }</div>
+            }
+          </div>
+        }
+      </section>
+    </div>
+
+    <!-- 4. Today and what's coming -->
+    <div class="main-grid even">
       <section class="card">
         <div class="card-head"><h2>Markets today</h2><a routerLink="/markets" class="small">Open Markets →</a></div>
         @if (market(); as mk) {
@@ -187,11 +212,13 @@
           }
         } @else { <div class="skeleton" style="height:150px"></div> }
       </section>
-      </div>
+      @if (pulse(); as pl) { <app-money-calendar [events]="pl.calendar.events.slice(0, 5)" /> }
+      @else { <section class="card"><div class="skeleton" style="height:18px;width:40%"></div><div class="skeleton" style="height:200px;margin-top:14px"></div></section> }
     </div>
 
-    <div class="sec-head"><h2>What stands out</h2><span>Drawn from your full history · more in <a routerLink="/analytics" [queryParams]="{ tab: 'analysis' }">Analytics</a></span></div>
-    @if (story(); as st) { <app-takeaways [items]="st.takeaways" /> }
-    @else { <div class="skeleton" style="height:150px"></div> }
+    @if (takeaways().length) {
+      <div class="sec-head"><h2>Habits and milestones</h2><span>More in <a routerLink="/analytics" [queryParams]="{ tab: 'analysis' }">Analytics</a></span></div>
+      <app-takeaways [items]="takeaways()" />
+    }
   }
 </div>

@@ -26,7 +26,8 @@ import { SectionTabsComponent } from '../../shared/section-tabs.component';
         @if (auth.canWrite()) {
           <div class="row wrap">
             @if (kind() === 'nps') { <a class="btn ghost sm" routerLink="/import"><app-icon name="upload" [size]="15" /> Import NSDL CAS</a> }
-            @if (kind() === 'epf') { <button class="btn sm" (click)="add('CREDIT')">Interest credited</button> }
+            @if (kind() === 'epf') { <a class="btn ghost sm" routerLink="/import" [queryParams]="{ source: 'epf' }"><app-icon name="upload" [size]="15" /> Import passbook</a>
+              <button class="btn sm" (click)="add('CREDIT')">Interest credited</button> }
             <button class="btn sm" (click)="add('BUY')"><app-icon name="plus" [size]="15" /> Contribution</button>
           </div>
         }
@@ -105,6 +106,7 @@ import { SectionTabsComponent } from '../../shared/section-tabs.component';
             <div class="row" style="justify-content:center;margin-top:16px">
               <button class="btn primary" (click)="add('BUY')"><app-icon name="plus" [size]="15" /> Add first contribution</button>
               @if (kind() === 'nps') { <a class="btn" routerLink="/import"><app-icon name="upload" [size]="15" /> Import NSDL CAS</a> }
+              @else { <a class="btn" routerLink="/import" [queryParams]="{ source: 'epf' }"><app-icon name="upload" [size]="15" /> Import EPF passbooks</a> }
             </div>
           }
         </section>

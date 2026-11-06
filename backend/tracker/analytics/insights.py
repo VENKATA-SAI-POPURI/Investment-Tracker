@@ -42,17 +42,18 @@ def build_insights(portfolio: dict, tax: dict | None, goals: list[dict], setting
             "Record a purchase to start tracking returns, allocation and tax.", link="/transactions")
         return out
 
-    # ── Allocation drift ──
+    # ── Allocation drift (within the classes that have a target) ──
+    mix_total = sum(float(s["value"] or 0) for s in segments if s.get("target") is not None)
     for s in segments:
         if s.get("target") is None or s.get("drift") is None:
             continue
         drift = s["drift"]
         if abs(drift) >= 2.5:
-            amt = abs(drift) / 100 * total
+            amt = abs(drift) / 100 * mix_total
             over = drift > 0
             add(f"drift:{s['segment']}", "warning" if abs(drift) >= 5 else "info", "allocation",
                 f"{s['segment']} is {abs(drift):.1f} pts {'above' if over else 'below'} target",
-                f"Now {s['pct']:.1f}% vs target {s['target']}% — about {_inr(amt)} {'too much' if over else 'short'}.",
+                f"Now {s['mix_pct']:.1f}% vs target {s['target']}% — about {_inr(amt)} {'too much' if over else 'short'}.",
                 "Route new investments to under-weight segments, or trim this one." if over
                 else f"Direct your next {_inr(amt)} of investments here.", "/insights#rebalance", amt)
     if not any(s.get("target") is not None for s in segments):

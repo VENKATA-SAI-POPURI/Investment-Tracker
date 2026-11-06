@@ -10,13 +10,14 @@ import { CasPreview } from '../../core/models';
 import { StoreService } from '../../core/store.service';
 import { ToastService } from '../../core/toast.service';
 import { IconComponent } from '../../shared/icon.component';
+import { EpfImportComponent } from './epf-import.component';
 import { TradebookImportComponent } from './tradebook-import.component';
 
-/** One place to bring statements in: CAS PDFs and Kite tradebooks here, plus the door to the P2P importer. */
+/** One place to bring statements in: CAS PDFs, Kite tradebooks and EPF passbooks here, plus the door to the P2P importer. */
 @Component({
   selector: 'app-import',
   standalone: true,
-  imports: [FormsModule, RouterLink, IconComponent, TradebookImportComponent, ...FORMAT_PIPES],
+  imports: [FormsModule, RouterLink, IconComponent, TradebookImportComponent, EpfImportComponent, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page">
@@ -28,12 +29,14 @@ import { TradebookImportComponent } from './tradebook-import.component';
           <div><b>CAS statement (PDF)</b><small>Mutual funds from CAMS / KFintech; NPS and demat holdings from NSDL / CDSL</small></div></button>
         <button class="src" [class.on]="source() === 'kite'" (click)="source.set('kite')"><span class="chip blue"><app-icon name="table" [size]="18" /></span>
           <div><b>Kite tradebook</b><small>Zerodha equity and ETF trades (.xlsx or .csv), reconciled with what you have</small></div></button>
+        <button class="src" [class.on]="source() === 'epf'" (click)="source.set('epf')"><span class="chip amber"><app-icon name="shield" [size]="18" /></span>
+          <div><b>EPF passbook</b><small>EPFO passbooks (PDF) for every year and employer under your UAN</small></div></button>
         <a class="src" routerLink="/p2p" [queryParams]="{ import: 'lenden' }"><span class="chip violet"><app-icon name="users" [size]="18" /></span>
           <div><b>P2P lending reports</b><small>LenDenClub investment reports (Manual, Lumpsum) and order report</small></div><app-icon name="chevronRight" [size]="16" /></a>
       </section>
       <p class="small muted" style="margin:-6px 0 0">Using the app's own CSV template? Import it on <a routerLink="/transactions" [queryParams]="{ import: 1 }">Transactions</a>.</p>
 
-      @if (source() === 'kite') { <app-tradebook-import /> } @else {
+      @if (source() === 'kite') { <app-tradebook-import /> } @else if (source() === 'epf') { <app-epf-import /> } @else {
       <section class="card">
         <div class="card-head"><div><h2>Upload a CAS</h2>
           <span class="hint">Request a detailed CAS (with transactions) from camsonline.com or kfintech.com, or download the NSDL/CDSL CAS from your email</span></div></div>
@@ -144,7 +147,7 @@ import { TradebookImportComponent } from './tradebook-import.component';
       }
     </div>`,
   styles: [`
-    .sources { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+    .sources { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
     .src { display: flex; align-items: center; gap: 12px; padding: 16px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border);
       box-shadow: var(--shadow); color: var(--text); text-decoration: none; text-align: left; font: inherit; cursor: pointer; }
     .src:hover { text-decoration: none; border-color: var(--border-strong); box-shadow: var(--shadow-md); }
@@ -177,7 +180,7 @@ export class ImportComponent {
   preview = signal<CasPreview | null>(null);
   results = signal<{ imported: number; results: { name: string; ok: boolean; imported?: number; error?: string; updated?: string }[] } | null>(null);
   tick = signal(0);  // checkbox edits mutate the preview in place; this re-runs the counts
-  source = signal<'cas' | 'kite'>(inject(ActivatedRoute).snapshot.queryParamMap.get('source') === 'kite' ? 'kite' : 'cas');
+  source = signal<'cas' | 'kite' | 'epf'>((['kite', 'epf'] as const).find(s => s === inject(ActivatedRoute).snapshot.queryParamMap.get('source')) ?? 'cas');
 
   newTxns = computed(() => (this.tick(), (this.preview()?.funds ?? []).reduce((a, f) => a + f.new_count, 0)));
   dupTxns = computed(() => (this.preview()?.funds ?? []).reduce((a, f) => a + f.duplicate_count, 0));

@@ -109,7 +109,8 @@ def project_goal(goal: dict, segments: list[dict], today: date | None = None, si
 
 def rebalance_plan(segments: list[dict], targets: dict, new_money: float = 0.0, allow_sell: bool = False) -> dict:
     """Amounts to add (and optionally trim) per segment to move toward target weights."""
-    cur = {s["segment"]: float(s["value"] or 0) for s in segments}
+    # Only the classes with a target take part (see _segments: others sit outside the target mix)
+    cur = {s["segment"]: float(s["value"] or 0) for s in segments if s["segment"] in targets}
     tsum = sum(float(v) for v in targets.values()) or 100.0
     tw = {k: float(v) / tsum for k, v in targets.items()}
     total = sum(cur.values())

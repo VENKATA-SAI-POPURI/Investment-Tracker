@@ -4,7 +4,7 @@ import { Observable } from 'rxjs';
 import { environment } from '../../environments/environment';
 import {
   AllowlistUser, CashMovement, Goal, Income, Insight, Instrument, Benchmark, PerfMetrics, Performance, Portfolio,
-  PriceHistory, Pulse, RebalancePlan, Settings, SymbolHit, TaxReport, Transaction, Member, Notice, Report, ReportMeta, CasPreview, LendenPreview, KitePreview, MarketOverview, WatchItem, Ipo, MarketAlert, PushConfig,
+  PriceHistory, Pulse, RebalancePlan, Settings, SymbolHit, TaxReport, Transaction, Member, Notice, Report, ReportMeta, CasPreview, LendenPreview, KitePreview, EpfPreview, MarketOverview, WatchItem, Ipo, MarketAlert, PushConfig,
 } from './models';
 
 type Params = Record<string, string | number | boolean | null | undefined>;
@@ -50,6 +50,10 @@ export class ApiService {
   pushSubscribe(subscription: unknown) { return this.post<{ devices: number }>('/push/subscribe', { subscription }); }
   pushUnsubscribe(endpoint: string | null, all = false) { return this.post<{ devices: number }>('/push/unsubscribe', { endpoint, all }); }
   pushTest() { return this.post<{ sent: number }>('/push/test', {}); }
+  epfPreview(files: { name: string; file_data: string }[]) { return this.post<EpfPreview>('/import/epf/preview', { files }); }
+  epfCommit(files: { name: string; file_data: string }[]) {
+    return this.post<{ imported: number; skipped: number; balance: number }>('/import/epf/commit', { files });
+  }
   tradebookPreview(files: { name: string; file_data: string }[]) { return this.post<KitePreview>('/import/tradebook/preview', { files }); }
   tradebookCommit(stocks: unknown[]) {
     return this.post<{ added: number; removed: number; corrected: number; results: { symbol: string; ok: boolean; error?: string }[] }>('/import/tradebook/commit', { stocks });
