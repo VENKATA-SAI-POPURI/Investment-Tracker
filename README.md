@@ -19,7 +19,7 @@ member signs in to their own portfolio; admins switch between members or see the
 | Tax | Realized STCG/LTCG per financial year on FIFO lots, loss set-off, ₹1.25L equity exemption, estimated tax, loss harvesting, tax-free LTCG harvesting, "wait N days" alerts |
 | Goals | Earmark parts of the portfolio, Monte Carlo probability of success, required SIP |
 | Insights | Rule-based alerts (drift, concentration, P2P overdue/defaults, FD maturities, tax, stale prices, SIP gaps, reviews), rebalancing planner, optional AI analyst |
-| Imports | CAS PDF (CAMS / KFintech mutual fund history, NSDL NPS schemes, demat holdings check) via `casparser`; CSV template or Zerodha tradebook; LenDenClub investment reports (Manual, Lumpsum) and order report, several files in one upload, reconciled on the net cash sent to the bank |
+| Imports | CAS PDF (CAMS / KFintech mutual fund history, NSDL NPS schemes, demat holdings check) via `casparser`; Zerodha Kite tradebook (.xlsx or .csv), reconciled with existing trades, combined entries split into the real trades; CSV template; LenDenClub investment reports (Manual, Lumpsum) and order report, several files in one upload, reconciled on the net cash sent to the bank |
 
 ## Project layout
 

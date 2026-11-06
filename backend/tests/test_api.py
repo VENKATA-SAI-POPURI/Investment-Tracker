@@ -1,3 +1,5 @@
+import base64
+
 from conftest import ADMIN, GUEST, OTHER, USER, auth
 
 
@@ -232,3 +234,66 @@ def test_lenden_flags_reports_showing_less_than_recorded(client):
     assert p["repayments"] == [] and len(p["review"]) == 1 and "less received" in p["review"][0]["message"]
     bad = client.post("/api/p2p/import/preview", headers=h, json={"files": [{"name": "x.xlsx", "file_data": _xlsx([[("hello",)]])}]})
     assert bad.status_code == 400 and "x.xlsx" in bad.json["error"]
+
+
+KITE_HDR = ("", "Symbol", "ISIN", "Trade Date", "Exchange", "Segment", "Series", "Trade Type", "Auction", "Quantity", "Price",
+            "Trade ID", "Order ID", "Order Execution Time")
+
+
+def _kite_book(trades):
+    """Kite's .xlsx layout: a few header lines, then the table starting in column B."""
+    head = [("", "Client ID", "AB1234"), (), ("", "Tradebook for Equity from 2026-04-01 to 2026-06-30"), ()]
+    body = [("", sym, "INE000000000", day, ex, "EQ", "EQ", side, False, qty, price, f"T{n}", f"O{n}", f"{day}T10:00:00")
+            for n, (sym, day, ex, side, qty, price) in enumerate(trades)]
+    return [{"name": "tradebook-AB1234-EQ.xlsx", "file_data": _xlsx([head + [KITE_HDR, *body]])}]
+
+
+def test_kite_tradebook_splits_combined_entries_and_adds_missing_trades(client):
+    h = auth(USER, "user")
+    # The app holds one combined row for three Kite fills, an IPO allotment, and a buy ₹10 off Kite's figure
+    red = buy(client, h, name="Redington", symbol="REDINGTON.NS", qty=30, amount=6300, date="2026-05-13").json["instrument_id"]
+    ipo = buy(client, h, name="Jio", symbol="JPL.NS", qty=12, amount=13428, date="2026-05-20").json["instrument_id"]
+    gold = buy(client, h, name="Goldbees", symbol="GOLDBEES.NS", qty=10, amount=1010, date="2026-05-26", ac="commodity").json["instrument_id"]
+    files = _kite_book([("REDINGTON", "2026-05-13", "NSE", "buy", 10, 200), ("REDINGTON", "2026-05-13", "BSE", "buy", 5, 200),
+                        ("REDINGTON", "2026-05-14", "NSE", "buy", 15, 220), ("JPL", "2026-05-20", "BSE", "sell", 12, 1356.5),
+                        ("GOLDBEES", "2026-05-26", "NSE", "buy", 10, 100), ("KEC", "2026-06-02", "NSE", "buy", 5, 325.1)])
+    pv = client.post("/api/import/tradebook/preview", headers=h, json={"files": files})
+    assert pv.status_code == 200, pv.json
+    st = {s["symbol"]: s for s in pv.json["stocks"]}
+    assert pv.json["trades"] == 6 and pv.json["from_date"] == "2026-04-01" and pv.json["client_ids"] == ["AB1234"]
+    (split,) = st["REDINGTON"]["split"]
+    assert [r["id"] for r in split["remove"]] and [(r["date"], r["quantity"], r["amount"]) for r in split["add"]] == \
+        [("2026-05-13", 15, 3000), ("2026-05-14", 15, 3300)]
+    assert st["REDINGTON"]["add"] == [] and split["selected"]
+    assert st["JPL"]["kept"][0]["quantity"] == 12 and st["JPL"]["add"][0]["type"] == "SELL"   # IPO stays; the sale is added
+    (fix,) = st["GOLDBEES"]["corrections"]
+    assert (fix["app_amount"], fix["kite_amount"], fix["selected"]) == (1010, 1000, False)
+    assert st["KEC"]["instrument_id"] is None and st["KEC"]["new_instrument"]["symbol"] == "KEC.NS"
+
+    stocks = [{**s, "corrections": []} for s in pv.json["stocks"]]  # leave the amount difference alone
+    res = client.post("/api/import/tradebook/commit", headers=h, json={"stocks": stocks}).json
+    assert (res["added"], res["removed"], res["corrected"]) == (4, 1, 0), res  # two Redington days, the Jio sale, KEC
+    pos = {p["name"]: p for p in client.get("/api/portfolio", headers=h).json["positions"]}
+    assert pos["Redington"]["quantity"] == 30 and pos["Redington"]["cost"] == 6300     # same holding, now per trade
+    assert pos["Jio"]["quantity"] == 0 and pos["Jio"]["realized"] == 2850
+    assert pos["Goldbees"]["cost"] == 1010 and pos["KEC"]["quantity"] == 5
+    again = client.post("/api/import/tradebook/preview", headers=h, json={"files": files}).json
+    assert all(not (s["add"] or s["split"] or s["review"]) for s in again["stocks"])
+    assert [len(s["corrections"]) for s in again["stocks"] if s["corrections"]] == [1]
+    assert {red, ipo, gold} <= {p["id"] for p in pos.values()}
+
+
+def test_kite_tradebook_csv_and_guards(client):
+    h = auth(USER, "user")
+    csv = ("symbol,isin,trade_date,exchange,segment,series,trade_type,auction,quantity,price,trade_id,order_id,order_execution_time\n"
+           "ONGC,INE213A01029,2026-05-13,NSE,EQ,EQ,sell,false,5,250,1,1,2026-05-13T10:00:00\n"
+           "NIFTY26MAYFUT,,2026-05-13,NFO,FO,,buy,false,50,22000,2,2,2026-05-13T10:00:00\n")
+    files = [{"name": "tradebook.csv", "file_data": base64.b64encode(csv.encode()).decode()}]
+    pv = client.post("/api/import/tradebook/preview", headers=h, json={"files": files}).json
+    (ongc,) = pv["stocks"]
+    assert pv["trades"] == 1 and ongc["add"][0]["type"] == "SELL"
+    res = client.post("/api/import/tradebook/commit", headers=h, json={"stocks": pv["stocks"]}).json
+    assert res["added"] == 0 and "sold without a matching buy" in res["results"][0]["error"]
+    # Tradebooks dropped into the template CSV importer are sent to the reconciling import instead
+    bad = client.post("/api/transactions/import/preview", headers=h, json={"csv": csv})
+    assert bad.status_code == 400 and "Kite tradebook" in bad.json["error"]

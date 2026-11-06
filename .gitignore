@@ -15,6 +15,7 @@ frontend/.angular/
 *.xlsx
 *.sqlite
 backups/
+docs/
 
 # Personal notes (contained credentials)
 New Text Document.txt
@@ -24,4 +25,3 @@ New Text Document.txt
 *.code-workspace
 Thumbs.db
 .DS_Store
-docs

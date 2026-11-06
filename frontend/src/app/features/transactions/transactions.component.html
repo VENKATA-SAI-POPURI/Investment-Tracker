@@ -66,7 +66,7 @@
   <app-modal title="Import transactions" [width]="860" (close)="importing.set(false); preview.set(null)">
     @if (!preview()) {
       <div class="form">
-        <p class="text-2 small">Use the template columns, or upload a <b>Zerodha Console tradebook</b> CSV directly. You'll see a preview before anything is saved; rows already in your ledger are detected and skipped.</p>
+        <p class="text-2 small">Use the template columns. For a <b>Zerodha tradebook</b>, use Tools → Import statements → Kite tradebook, which matches it against the trades you already have. You'll see a preview before anything is saved; rows already in your ledger are detected and skipped.</p>
         <div class="row wrap">
           <input type="file" accept=".csv,text/csv" class="input" style="padding:6px;max-width:340px" (change)="onFile($event)" />
           <button class="btn ghost sm" (click)="downloadTemplate()"><app-icon name="download" [size]="14" /> Template</button>

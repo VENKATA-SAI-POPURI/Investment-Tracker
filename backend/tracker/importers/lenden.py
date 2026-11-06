@@ -33,6 +33,8 @@ SUMMARY = {"Disbursed/ invested amount": "invested", "Principal Received": "prin
 def read_sheets(file_bytes: bytes) -> list[list[tuple]]:
     import openpyxl
     wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True, read_only=True)
+    for ws in wb.worksheets:
+        ws.reset_dimensions()  # don't trust the size a file declares; some exports get it wrong
     return [list(ws.iter_rows(values_only=True)) for ws in wb.worksheets]
 
 

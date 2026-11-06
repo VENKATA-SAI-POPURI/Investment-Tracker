@@ -8,7 +8,7 @@ from flask import Blueprint, current_app, g, jsonify, request
 from .. import domain as d
 from .. import prices as px
 from ..analytics.portfolio import run_fifo
-from ..importers import cas_import, csv_import, lenden
+from ..importers import cas_import, csv_import, lenden, tradebook
 from ..ledger import ValidationError
 from ..security import write_required
 
@@ -159,6 +159,83 @@ def import_commit():
         except (ValidationError, KeyError) as e:
             results.append({"name": r.get("name"), "date": r.get("date"), "ok": False, "error": str(e)})
     return jsonify({"results": results, "imported": sum(1 for x in results if x["ok"])})
+
+
+# ── broker tradebook (Zerodha Kite / Console) ──
+
+@bp.post("/import/tradebook/preview")
+@write_required
+def tradebook_preview():
+    files = body().get("files") or []
+    if not files:
+        raise ValidationError("No file uploaded")
+    books = []
+    for f in files:
+        name = f.get("name") or "tradebook"
+        try:
+            books.append(tradebook.parse(_decode(f.get("file_data")), name))
+        except ValidationError:
+            raise
+        except ValueError as e:
+            raise ValidationError(f"{name}: {e}")
+        except Exception as e:  # noqa: BLE001
+            raise ValidationError(f"{name}: could not read the file ({e})")
+    data = L().load(g.scope)
+    return jsonify(tradebook.reconcile(books, data["instruments"], data["transactions"]))
+
+
+def _kite_txn(r: dict, kind: str) -> dict:
+    fills = int(r.get("fills") or 1)
+    where = ", ".join(r.get("exchanges") or []) or "NSE"
+    return {"type": r["type"], "date": r["date"], "quantity": float(r["quantity"]), "amount": round(float(r["amount"]), 2),
+            "notes": f"Kite tradebook · {fills} fill{'s' if fills > 1 else ''} on {where}" + (f" · {kind}" if kind else "")}
+
+
+@bp.post("/import/tradebook/commit")
+@write_required
+def tradebook_commit():
+    data = L().load(g.scope)
+    insts = {i["id"]: i for i in data["instruments"]}
+    by_inst = defaultdict(list)
+    for t in data["transactions"]:
+        by_inst[t["instrument_id"]].append(t)
+    entries, removals, updates, results = [], [], [], []
+    for s in body().get("stocks") or []:
+        sym = s.get("symbol") or "?"
+        inst = insts.get(int(s.get("instrument_id") or 0))
+        spec = s.get("new_instrument")
+        if not inst and not spec:
+            results.append({"symbol": sym, "ok": False, "error": "holding not found"})
+            continue
+        own = {t["id"]: t for t in by_inst.get(inst["id"], [])} if inst else {}
+        drop = [int(x["id"]) for blk in (s.get("split") or []) + (s.get("review") or []) for x in blk.get("remove") or []]
+        adds = [_kite_txn(r, "") for r in s.get("add") or []]
+        adds += [_kite_txn(r, "replaces a combined entry") for blk in s.get("split") or [] for r in blk.get("add") or []]
+        adds += [_kite_txn(r, "replaces differing entries") for blk in s.get("review") or [] for r in blk.get("add") or []]
+        fixes = [(int(c["txn_id"]), round(float(c["kite_amount"]), 2)) for c in s.get("corrections") or []]
+        if any(tid not in own for tid in drop + [tid for tid, _ in fixes]):
+            results.append({"symbol": sym, "ok": False, "error": "the app's entries changed since the preview; read the file again"})
+            continue
+        # The end state must hold together: never more units sold than held on any day
+        after = [({**t, "amount": dict(fixes).get(t["id"], t["amount"])}) for t in own.values() if t["id"] not in drop]
+        after += [{**t, "id": 10**9 + n, "amount_fc": None} for n, t in enumerate(adds)]
+        _, _, unmatched = run_fifo(inst["id"] if inst else -1, after)
+        if unmatched > 1e-6:
+            results.append({"symbol": sym, "ok": False, "error": f"would leave {unmatched:g} units sold without a matching buy"})
+            continue
+        if adds:
+            if inst:
+                entries.append({"instrument": inst, "txns": adds, "source": "import:kite"})
+            else:
+                entries.append({"new_instrument": {**spec, "ref": f"kite:{sym}", "price_source": "yahoo"},
+                                "txns": adds, "source": "import:kite"})
+        removals += drop
+        updates += [(tid, {"amount": amt}) for tid, amt in fixes]
+        results.append({"symbol": sym, "ok": True, "added": len(adds), "removed": len(drop), "corrected": len(fixes)})
+    L().bulk_add(g.owner, entries, check_holdings=False, remove_txns=removals, txn_updates=updates)
+    ok = [r for r in results if r["ok"]]
+    return jsonify({"results": results, "added": sum(r["added"] for r in ok), "removed": sum(r["removed"] for r in ok),
+                    "corrected": sum(r["corrected"] for r in ok)})
 
 
 # ── CAS (consolidated account statement) import ──
