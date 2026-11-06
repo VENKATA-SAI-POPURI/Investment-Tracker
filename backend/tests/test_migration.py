@@ -18,7 +18,7 @@ def legacy_fingerprint(db):
 def test_legacy_import_reconciles_and_never_touches_legacy_rows(legacy_copy):
     db = SqliteDatabase(legacy_copy)
     before = legacy_fingerprint(db)
-    assert run_migrations(db, log=lambda *_: None) == [1, 2]
+    assert run_migrations(db, log=lambda *_: None) == [1, 2, 3]
     assert verify_legacy_import(db) == []
     assert legacy_fingerprint(db) == before
     assert run_migrations(db, log=lambda *_: None) == []  # idempotent

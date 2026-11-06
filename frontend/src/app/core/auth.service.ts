@@ -4,6 +4,7 @@ import { Router } from '@angular/router';
 import { tap } from 'rxjs';
 import { environment } from '../../environments/environment';
 import { AuthUser, Member } from './models';
+import { clearSnapshots } from './snapshot';
 
 const TOKEN_KEY = 'auth_token';
 const USER_KEY = 'auth_user';
@@ -79,6 +80,7 @@ export class AuthService {
     this.portfolio.set(null);
     this.members.set([]);
     try { sessionStorage.removeItem('reminders_shown'); } catch { /* storage unavailable */ }
+    clearSnapshots();
     this.router.navigate(['/login'], reason ? { queryParams: { reason } } : {});
   }
 

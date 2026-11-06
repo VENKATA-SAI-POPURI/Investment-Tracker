@@ -21,6 +21,13 @@ import { ConfirmService } from '../../shared/ui';
   imports: [RouterLink, NgTemplateOutlet, IconComponent, InstrumentEditComponent, LineChartComponent, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './holding-detail.component.html',
+  styles: [`
+    .moves { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 22px; margin: -4px 0 12px; font-size: 12.5px; color: var(--text-2); }
+    .moves > span { display: inline-flex; align-items: center; gap: 6px; }
+    .moves a { margin-left: auto; }
+    .rb { position: relative; display: inline-block; width: 70px; height: 6px; border-radius: 3px; background: linear-gradient(90deg, var(--neg-soft), var(--surface-2), var(--pos-soft)); }
+    .rb i { position: absolute; top: -3px; width: 4px; height: 12px; margin-left: -2px; border-radius: 2px; background: var(--ink); }
+  `],
 })
 export class HoldingDetailComponent {
   id = input.required<string>();
@@ -37,6 +44,25 @@ export class HoldingDetailComponent {
   priceFmt = (v: number) => this.history()?.currency === 'USD' ? usd(v) : inr(v, 2);
   priceAxis = (v: number) => this.history()?.currency === 'USD' ? '$' + Math.round(v) : '₹' + Math.round(v).toLocaleString('en-IN');
   hasChart = computed(() => (this.history()?.points.length ?? 0) > 1);
+  /** XIRR annualises, so a few months' gain reads like +1500%; until a year has passed show the plain return. */
+  heldDays = computed(() => {
+    const f = this.p()?.first_date;
+    return f ? Math.floor((Date.now() - new Date(f).getTime()) / 86400000) : 0;
+  });
+  simpleReturn = computed(() => {
+    const p = this.p();
+    return p && p.invested ? p.total_return / p.invested * 100 : null;
+  });
+  /** 1-week and 1-month price change from the history already loaded for the chart (5 and 21 trading days). */
+  moves = computed(() => {
+    const pts = (this.history()?.points ?? []).map(p => p[1]).filter((v): v is number => v !== null && v > 0);
+    if (pts.length < 6) return null;
+    const last = pts[pts.length - 1];
+    const chg = (n: number) => pts.length > n ? (last / pts[pts.length - 1 - n] - 1) * 100 : null;
+    const month = pts.slice(-22);
+    return { w1: chg(5), m1: chg(21), low: Math.min(...month), high: Math.max(...month),
+      pos: Math.max(...month) > Math.min(...month) ? (last - Math.min(...month)) / (Math.max(...month) - Math.min(...month)) * 100 : 50 };
+  });
   hLabels = computed(() => (this.history()?.points ?? []).map(p => p[0]));
   hSeries = computed<LineSeries[]>(() => [{ key: 'px', label: 'Price', color: 'var(--s1)', values: (this.history()?.points ?? []).map(p => p[1]), area: true }]);
   hMarkers = computed(() => {

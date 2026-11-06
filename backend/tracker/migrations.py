@@ -448,9 +448,36 @@ def m002_legacy_import(db: Database) -> list:
     return stmts
 
 
+MARKETS_SCHEMA = [
+    """CREATE TABLE IF NOT EXISTS watchlist (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, owner TEXT NOT NULL, symbol TEXT NOT NULL, name TEXT NOT NULL,
+        target_buy REAL, target_sell REAL, added_price REAL, notes TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(owner, symbol))""",
+    """CREATE TABLE IF NOT EXISTS ipos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, owner TEXT NOT NULL, name TEXT NOT NULL, symbol TEXT, board TEXT,
+        open_date TEXT, close_date TEXT, allotment_date TEXT, listing_date TEXT,
+        price_low REAL, price_high REAL, lot_size INTEGER, issue_size_cr REAL, gmp REAL, subscription TEXT,
+        applied INTEGER NOT NULL DEFAULT 0, lots_applied INTEGER, lots_allotted INTEGER, listing_price REAL, notes TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL)""",
+    """CREATE TABLE IF NOT EXISTS market_alerts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, owner TEXT NOT NULL, key TEXT NOT NULL, kind TEXT NOT NULL,
+        symbol TEXT, title TEXT NOT NULL, body TEXT, severity TEXT NOT NULL DEFAULT 'info', link TEXT,
+        pushed INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, UNIQUE(owner, key))""",
+    "CREATE INDEX IF NOT EXISTS ix_market_alerts_owner ON market_alerts(owner, created_at)",
+    """CREATE TABLE IF NOT EXISTS push_subscriptions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, owner TEXT NOT NULL, endpoint TEXT NOT NULL UNIQUE, p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL, device TEXT, created_at TEXT NOT NULL, last_ok_at TEXT)""",
+]
+
+
+def m003_markets(db: Database) -> list:
+    return [(sql, None) for sql in MARKETS_SCHEMA]
+
+
 MIGRATIONS = [
     (1, "core_schema", m001_core_schema),
     (2, "legacy_import", m002_legacy_import),
+    (3, "markets", m003_markets),
 ]
 
 

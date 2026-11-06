@@ -155,8 +155,10 @@
     </div>
 
     <!-- Calendar + family -->
-    <div class="main-grid" [class.single]="!members().length">
+    <div class="main-grid">
       @if (pulse(); as pl) { <app-money-calendar [events]="pl.calendar.events" /> }
+      @else { <section class="card"><div class="skeleton" style="height:18px;width:40%"></div><div class="skeleton" style="height:240px;margin-top:14px"></div></section> }
+      <div class="side">
       @if (members().length) {
         <section class="card">
           <div class="card-head"><h2>Family members</h2><span class="hint">Tap to open their portfolio</span></div>
@@ -169,11 +171,27 @@
           }
         </section>
       }
+      <section class="card">
+        <div class="card-head"><h2>Markets today</h2><a routerLink="/markets" class="small">Open Markets →</a></div>
+        @if (market(); as mk) {
+          <div class="mk-top">
+            <div><small class="muted">{{ mk.index.name }}</small><b>{{ mk.index.metrics ? (mk.index.metrics.price | number: '1.0-0') : '—' }}</b>
+              <span class="chg" [class]="mk.index.metrics?.d1 | sign">{{ mk.index.metrics?.d1 | pct }}</span></div>
+            <div><small class="muted">Your stocks</small><b [class]="marketMine().d1 | sign">{{ marketMine().d1 | pct: 2 }}</b>
+              <small class="muted">{{ mk.breadth.up }} of {{ mk.breadth.total }} rising</small></div>
+          </div>
+          @for (h of marketWatch(); track h.id) {
+            <a class="mk-row" [routerLink]="['/holding', h.id]"><span class="ellipsis">{{ h.name }}</span>
+              @if (h.signals.length) { <span class="badge" [class]="signalTone(h.signals[0].signal)">{{ h.signals[0].title }}</span> }
+              <span class="chg" [class]="h.metrics?.d1 | sign">{{ h.metrics?.d1 | pct }}</span></a>
+          }
+        } @else { <div class="skeleton" style="height:150px"></div> }
+      </section>
+      </div>
     </div>
 
-    @if (story(); as st) {
-      <div class="sec-head"><h2>What stands out</h2><span>Drawn from your full history · more in <a routerLink="/analytics" [queryParams]="{ tab: 'analysis' }">Analytics</a></span></div>
-      <app-takeaways [items]="st.takeaways" />
-    }
+    <div class="sec-head"><h2>What stands out</h2><span>Drawn from your full history · more in <a routerLink="/analytics" [queryParams]="{ tab: 'analysis' }">Analytics</a></span></div>
+    @if (story(); as st) { <app-takeaways [items]="st.takeaways" /> }
+    @else { <div class="skeleton" style="height:150px"></div> }
   }
 </div>

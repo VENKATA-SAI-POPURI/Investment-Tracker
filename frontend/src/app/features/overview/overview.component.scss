@@ -140,3 +140,11 @@ tr.open .caret { transform: rotate(180deg); }
 .m-val b { font-size: 14px; }
 
 .main-grid.single { grid-template-columns: minmax(0, 1fr); }
+
+.side { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+.mk-top { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 8px; }
+.mk-top > div { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); }
+.mk-top b { font-size: 17px; }
+.mk-top .chg { align-self: flex-start; }
+.mk-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--border); color: var(--text); text-decoration: none; font-size: 13px; }
+.mk-row:last-child { border-bottom: 0; }

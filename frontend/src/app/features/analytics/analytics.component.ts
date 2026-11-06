@@ -5,7 +5,7 @@ import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { FORMAT_PIPES, inr, inrCompact } from '../../core/format';
 import { errorMessage } from '../../core/http';
-import { Benchmark, Income, Performance, Pulse, SEGMENTS } from '../../core/models';
+import { Benchmark, Income, Performance, Pulse, SEGMENTS, activeSeries } from '../../core/models';
 import { StoreService } from '../../core/store.service';
 import { LineChartComponent, LineSeries } from '../../shared/charts/line-chart.component';
 import { Bar, BarChartComponent } from '../../shared/charts/bar-chart.component';
@@ -82,9 +82,10 @@ export class AnalyticsComponent {
   m = computed(() => this.perf()?.metrics);
   benchOptions = computed(() => this.perf()?.benchmarks ?? []);
   activeBench = computed<Benchmark | undefined>(() => this.benchOptions().find(b => b.key === this.bench()) ?? this.benchOptions()[0]);
-  labels = computed(() => this.perf()?.series.map(p => p.date) ?? []);
+  points = computed(() => activeSeries(this.perf()?.series ?? []));
+  labels = computed(() => this.points().map(p => p.date));
   valueSeries = computed<LineSeries[]>(() => {
-    const s = this.perf()?.series ?? [];
+    const s = this.points();
     const b = this.activeBench();
     const out: LineSeries[] = [
       { key: 'value', label: 'Your portfolio', color: 'var(--s1)', values: s.map(p => p.value), area: true },
@@ -93,7 +94,7 @@ export class AnalyticsComponent {
     if (b) out.push({ key: b.key, label: `Same flows in ${b.label}`, color: 'var(--s2)', values: s.map(p => (p[b.key] as number | null) ?? null) });
     return out;
   });
-  indexSeries = computed<LineSeries[]>(() => [{ key: 'idx', label: 'Growth of ₹100', color: 'var(--s1)', values: (this.perf()?.series ?? []).map(p => p.index), area: true }]);
+  indexSeries = computed<LineSeries[]>(() => [{ key: 'idx', label: 'Growth of ₹100', color: 'var(--s1)', values: this.points().map(p => p.index), area: true }]);
 
   heat = computed(() => {
     const rows = new Map<string, (number | null)[]>();

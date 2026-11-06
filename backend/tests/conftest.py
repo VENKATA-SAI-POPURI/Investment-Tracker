@@ -9,6 +9,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault("JWT_SECRET", "test-secret-that-is-long-enough-for-hs256")
 for var in ("TURSO_DATABASE_URL", "TURSO_AUTH_TOKEN", "GROQ_API_KEY", "GEMINI_API_KEY"):
     os.environ.pop(var, None)
+# Set (not just removed) so a developer's .env can't fill them in: push stays off, the job has a known token
+os.environ.update(VAPID_PUBLIC_KEY="", VAPID_PRIVATE_KEY="", JOB_TOKEN="test-job-token")
 
 from tracker import create_app  # noqa: E402
 from tracker.db import SqliteDatabase  # noqa: E402

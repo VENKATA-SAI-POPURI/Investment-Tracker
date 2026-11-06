@@ -148,7 +148,7 @@
   <a routerLink="/" [class.on]="active(nav[0])"><app-icon name="home" /><span>Dashboard</span></a>
   <a routerLink="/holdings/equity" [class.on]="active(nav[1])"><app-icon name="layers" /><span>Holdings</span></a>
   @if (auth.canWrite()) { <button class="fab" (click)="dialog.add()" aria-label="Add transaction"><app-icon name="plus" [size]="22" /></button> }
-  <a routerLink="/reports" [class.on]="active(nav[3])"><app-icon name="file" /><span>Reports</span></a>
+  <a routerLink="/markets" [class.on]="active(nav[5])"><app-icon name="zap" /><span>Markets</span></a>
   <button (click)="drawer.set(true)"><app-icon name="menu" /><span>More</span></button>
 </nav>
 

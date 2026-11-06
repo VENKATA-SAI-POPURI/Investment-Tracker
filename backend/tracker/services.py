@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from . import domain as d
 from . import prices as px
@@ -79,7 +79,14 @@ class Services:
         return {"deposits": round(dep, 2), "withdrawals": round(wd, 2), "profit_withdrawals": round(profit, 2),
                 "net": round(dep - wd - profit, 2), "p2p_escrow_balance": round(escrow, 2)}
 
+    def _memo(self, *key, fn):
+        """Heavy analytics, recomputed only after a write or a price refresh (both bump the ledger version)."""
+        return self.ledger._cached(("svc", *[json.dumps(k, sort_keys=True, default=str) for k in key]), fn)
+
     def performance(self, scope: str | None, rng: str = "ALL", segment: str | None = None) -> dict:
+        return self._memo("performance", scope, rng, segment, fn=lambda: self._performance(scope, rng, segment))
+
+    def _performance(self, scope: str | None, rng: str, segment: str | None) -> dict:
         data = self.ledger.load(scope)
         insts, txns = data["instruments"], data["transactions"]
         if segment:
@@ -150,6 +157,9 @@ class Services:
 
     def pulse(self, scope: str | None, settings: dict) -> dict:
         """Health score, money calendar and the narrative analysis for the overview."""
+        return self._memo("pulse", scope, settings, date.today(), fn=lambda: self._pulse(scope, settings))
+
+    def _pulse(self, scope: str | None, settings: dict) -> dict:
         res = self.insights(scope, settings)
         txns = self.ledger.load(scope)["transactions"]
         return {"health": health_score(res["portfolio"], res["tax"], res["performance"]),
@@ -171,8 +181,29 @@ class Services:
             if i["severity"] in ("critical", "warning"):
                 out.append({"id": f"ins:{i['id']}", "kind": "insight", "title": i["title"], "body": i["detail"], "date": None,
                             "days": None, "link": i.get("link"), "severity": i["severity"]})
+        out += self._market_notices(scope)
         order = {"critical": 0, "warning": 1, "info": 2}
         out.sort(key=lambda n: (order.get(n["severity"], 3), n["days"] if n["days"] is not None else 99))
+        return out
+
+    def _market_notices(self, scope: str | None) -> list[dict]:
+        """Price alerts from the last two days and IPO dates in the next three."""
+        db, today = self.ledger.db, date.today()
+        w, p = ("owner = ?", [scope]) if scope else ("1=1", [])
+        since = (datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        out = [{"id": f"mkt:{a['id']}", "kind": "market", "title": a["title"], "body": a["body"], "date": a["created_at"][:10],
+                "days": 0, "link": a["link"], "severity": a["severity"]}
+               for a in db.query(f"SELECT * FROM market_alerts WHERE {w} AND created_at >= ? ORDER BY created_at DESC LIMIT 10", [*p, since])]
+        soon = (today + timedelta(days=3)).isoformat()
+        for r in db.query(f"SELECT * FROM ipos WHERE {w}", p):
+            for field, what in (("open_date", "opens"), ("close_date", "closes"), ("allotment_date", "allotment is"), ("listing_date", "lists")):
+                when = r.get(field)
+                if when and today.isoformat() <= when <= soon:
+                    days = (date.fromisoformat(when) - today).days
+                    out.append({"id": f"ipo:{r['id']}:{field}:{when}", "kind": "ipo", "title": f"{r['name']} IPO {what} "
+                                + ("today" if days == 0 else "tomorrow" if days == 1 else f"in {days} days"),
+                                "body": "Track it under Markets → IPOs.", "date": when, "days": days, "link": "/markets?tab=ipos",
+                                "severity": "warning" if field == "close_date" and days <= 1 and not r["applied"] else "info"})
         return out
 
     def income(self, scope: str | None, months: int = 24) -> dict:

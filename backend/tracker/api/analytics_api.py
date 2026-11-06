@@ -10,7 +10,7 @@ from ..security import write_required
 bp = Blueprint("analytics", __name__)
 
 SETTING_KEYS = {"targetAllocation", "taxSlabRate", "lastReviewDate", "reviewSnapshot", "dismissedInsights",
-                "autoCapitalFlows", "baseCurrencyDisplay", "dashboardLayout", "riskProfile"}
+                "autoCapitalFlows", "baseCurrencyDisplay", "dashboardLayout", "riskProfile", "marketAlerts"}
 
 
 def L():
@@ -156,6 +156,13 @@ def put_setting(key):
         value = {k: float(v) for k, v in value.items() if k in d.SEGMENTS and v not in (None, "")}
         if abs(sum(value.values()) - 100) > 0.5:
             raise ValidationError(f"Targets add up to {sum(value.values()):g}%, they must total 100%")
+    if key == "marketAlerts":
+        if not isinstance(value, dict):
+            raise ValidationError("marketAlerts must be an object")
+        value = {"enabled": bool(value.get("enabled", True)), "push": bool(value.get("push", True)),
+                 "day": float(value.get("day") or 5), "week": float(value.get("week") or 10)}
+        if not (1 <= value["day"] <= 20 and 2 <= value["week"] <= 40):
+            raise ValidationError("Alert thresholds: daily move 1–20%, weekly move 2–40%")
     if key == "taxSlabRate":
         v = float(value)
         if not 0 <= v <= 45:

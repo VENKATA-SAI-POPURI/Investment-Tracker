@@ -65,7 +65,9 @@ def _clean(data: dict, fields) -> dict:
 
 
 class Ledger:
-    def __init__(self, db: Database, cache_ttl: float = 30.0):
+    # One process serves the API and every write bumps the version, so cached reads only need a
+    # safety-net expiry (other writers, e.g. a migration run elsewhere)
+    def __init__(self, db: Database, cache_ttl: float = 600.0):
         self.db = db
         self._cache: dict = {}
         self._version = 0
@@ -463,13 +465,17 @@ class Ledger:
         self._bump()
 
     def system_value(self, key: str):
-        row = self.db.one("SELECT value FROM user_settings WHERE owner = '__system__' AND key = ?", (key,))
-        return row["value"] if row else None
+        def fetch():
+            row = self.db.one("SELECT value FROM user_settings WHERE owner = '__system__' AND key = ?", (key,))
+            return row["value"] if row else None
+        return self._cached(("system", key), fetch)
 
     def set_system_value(self, key: str, value: str):
         self.db.execute("INSERT INTO user_settings (owner, key, value, updated_at) VALUES ('__system__',?,?,?) "
                         "ON CONFLICT(owner, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
                         (key, value, now_iso()))
+        with self._lock:
+            self._cache[("system", key)] = (self._version, time.time(), value)
 
     # ── goals ──
     def goals(self, scope: str | None) -> list[dict]:

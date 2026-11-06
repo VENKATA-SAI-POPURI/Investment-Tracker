@@ -20,6 +20,7 @@ export const NAV: NavItem[] = [
   { path: '/transactions', label: 'Transactions', icon: 'list', match: ['/transactions', '/cash-flows'] },
   { path: '/reports', label: 'Reports', icon: 'file', match: ['/reports'] },
   { path: '/analytics', label: 'Analytics', icon: 'chart', match: ['/analytics'] },
+  { path: '/markets', label: 'Markets', icon: 'zap', match: ['/markets'] },
 ];
 
 export const TOOLS: NavItem[] = [
