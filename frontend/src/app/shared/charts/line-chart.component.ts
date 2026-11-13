@@ -2,15 +2,18 @@ import { ChangeDetectionStrategy, Component, ElementRef, computed, inject, input
 import { niceTicks, observeWidth, Tip, tipPosition } from './chart-utils';
 import { fmtDate } from '../../core/format';
 
-export interface LineSeries { key: string; label: string; color: string; values: (number | null)[]; area?: boolean; muted?: boolean; }
+export interface LineSeries { key: string; label: string; color: string; values: (number | null)[]; area?: boolean; muted?: boolean; dashed?: boolean; }
+/** A shaded band between two series (fan charts): drawn behind the lines. */
+export interface LineBand { key: string; label: string; color: string; lo: (number | null)[]; hi: (number | null)[]; opacity?: number; }
 
 @Component({
   selector: 'app-line-chart',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    @if (series().length > 1) {
+    @if (series().length > 1 || bands().length) {
       <div class="legend" style="margin-bottom:10px">
+        @for (b of bands(); track b.key) { <span><i class="swatch" [style.background]="b.color" [style.opacity]="(b.opacity ?? 0.18) + 0.25"></i>{{ b.label }}</span> }
         @for (s of series(); track s.key) { <span><i class="line-key" [style.background]="s.color"></i>{{ s.label }}</span> }
         <span class="spacer"></span>
         <button class="btn ghost sm muted" (click)="table.set(!table())">{{ table() ? 'Show chart' : 'View as table' }}</button>
@@ -26,6 +29,9 @@ export interface LineSeries { key: string; label: string; color: string; values:
         @for (i of xTickIdx(); track i) {
           <text [attr.x]="x(i)" [attr.y]="height() - 6" [attr.text-anchor]="i === 0 ? 'start' : i === labels().length - 1 ? 'end' : 'middle'" class="tick">{{ xLabel(i) }}</text>
         }
+        @for (b of bands(); track b.key) {
+          <path [attr.d]="bandPath(b)" [attr.fill]="b.color" [attr.opacity]="b.opacity ?? 0.18" style="pointer-events:none" />
+        }
         @for (s of series(); track s.key) {
           @if (s.area) {
             <defs><linearGradient [attr.id]="uid + s.key" x1="0" y1="0" x2="0" y2="1">
@@ -34,7 +40,7 @@ export interface LineSeries { key: string; label: string; color: string; values:
             <path [attr.d]="areaPath(s)" [attr.fill]="'url(#' + uid + s.key + ')'" />
           }
           <path [attr.d]="linePath(s)" fill="none" [attr.stroke]="s.color" [attr.stroke-width]="s.muted ? 1.5 : 2.25"
-                stroke-linejoin="round" stroke-linecap="round" [attr.opacity]="s.muted ? 0.8 : 1" />
+                [attr.stroke-dasharray]="s.dashed ? '5 4' : null" stroke-linejoin="round" stroke-linecap="round" [attr.opacity]="s.muted ? 0.8 : 1" />
         }
         @for (m of markerPts(); track $index) {
           <circle [attr.cx]="m.x" [attr.cy]="m.y" r="5.5" [attr.fill]="m.kind === 'buy' ? '#059669' : '#dc2626'" stroke="var(--surface)" stroke-width="2"><title>{{ m.title }}</title></circle>
@@ -83,6 +89,7 @@ export class LineChartComponent {
   ariaLabel = input('Line chart');
   zeroBased = input(false);
   markers = input<{ i: number; kind: 'buy' | 'sell'; title: string }[]>([]);
+  bands = input<LineBand[]>([]);
 
   readonly padL = 64; readonly padR = 12; readonly padT = 10; readonly padB = 26;
   w = observeWidth(inject(ElementRef));
@@ -91,7 +98,8 @@ export class LineChartComponent {
   table = signal(false);
 
   private extent = computed(() => {
-    const vals = this.series().flatMap(s => s.values.filter((v): v is number => v !== null && v !== undefined && isFinite(v)));
+    const vals = [...this.series().flatMap(s => s.values), ...this.bands().flatMap(b => [...b.lo, ...b.hi])]
+      .filter((v): v is number => v !== null && v !== undefined && isFinite(v));
     if (!vals.length) return [0, 1];
     let lo = Math.min(...vals), hi = Math.max(...vals);
     if (this.zeroBased()) lo = Math.min(lo, 0);
@@ -144,6 +152,13 @@ export class LineChartComponent {
     });
     return d;
   }
+  bandPath(b: LineBand) {
+    const pts = b.hi.map((v, i) => [i, v, b.lo[i]] as const).filter(([, h, l]) => h !== null && h !== undefined && l !== null && l !== undefined);
+    if (pts.length < 2) return '';
+    const top = pts.map(([i, h]) => `${this.x(i).toFixed(1)},${this.y(h!).toFixed(1)}`).join('L');
+    const bottom = [...pts].reverse().map(([i, , l]) => `${this.x(i).toFixed(1)},${this.y(l!).toFixed(1)}`).join('L');
+    return `M${top}L${bottom}Z`;
+  }
   areaPath(s: LineSeries) {
     const pts = s.values.map((v, i) => [i, v] as const).filter(([, v]) => v !== null && v !== undefined);
     if (!pts.length) return '';
@@ -175,7 +190,11 @@ export class LineChartComponent {
     const idx = Math.max(0, Math.min(n - 1, i));
     this.hover.set(idx);
     const f = this.tipFormat() ?? this.yFormat();
-    const rows = this.series().map(s => ({ label: s.label, color: s.color, value: s.values[idx] === null || s.values[idx] === undefined ? '—' : f(s.values[idx]!) }));
+    const fmt = (v: number | null | undefined) => v === null || v === undefined ? '—' : f(v);
+    const rows = [
+      ...this.series().map(s => ({ label: s.label, color: s.color, value: fmt(s.values[idx]) })),
+      ...this.bands().map(b => ({ label: b.label, color: b.color, value: `${fmt(b.lo[idx])} – ${fmt(b.hi[idx])}` })),
+    ];
     this.tip.set({ ...tipPosition(ev, 220, 40 + rows.length * 20), title: fmtDate(this.labels()[idx]), rows });
   }
 }

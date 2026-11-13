@@ -31,8 +31,11 @@ TXN_FIELDS = ("date", "type", "quantity", "amount", "amount_fc", "principal", "f
 CASH_FIELDS = ("account", "date", "direction", "amount", "category", "kind", "notes")
 GOAL_FIELDS = ("name", "target_amount", "target_date", "monthly_contribution", "expected_return", "allocation",
                "priority", "notes")
+SIP_FIELDS = ("instrument_id", "name", "segment", "amount", "frequency", "day_of_month", "step_up_pct", "start_date",
+              "end_date", "active", "notes")
+SIP_FREQUENCIES = ("monthly", "quarterly", "weekly", "yearly")
 NUMERIC = {"quantity", "amount", "amount_fc", "principal", "fees", "rate", "tenure_months", "last_price",
-           "target_amount", "monthly_contribution", "expected_return"}
+           "target_amount", "monthly_contribution", "expected_return", "step_up_pct"}
 
 
 def _num(v):
@@ -515,6 +518,75 @@ class Ledger:
         if not self.db.one(f"SELECT id FROM goals WHERE id = ? AND {w}", [gid] + p):
             raise NotFound("Goal not found")
         self.db.execute("DELETE FROM goals WHERE id = ?", (gid,))
+        self._bump()
+
+    # ── SIP plans ──
+    def sips(self, scope: str | None) -> list[dict]:
+        w, p = self._where(scope, "s.")
+        return self.db.query(f"SELECT s.*, i.name AS instrument_name, i.asset_class FROM sip_plans s "
+                             f"LEFT JOIN instruments i ON i.id = s.instrument_id WHERE {w} ORDER BY s.active DESC, s.day_of_month, s.name", p)
+
+    def save_sip(self, owner: str, scope: str | None, data: dict, sid: int | None = None) -> dict:
+        s = _clean(data, SIP_FIELDS)
+        if "instrument_id" in s and s["instrument_id"] not in (None, ""):
+            inst = self.instrument(int(s["instrument_id"]), scope)
+            s["instrument_id"] = inst["id"]
+            s.setdefault("name", inst["name"])
+            if not s.get("name"):
+                s["name"] = inst["name"]
+            s["segment"] = d.segment_of(inst)
+        elif "instrument_id" in s:
+            s["instrument_id"] = None
+        if sid is None:
+            if not s.get("name"):
+                raise ValidationError("name is required")
+            if s.get("amount") is None:
+                raise ValidationError("amount is required")
+        if s.get("amount") is not None and s["amount"] <= 0:
+            raise ValidationError("amount must be positive")
+        if "frequency" in s:
+            s["frequency"] = (s["frequency"] or "monthly").lower()
+            if s["frequency"] not in SIP_FREQUENCIES:
+                raise ValidationError("frequency must be one of " + ", ".join(SIP_FREQUENCIES))
+        if "day_of_month" in s:
+            try:
+                s["day_of_month"] = int(s["day_of_month"] or 1)
+            except (TypeError, ValueError):
+                raise ValidationError("day_of_month must be a number")
+            if not 1 <= s["day_of_month"] <= 28:
+                raise ValidationError("day_of_month must be between 1 and 28")
+        if "segment" in s and s["segment"] and s["segment"] not in d.SEGMENTS:
+            raise ValidationError("Unknown segment")
+        for k in ("start_date", "end_date"):
+            if s.get(k):
+                s[k] = _date(s[k], k.replace("_", " "))
+        if "active" in s:
+            s["active"] = 1 if s["active"] in (1, True, "1", "true", "True") else 0
+        ts = now_iso()
+        if sid is None:
+            s.setdefault("frequency", "monthly")
+            s.setdefault("day_of_month", 1)
+            s.setdefault("active", 1)
+            s.setdefault("start_date", ts[:10])
+            cols = ["owner", *s.keys(), "created_at", "updated_at"]
+            res = self.db.execute(f"INSERT INTO sip_plans ({','.join(cols)}) VALUES ({','.join('?' * len(cols))})",
+                                  [owner, *s.values(), ts, ts])
+            sid = res.lastrowid
+        else:
+            w, p = self._where(scope)
+            if not self.db.one(f"SELECT id FROM sip_plans WHERE id = ? AND {w}", [sid] + p):
+                raise NotFound("SIP plan not found")
+            if s:
+                self.db.execute(f"UPDATE sip_plans SET {', '.join(f'{k} = ?' for k in s)}, updated_at = ? WHERE id = ?",
+                                [*s.values(), ts, sid])
+        self._bump()
+        return next(r for r in self.sips(None) if r["id"] == sid)
+
+    def delete_sip(self, sid: int, scope: str | None):
+        w, p = self._where(scope)
+        if not self.db.one(f"SELECT id FROM sip_plans WHERE id = ? AND {w}", [sid] + p):
+            raise NotFound("SIP plan not found")
+        self.db.execute("DELETE FROM sip_plans WHERE id = ?", (sid,))
         self._bump()
 
     # ── prices ──

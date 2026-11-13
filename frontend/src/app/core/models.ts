@@ -393,6 +393,8 @@ export interface Settings {
   dismissedInsights?: Record<string, string>;
   autoCapitalFlows?: string;
   marketAlerts?: Partial<MarketAlertsConfig>;
+  riskProfile?: string;
+  retirementPlan?: Record<string, number>;
   segments: string[];
 }
 
@@ -419,3 +421,67 @@ export interface Pulse { health: Health; calendar: { events: CalendarEvent[]; th
 export interface IncomeMonth { month: string; dividends: number; p2p_interest: number; fd_interest: number; total: number; }
 export interface Income { months: IncomeMonth[]; last_12m: number; monthly_avg: number; top_payers: { instrument_id: number; name: string; amount: number }[]; }
 export interface PriceHistory { symbol: string | null; currency: string | null; points: [string, number][]; trades: { date: string; type: 'BUY' | 'SELL'; quantity: number; amount: number; price: number | null }[]; }
+
+/** Forecasting and planning (Forecast page, holding outlook). */
+export interface ProjectionPoint { year: number; date: string; p10: number; p25: number; p50: number; p75: number; p90: number; expected: number; contributed: number; }
+export interface Projection {
+  years: number; sims: number; current: number; monthly_sip: number; step_up_pct: number; sip_plans_total: number;
+  assumptions: { return_pct: number; volatility_pct: number; basis: string; inflation_pct: number;
+    own: { return_pct: number | null; volatility_pct: number | null } | null;
+    mix: { segment: string; weight_pct: number; return_pct: number; volatility_pct: number }[] };
+  path: ProjectionPoint[];
+  end: { p10: number; p50: number; p90: number; expected: number; contributed: number; real_p50: number; gain_p50: number; probability_of_loss: number };
+  scenarios: { bear: number; base: number; bull: number; no_more_investing: number };
+  milestones: { amount: number; label: string; probability: number; median_months: number; median_year: number }[];
+}
+export interface StressScenario { key: string; label: string; note: string; impact: number; impact_pct: number; after: number;
+  recovery_months: number | null; rows: { segment: string; value: number; shock_pct: number; impact: number }[]; }
+export interface StressTest { total: number; market_exposed_pct: number; scenarios: StressScenario[]; worst: string | null; note: string; }
+export interface RetirementInputs { current_age: number; retire_age: number; life_expectancy: number; monthly_expenses: number; inflation_pct: number;
+  post_return_pct: number; monthly_sip: number; step_up_pct: number; return_pct: number; other_income_monthly: number; volatility_pct: number; return_basis: string; }
+export interface RetirementPlan {
+  inputs: RetirementInputs; years_to_retire: number; retirement_years: number; current: number; monthly_expenses_at_retirement: number;
+  corpus_needed: number; projected: number; gap: number; required_sip: number; probability: number | null; status: 'on_track' | 'at_risk' | 'off_track';
+  fire: { number: number; progress_pct: number | null; years_to_fi: number | null; fi_age: number | null; coast_amount_now: number; coasting: boolean };
+  runs_out_at: number | null; path: { age: number; year: number; phase: 'saving' | 'retired'; corpus: number; expenses: number }[]; note: string;
+}
+export interface CashFlowMonth { month: string; dividends: number; interest: number; principal_back: number; epf_interest: number; sip_out: number;
+  contributions: number; inflow: number; outflow: number; net: number; }
+export interface CashFlowEvent { date: string; kind: 'fd_maturity' | 'p2p_close' | 'p2p_overdue'; name: string; amount: number; note: string; instrument_id: number | null; count?: number; }
+export interface CashFlow { months: CashFlowMonth[]; totals: Omit<CashFlowMonth, 'month'>; events: CashFlowEvent[]; notes: string[]; note: string; }
+export interface RiskHolding { id: number; name: string; symbol: string; segment: string; weight_pct: number; volatility_pct: number; beta: number | null;
+  risk_contribution_pct: number | null; value: number; }
+export interface PortfolioRisk {
+  total: number; exposed_pct: number; days?: number; since?: string | null; benchmark?: string;
+  var_95?: { day_pct: number; day: number; month_pct: number; month: number; parametric_day_pct: number; expected_shortfall_day_pct: number };
+  volatility_pct?: number; downside_deviation_pct?: number; beta?: number | null; correlation_index?: number | null; sharpe?: number | null;
+  sortino?: number | null; diversification_ratio?: number | null; holdings: RiskHolding[];
+  correlation: { labels: string[]; matrix: (number | null)[][]; highest: { pair: string[]; value: number } | null; lowest: { pair: string[]; value: number } | null };
+  notes: string[];
+}
+export interface ConeBand { p10: number; p50: number; p90: number; days?: number; }
+export interface Outlook {
+  available: boolean; reason?: string; as_of?: string; price?: number; benchmark?: string; currency?: string;
+  trend?: { key: 'up' | 'down' | 'mixed'; label: string; sma50: number | null; sma200: number | null; above_50: boolean; above_200: boolean };
+  momentum?: Record<'1M' | '3M' | '6M' | '1Y', number | null>; rsi?: number | null;
+  volatility?: { annual_pct: number | null; month_pct: number | null; regime: 'calm' | 'normal' | 'turbulent' | null };
+  range_52w?: { high: number; low: number; from_high_pct: number; max_drawdown_pct: number; position_pct: number };
+  cagr_3y_pct?: number | null; beta?: number | null; correlation?: number | null;
+  assumptions?: { drift_pct: number; volatility_pct: number }; cone?: Record<'3M' | '6M' | '1Y', ConeBand>;
+  holding?: { quantity: number; value: number; cone: Record<'3M' | '6M' | '1Y', ConeBand> }; notes?: string[]; disclaimer?: string;
+}
+export type RiskProfileKey = 'conservative' | 'balanced' | 'growth' | 'aggressive';
+export interface OptimizerProfile { key: RiskProfileKey; label: string; note: string; target_vol: number; target_vol_pct: number; return_pct: number; vol_pct: number;
+  weights: Record<string, number>; }
+export interface OptimizerRow { segment: string; locked: boolean; current_pct: number; suggested_pct: number; delta_pct: number; delta_amount: number;
+  action: 'hold' | 'add' | 'trim'; }
+export interface OptimizerResult {
+  total: number; profile: RiskProfileKey; profiles: OptimizerProfile[];
+  current: { return_pct: number; vol_pct: number; sharpe: number | null; weights: Record<string, number>; closest_profile: RiskProfileKey } | null;
+  suggested: { return_pct: number; vol_pct: number; sharpe: number | null } | null;
+  rows: OptimizerRow[]; turnover?: number; locked_pct?: number; frontier: { vol_pct: number; ret_pct: number }[]; caps?: Record<string, number>; note: string;
+}
+export type SipFrequency = 'monthly' | 'quarterly' | 'weekly' | 'yearly';
+export interface SipPlan { id: number; owner: string; instrument_id: number | null; instrument_name: string | null; asset_class: AssetClass | null;
+  name: string; segment: string | null; amount: number; frequency: SipFrequency; day_of_month: number; step_up_pct: number | null;
+  start_date: string | null; end_date: string | null; active: number; notes: string | null; created_at: string; updated_at: string; }

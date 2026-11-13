@@ -27,7 +27,7 @@ def _inr(v: float) -> str:
 
 def build_insights(portfolio: dict, tax: dict | None, goals: list[dict], settings: dict,
                    history_metrics: dict | None = None, benchmarks: list[dict] | None = None,
-                   today: date | None = None) -> list[dict]:
+                   today: date | None = None, sips: list[dict] | None = None, txns: list[dict] | None = None) -> list[dict]:
     today = today or date.today()
     out: list[dict] = []
 
@@ -193,6 +193,24 @@ def build_insights(portfolio: dict, tax: dict | None, goals: list[dict], setting
             if 40 <= gap <= 400:
                 add(f"sip:gap:{p['id']}", "info", "habit", f"No SIP in {p['name']} for {gap} days",
                     "If the SIP is still running, record the missing instalments.", None, f"/holding/{p['id']}")
+    # SIP plans: an instalment is "missed" when its day has passed by a few days and nothing was bought
+    month_start = today.replace(day=1).isoformat()
+    bought_inst = {t["instrument_id"] for t in (txns or []) if t["type"] == d.BUY and str(t["date"])[:10] >= month_start}
+    seg_of_inst = {p["id"]: p["segment"] for p in positions}
+    bought_seg = {seg_of_inst.get(i) for i in bought_inst}
+    for s in sips or []:
+        if not s.get("active", 1) or (s.get("frequency") or "monthly") != "monthly":
+            continue
+        if s.get("end_date") and s["end_date"] < today.isoformat():
+            continue
+        due = int(s.get("day_of_month") or 1)
+        if today.day < due + 4:
+            continue
+        done = (s["instrument_id"] in bought_inst) if s.get("instrument_id") else (s.get("segment") in bought_seg)
+        if not done:
+            add(f"sip:missed:{s['id']}", "warning", "habit", f"SIP of {_inr(float(s['amount']))} in {s['name']} looks missed",
+                f"It was due on the {due}{'st' if due == 1 else 'nd' if due == 2 else 'rd' if due == 3 else 'th'} and no purchase is recorded this month.",
+                "Record the instalment if it went through, or pause the plan.", "/forecast?tab=sips", float(s["amount"]))
     last_review = settings.get("lastReviewDate")
     days_since = (today - to_date(last_review)).days if last_review else None
     if days_since is None or days_since > 90:

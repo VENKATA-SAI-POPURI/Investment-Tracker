@@ -474,10 +474,28 @@ def m003_markets(db: Database) -> list:
     return [(sql, None) for sql in MARKETS_SCHEMA]
 
 
+PLANNING_SCHEMA = [
+    # Recurring investment plans (SIPs): what you intend to invest, so forecasts and the cash-flow
+    # calendar know about money that has not been recorded yet, and missed instalments can be flagged
+    """CREATE TABLE IF NOT EXISTS sip_plans (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, owner TEXT NOT NULL,
+        instrument_id INTEGER REFERENCES instruments(id) ON DELETE SET NULL,
+        name TEXT NOT NULL, segment TEXT, amount REAL NOT NULL, frequency TEXT NOT NULL DEFAULT 'monthly',
+        day_of_month INTEGER NOT NULL DEFAULT 1, step_up_pct REAL, start_date TEXT, end_date TEXT,
+        active INTEGER NOT NULL DEFAULT 1, notes TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)""",
+    "CREATE INDEX IF NOT EXISTS idx_sip_owner ON sip_plans(owner, active)",
+]
+
+
+def m004_planning(db: Database) -> list:
+    return [(sql, None) for sql in PLANNING_SCHEMA]
+
+
 MIGRATIONS = [
     (1, "core_schema", m001_core_schema),
     (2, "legacy_import", m002_legacy_import),
     (3, "markets", m003_markets),
+    (4, "planning", m004_planning),
 ]
 
 

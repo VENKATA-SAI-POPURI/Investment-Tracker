@@ -149,6 +149,7 @@
   <a routerLink="/holdings/equity" [class.on]="active(nav[1])"><app-icon name="layers" /><span>Holdings</span></a>
   @if (auth.canWrite()) { <button class="fab" (click)="dialog.add()" aria-label="Add transaction"><app-icon name="plus" [size]="22" /></button> }
   <a routerLink="/markets" [class.on]="active(nav[2])"><app-icon name="zap" /><span>Markets</span></a>
+  <a routerLink="/forecast" [class.on]="active(nav[3])"><app-icon name="rocket" /><span>Forecast</span></a>
   <button (click)="drawer.set(true)"><app-icon name="menu" /><span>More</span></button>
 </nav>
 

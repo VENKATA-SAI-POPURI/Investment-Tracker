@@ -93,7 +93,7 @@ def create_app(db: Database | None = None) -> Flask:
         traceback.print_exc()
         return jsonify({"error": "Something went wrong on the server. Please try again."}), 500
 
-    from .api import analytics_api, auth_api, ledger_api, markets_api, reports_api
-    for bp in (auth_api.bp, ledger_api.bp, analytics_api.bp, reports_api.bp, markets_api.bp):
+    from .api import analytics_api, auth_api, forecast_api, ledger_api, markets_api, reports_api
+    for bp in (auth_api.bp, ledger_api.bp, analytics_api.bp, reports_api.bp, markets_api.bp, forecast_api.bp):
         app.register_blueprint(bp, url_prefix="/api")
     return app

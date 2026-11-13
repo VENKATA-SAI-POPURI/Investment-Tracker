@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from . import domain as d
 from . import prices as px
+from .analytics import forecast, optimizer, quant
 from .analytics import goals as goals_mod
 from .analytics.calendar import build_calendar
 from .analytics.health import health_score
@@ -145,8 +146,94 @@ class Services:
                 perf = self.performance(scope, "ALL")
             except Exception as e:  # noqa: BLE001 — market data outage must not hide other insights
                 print(f"[insights] performance unavailable: {e}")
-        items = build_insights(port, tax, goals, settings, (perf or {}).get("metrics"), (perf or {}).get("benchmarks"))
+        items = build_insights(port, tax, goals, settings, (perf or {}).get("metrics"), (perf or {}).get("benchmarks"),
+                               sips=self.ledger.sips(scope), txns=data["transactions"])
         return {"insights": items, "portfolio": port, "tax": tax, "goals": goals, "performance": perf}
+
+    # ── forecasting, risk and planning ──
+    @staticmethod
+    def monthly_sip_total(sips: list[dict]) -> float:
+        per_month = {"monthly": 1, "quarterly": 1 / 3, "weekly": 52 / 12, "yearly": 1 / 12}
+        today = date.today().isoformat()
+        return round(sum(float(s["amount"] or 0) * per_month.get((s.get("frequency") or "monthly").lower(), 1)
+                         for s in sips if s.get("active", 1) and not (s.get("end_date") and s["end_date"] < today)), 2)
+
+    def _perf_metrics(self, scope: str | None) -> dict | None:
+        try:
+            return self.performance(scope, "ALL").get("metrics")
+        except Exception as e:  # noqa: BLE001 — market data outage must not block a projection
+            print(f"[forecast] performance unavailable: {e}")
+            return None
+
+    def forecast(self, scope: str | None, settings: dict, years: int, sip: float | None, step_up: float, sims: int,
+                 return_pct: float | None) -> dict:
+        sips = self.ledger.sips(scope)
+        sip_amt = self.monthly_sip_total(sips) if sip is None else sip
+        key = (years, sip_amt, step_up, sims, return_pct)
+        return self._memo("forecast", scope, key, fn=lambda: forecast.project_portfolio(
+            self.portfolio(scope, settings)[0], self._perf_metrics(scope), years, sip_amt, step_up, sims, return_override=return_pct)
+            | {"sip_plans_total": self.monthly_sip_total(sips)})
+
+    def stress(self, scope: str | None, settings: dict) -> dict:
+        return self._memo("stress", scope, fn=lambda: forecast.stress_test(
+            self.portfolio(scope, settings)[0], self.monthly_sip_total(self.ledger.sips(scope))))
+
+    def retirement(self, scope: str | None, settings: dict, params: dict) -> dict:
+        saved = dict(settings.get("retirementPlan") or {})
+        merged = {**saved, **{k: v for k, v in params.items() if v not in (None, "")}}
+        if merged.get("monthly_sip") in (None, ""):
+            merged["monthly_sip"] = self.monthly_sip_total(self.ledger.sips(scope))
+        return self._memo("retirement", scope, merged, fn=lambda: forecast.retirement_plan(
+            self.portfolio(scope, settings)[0], self._perf_metrics(scope), merged))
+
+    def cashflow(self, scope: str | None, settings: dict, months: int = 12) -> dict:
+        def build():
+            port, data = self.portfolio(scope, settings)
+            return forecast.cash_flow_forecast(port["positions"], data["instruments"], data["transactions"], self.ledger.sips(scope), months)
+        return self._memo("cashflow", scope, months, date.today(), fn=build)
+
+    def risk(self, scope: str | None, settings: dict) -> dict:
+        def build():
+            port, _ = self.portfolio(scope, settings)
+            priced = [p for p in port["positions"] if p.get("is_open") and p["asset_class"] in d.TRADABLE and p.get("symbol")]
+            symbols = sorted({p["symbol"] for p in priced})
+            bench = px.BENCHMARKS["NIFTY50"]["symbol"]
+            start = date.today() - timedelta(days=400)
+            hist = px.ensure_history(self.ledger.db, symbols + [bench, px.USDINR], start) if symbols else {}
+            res = quant.portfolio_risk(port["positions"], hist, hist.get(bench), hist.get(px.USDINR))
+            res["benchmark"] = px.BENCHMARKS["NIFTY50"]["label"]
+            return res
+        return self._memo("risk", scope, date.today(), fn=build)
+
+    def outlook(self, scope: str | None, settings: dict, iid: int) -> dict:
+        inst = self.ledger.instrument(iid, scope)
+        if not inst.get("symbol") or inst["asset_class"] not in d.TRADABLE:
+            return {"available": False, "reason": "Only market-priced holdings with a ticker have an outlook."}
+
+        def build():
+            port, _ = self.portfolio(scope, settings)
+            pos = next((p for p in port["positions"] if p["id"] == iid), None)
+            seg = d.segment_of(inst)
+            bench_key = "SP500" if seg == d.SEG_EQ_US else "GOLD" if seg == d.SEG_COMMODITY else "NIFTY50"
+            bench = px.BENCHMARKS[bench_key]
+            start = date.today() - timedelta(days=int(3.2 * 365))
+            hist = px.ensure_history(self.ledger.db, [inst["symbol"], bench["symbol"]], start)
+            out = quant.holding_outlook(hist.get(inst["symbol"], []), hist.get(bench["symbol"]), seg)
+            if not out:
+                return {"available": False, "reason": "Not enough price history yet (needs about six weeks)."}
+            out["available"] = True
+            out["benchmark"] = bench["label"]
+            out["currency"] = inst.get("currency") or "INR"
+            if pos and pos.get("is_open") and pos.get("quantity"):
+                fx = (self.usd_inr() or 0) if inst.get("currency") == "USD" else 1.0
+                qty = float(pos["quantity"])
+                out["holding"] = {"quantity": qty, "value": pos["value"],
+                                  "cone": {k: {q: round(v[q] * qty * fx, 2) for q in ("p10", "p50", "p90")} for k, v in out["cone"].items()}}
+            return out
+        return self._memo("outlook", scope, iid, date.today(), fn=build)
+
+    def optimizer(self, scope: str | None, settings: dict, profile: str) -> dict:
+        return self._memo("optimizer", scope, profile, fn=lambda: optimizer.suggest(self.portfolio(scope, settings)[0], profile))
 
     def rebalance(self, scope: str | None, settings: dict, new_money: float, allow_sell: bool) -> dict:
         port, _ = self.portfolio(scope, settings)

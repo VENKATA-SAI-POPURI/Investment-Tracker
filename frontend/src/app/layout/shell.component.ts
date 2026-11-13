@@ -19,6 +19,7 @@ export const NAV: NavItem[] = [
   { path: '/', label: 'Dashboard', icon: 'home', match: ['/insights'] },
   { path: '/holdings/equity', label: 'Holdings', icon: 'layers', match: ['/holdings', '/holding/', '/p2p', '/fixed-deposits', '/forex', '/epf', '/nps'] },
   { path: '/markets', label: 'Markets', icon: 'zap', match: ['/markets', '/analytics'] },
+  { path: '/forecast', label: 'Forecast', icon: 'rocket', match: ['/forecast'] },
   { path: '/reports', label: 'Reports', icon: 'file', match: ['/reports'] },
 ];
 

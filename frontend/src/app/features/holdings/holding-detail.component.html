@@ -122,6 +122,7 @@
 
       @if (!hasChart()) { <ng-container *ngTemplateOutlet="txnCard; context: { wide: false }" /> }
     </section>
+    @if (tradable() && p.symbol && p.is_open) { <app-outlook-card [id]="p.id" /> }
     @if (hasChart()) { <ng-container *ngTemplateOutlet="txnCard; context: { wide: true }" /> }
 
     <ng-template #txnCard let-wide="wide">

@@ -5,6 +5,7 @@ import { environment } from '../../environments/environment';
 import {
   AllowlistUser, CashMovement, Goal, Income, Insight, Instrument, Benchmark, PerfMetrics, Performance, Portfolio,
   PriceHistory, Pulse, RebalancePlan, Settings, SymbolHit, TaxReport, Transaction, Member, Notice, Report, ReportMeta, CasPreview, LendenPreview, KitePreview, EpfPreview, MarketOverview, WatchItem, Ipo, MarketAlert, PushConfig,
+  Projection, StressTest, RetirementPlan, CashFlow, PortfolioRisk, Outlook, OptimizerResult, SipPlan,
 } from './models';
 
 type Params = Record<string, string | number | boolean | null | undefined>;
@@ -100,6 +101,19 @@ export class ApiService {
 
   refreshPrices(force = false) { return this.post<{ refreshed: boolean; last_refresh: string; failed?: string[]; updated?: number }>('/prices/refresh', { force }); }
   searchSymbols(q: string, assetClass?: string) { return this.get<SymbolHit[]>('/symbols/search', { q, asset_class: assetClass }); }
+
+  // forecasting & planning
+  forecast(p: { years: number; sip?: number | null; step?: number; sims?: number; return?: number | null }) { return this.get<Projection>('/forecast', p); }
+  stress() { return this.get<StressTest>('/forecast/stress'); }
+  retirement(p?: Params) { return this.get<RetirementPlan>('/forecast/retirement', p); }
+  cashflow(months = 12) { return this.get<CashFlow>('/forecast/cashflow', { months }); }
+  risk() { return this.get<PortfolioRisk>('/risk'); }
+  outlook(id: number) { return this.get<Outlook>(`/instruments/${id}/outlook`); }
+  optimizer(profile?: string | null) { return this.get<OptimizerResult>('/optimizer', { profile }); }
+  sips() { return this.get<{ plans: SipPlan[]; monthly_total: number }>('/sips'); }
+  addSip(body: unknown) { return this.post<SipPlan>('/sips', body); }
+  updateSip(id: number, body: unknown) { return this.put<SipPlan>(`/sips/${id}`, body); }
+  deleteSip(id: number) { return this.delete<{ message: string }>(`/sips/${id}`); }
 
   // goals & settings
   goals() { return this.get<Goal[]>('/goals'); }

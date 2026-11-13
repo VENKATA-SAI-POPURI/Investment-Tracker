@@ -23,6 +23,7 @@ export const routes: Routes = [
       { path: 'cash-flows', data: { title: 'Cash flows' }, loadComponent: () => import('./features/cash-flows/cash-flows.component').then(m => m.CashFlowsComponent) },
       { path: 'markets', data: { title: 'Markets' }, loadComponent: () => import('./features/markets/markets.component').then(m => m.MarketsComponent) },
       { path: 'analytics', redirectTo: 'markets' },
+      { path: 'forecast', data: { title: 'Forecast' }, loadComponent: () => import('./features/forecast/forecast.component').then(m => m.ForecastComponent) },
       { path: 'tax', data: { title: 'Tax' }, loadComponent: () => import('./features/tax/tax.component').then(m => m.TaxComponent) },
       { path: 'goals', data: { title: 'Goals' }, loadComponent: () => import('./features/goals/goals.component').then(m => m.GoalsComponent) },
       { path: 'insights', data: { title: 'Insights' }, loadComponent: () => import('./features/insights/insights.component').then(m => m.InsightsComponent) },

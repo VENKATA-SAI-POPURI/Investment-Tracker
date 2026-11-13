@@ -10,7 +10,8 @@ from ..security import write_required
 bp = Blueprint("analytics", __name__)
 
 SETTING_KEYS = {"targetAllocation", "taxSlabRate", "lastReviewDate", "reviewSnapshot", "dismissedInsights",
-                "autoCapitalFlows", "baseCurrencyDisplay", "dashboardLayout", "riskProfile", "marketAlerts"}
+                "autoCapitalFlows", "baseCurrencyDisplay", "dashboardLayout", "riskProfile", "marketAlerts", "retirementPlan"}
+RISK_PROFILES = ("conservative", "balanced", "growth", "aggressive")
 
 
 def L():
@@ -167,6 +168,25 @@ def put_setting(key):
         v = float(value)
         if not 0 <= v <= 45:
             raise ValidationError("Slab rate must be between 0 and 45%")
+    if key == "riskProfile":
+        value = str(value or "balanced").lower()
+        if value not in RISK_PROFILES:
+            raise ValidationError("riskProfile must be one of " + ", ".join(RISK_PROFILES))
+    if key == "retirementPlan":
+        if not isinstance(value, dict):
+            raise ValidationError("retirementPlan must be an object")
+        clean = {}
+        for k in ("current_age", "retire_age", "life_expectancy", "monthly_expenses", "inflation_pct", "post_return_pct",
+                  "monthly_sip", "step_up_pct", "return_pct", "other_income_monthly"):
+            if value.get(k) not in (None, ""):
+                try:
+                    clean[k] = float(value[k])
+                except (TypeError, ValueError):
+                    raise ValidationError(f"{k} must be a number")
+        for k in ("current_age", "retire_age", "life_expectancy"):
+            if k in clean and not 15 <= clean[k] <= 110:
+                raise ValidationError(f"{k} must be between 15 and 110")
+        value = clean
     L().set_setting(g.email, g.role, key, value)
     return jsonify({"key": key, "value": value})
 

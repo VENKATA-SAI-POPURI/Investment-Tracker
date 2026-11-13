@@ -14,11 +14,12 @@ import { IconComponent } from '../../shared/icon.component';
 import { LineChartComponent, LineSeries } from '../../shared/charts/line-chart.component';
 import { InstrumentEditComponent, TAX_CLASSES } from '../../shared/instrument-edit.component';
 import { ConfirmService } from '../../shared/ui';
+import { OutlookCardComponent } from './outlook-card.component';
 
 @Component({
   selector: 'app-holding-detail',
   standalone: true,
-  imports: [RouterLink, NgTemplateOutlet, IconComponent, InstrumentEditComponent, LineChartComponent, ...FORMAT_PIPES],
+  imports: [RouterLink, NgTemplateOutlet, IconComponent, InstrumentEditComponent, LineChartComponent, OutlookCardComponent, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './holding-detail.component.html',
   styles: [`
