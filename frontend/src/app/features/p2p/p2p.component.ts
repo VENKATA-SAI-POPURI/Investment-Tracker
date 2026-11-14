@@ -1,32 +1,118 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { TitleCasePipe } from '@angular/common';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
+import { ActionService } from '../../core/action.service';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
-import { FORMAT_PIPES, fileToBase64 } from '../../core/format';
+import { FORMAT_PIPES, fileToBase64, inr } from '../../core/format';
 import { errorMessage } from '../../core/http';
-import { LendenFile, LendenPreview, Position } from '../../core/models';
+import { Action, LendenFile, LendenPreview, Position, Status } from '../../core/models';
 import { StoreService } from '../../core/store.service';
 import { ToastService } from '../../core/toast.service';
 import { TxnDialogService } from '../../core/txn-dialog.service';
 import { IconComponent } from '../../shared/icon.component';
-import { SectionTabsComponent } from '../../shared/section-tabs.component';
+import { PortfolioTabsComponent } from '../../shared/portfolio-tabs.component';
+import { NeedsAttentionComponent } from '../../shared/priority/needs-attention.component';
+import { STATUS_META } from '../../shared/priority/priority';
 import { ModalComponent, SortState } from '../../shared/ui';
 
-type Tab = 'active' | 'overdue' | 'closed' | 'defaulted' | 'all';
+export type P2pTab = 'active' | 'overdue' | 'closed' | 'defaulted' | 'all';
+type Tab = P2pTab;
+/** The loan-table tabs, in order; `?tab=` takes one of these (anything else reads as active). */
+export const P2P_TABS: readonly P2pTab[] = ['active', 'overdue', 'closed', 'defaulted', 'all'];
 type ImportTab = 'repayments' | 'new' | 'status' | 'details' | 'check';
+
+/** The brief's Money-at-risk thresholds (`brief.P2P_OVERDUE_DAYS`, `brief.MONEY_AT_RISK_ACT_PCT`). */
+export const P2P_LATE_DAYS = 30;
+export const MONEY_AT_RISK_ACT_PCT = 1;
+
+export interface P2pRisk {
+  status: Status;
+  /** Σ `at_risk`: the outstanding principal of defaulted loans. */
+  atRisk: number;
+  /** Open loans more than 30 days past due that have not defaulted, and their outstanding principal. */
+  late: number;
+  lateAmount: number;
+  /** (atRisk + lateAmount) as % of the portfolio's value; null when nothing is at risk. */
+  pct: number | null;
+  text: string;
+}
+
+/**
+ * The P2P hero's verdict, mirroring the brief's Money-at-risk vital for this class (H19):
+ * defaulted principal plus the outstanding principal of open loans over 30 days late is `act` at ≥ 1% of the
+ * portfolio's value (or when there is no value to compare with), `watch` when above 0, else `good`.
+ */
+export function p2pRisk(loans: Position[], portfolioValue: number | null | undefined): P2pRisk {
+  let atRisk = 0, late = 0, lateAmount = 0;
+  for (const p of loans) {
+    const r = p.at_risk ?? 0;
+    if (r > 0) atRisk += r;
+    else if (p.is_open && (p.overdue_days ?? 0) > P2P_LATE_DAYS) { late++; lateAmount += p.outstanding ?? 0; }
+  }
+  const total = atRisk + lateAmount;
+  if (total <= 0) {
+    return { status: 'good', atRisk: 0, late: 0, lateAmount: 0, pct: null, text: `Nothing at risk · no loan over ${P2P_LATE_DAYS} days late` };
+  }
+  const value = portfolioValue ?? 0;
+  const pct = value > 0 ? total / value * 100 : 100;
+  return {
+    status: pct >= MONEY_AT_RISK_ACT_PCT ? 'act' : 'watch', atRisk, late, lateAmount, pct,
+    text: `At risk ${inr(atRisk)} · ${late} overdue ${P2P_LATE_DAYS}+ days`,
+  };
+}
+
+/** Outstanding-weighted average stated `rate` of open (active) loans; null when no open loan has a rate. */
+export function weightedRate(loans: Position[]): number | null {
+  let w = 0, sum = 0;
+  for (const p of loans) {
+    const o = p.outstanding ?? 0;
+    if (p.status === 'active' && p.rate && o > 0) { w += o; sum += p.rate * o; }
+  }
+  return w > 0 ? sum / w : null;
+}
+
 interface Group { key: string; label: string; sub: string; latest: string; count: number; lent: number; back: number; interest: number;
   outstanding: number; defaulted: number; closed: number; }
 
+/**
+ * P2P lending class page (§5.7, H19). T0: Outstanding with the at-risk verdict, then Interest after fees,
+ * Realised XIRR vs the stated rate and Principal back. T1: the P2P / principal-back action strip.
+ * T2: where the lent money stands (stack bar, lending-type cards). T3: the loans table (tabs on `?tab=`),
+ * cohorts and the LenDen import (`?import=lenden`, writers only).
+ * Reads the store's portfolio and the cached `/actions` only; no extra calls.
+ */
 @Component({
   selector: 'app-p2p',
   standalone: true,
-  imports: [FormsModule, TitleCasePipe, IconComponent, SectionTabsComponent, ModalComponent, ...FORMAT_PIPES],
+  imports: [FormsModule, TitleCasePipe, IconComponent, PortfolioTabsComponent, NeedsAttentionComponent, ModalComponent, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './p2p.component.html',
   styles: [`
+    .hero-skel { height: 150px; border-radius: 14px; }
+
+    /* T0: hero + three tiles; phones keep the hero and two tiles, Principal back sits behind "More" (§1.5, W3-F1) */
+    .h-kpis { grid-template-columns: minmax(0, 1.5fr) repeat(3, minmax(0, 1fr)); }
+    .h-kpis .verdict-line { margin-top: 10px; font-size: 14px; align-items: flex-start; }
+    .h-kpis .verdict-line app-icon { flex: none; margin-top: 2px; }
+    .h-kpis .meta.gap { display: block; margin-top: 2px; }
+    .more-stats { display: none; align-self: flex-start; margin-top: 8px; padding: 2px 10px; border-radius: 999px; cursor: pointer;
+      border: 1px solid rgba(255, 255, 255, .25); background: transparent; color: #fff; font-size: 12px; }
+    @media (max-width: 900px) {
+      .h-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .h-kpis .kpi.extra { grid-column: span 2; border-left: 0; border-top: 1px solid rgba(255, 255, 255, .09); }
+    }
+    @media (max-width: 760px) {
+      .more-stats { display: inline-flex; }
+      .h-kpis .kpi.extra:not(.show) { display: none; }
+    }
+    .explains { display: block; }
+    .loan-tools .search { max-width: 220px; height: 32px; }
+    @media (max-width: 760px) { .loan-tools, .loan-tools .search { flex: 1 1 100%; max-width: none; } }
+
     .drop { position: relative; display: flex; align-items: center; gap: 12px; min-height: 72px; padding: 12px 16px; border-radius: 10px;
       border: 1.5px dashed var(--border-strong); background: var(--surface-2); color: var(--text-2); cursor: pointer; font-size: 13.5px; }
     .drop:hover { border-color: var(--primary); color: var(--text); }
@@ -60,11 +146,31 @@ export class P2pComponent {
   store = inject(StoreService);
   auth = inject(AuthService);
   dialog = inject(TxnDialogService);
+  private actions = inject(ActionService);
   private api = inject(ApiService);
   private toast = inject(ToastService);
   private router = inject(Router);
+  private route = inject(ActivatedRoute);
 
-  tab = signal<Tab>('active');
+  readonly statusMeta = STATUS_META;
+  readonly tabs = P2P_TABS;
+  /** T1 strip (H19). `p2p:yield` is info severity, which ranks `consider`, so that tier is passed too. */
+  readonly attentionPrefixes = ['/p2p', '/cash-flows'];
+  readonly attentionIds = ['p2p:', 'cash:p2p-principal:'];
+  readonly attentionTiers: Action['tier'][] = ['now', 'month', 'consider'];
+
+  private query = toSignal(this.route.queryParamMap, { initialValue: this.route.snapshot.queryParamMap });
+  /** The loans-table tab follows `?tab=` (H19), so `/p2p?tab=defaulted|overdue` from an action lands on it. */
+  tab = computed<Tab>(() => {
+    const t = this.query().get('tab') ?? '';
+    return (P2P_TABS as readonly string[]).includes(t) ? t as Tab : 'active';
+  });
+  moreStats = signal(false);
+
+  port = computed(() => this.store.portfolio());
+  loading = computed(() => !this.port() && !this.store.error());
+  failed = computed(() => !this.port() && !!this.store.error());
+
   q = signal('');
   type = signal<string>('all');
   groupBy = signal<'month' | 'order'>('month');
@@ -108,6 +214,27 @@ export class P2pComponent {
       { key: 'risk', label: 'At risk', value: s.atRisk, pct: s.atRisk / total * 100, color: 'var(--neg)' },
     ];
   });
+  /** T0 verdict: defaulted plus over-30-days-late money, as the brief's Money-at-risk vital (H19). */
+  risk = computed(() => p2pRisk(this.loans(), this.port()?.totals.value));
+  /** What realised XIRR is compared with; the plain average across all loans when no open loan has a rate. */
+  statedRate = computed(() => {
+    const w = weightedRate(this.loans());
+    if (w !== null) return { rate: w, basis: 'average stated rate of open loans, weighted by what is still lent' };
+    const a = this.stats().avgRate;
+    return a !== null ? { rate: a, basis: 'average stated rate across all loans' } : null;
+  });
+  /** Realised XIRR more than a point under the stated rate: defaults and platform fees explain the gap. */
+  rateGap = computed(() => {
+    const x = this.seg()?.xirr, r = this.statedRate()?.rate;
+    return x !== null && x !== undefined && r !== undefined && r - x > 1;
+  });
+  principalBack = computed(() => this.loans().reduce((a, p) => a + (p.principal_repaid ?? 0), 0));
+  /** `impact.amount` of the visible `cash:p2p-principal:*` action: principal back in 30 days with no plan yet. */
+  idlePrincipal = computed(() => {
+    const a = this.actions.actions().find(x => x.id.startsWith('cash:p2p-principal:'));
+    return a?.impact?.amount ? a.impact.amount : null;
+  });
+
   byType = computed(() => this.types().length > 1 ? this.group(p => p.category ?? '', k => `${k} lending`) : []);
   counts = computed(() => ({
     active: this.loans().filter(p => p.status === 'active').length,
@@ -144,14 +271,28 @@ export class P2pComponent {
     return [...m.values()].sort((a, b) => b.latest.localeCompare(a.latest) || b.key.localeCompare(a.key));
   }
 
-  // Tools → Import links here with ?import=lenden
+  // Tools → Import (behind writeGuard) links here with ?import=lenden; a guest opening that URL gets the page only
   private importParam = (() => {
-    const k = inject(ActivatedRoute).snapshot.queryParamMap.get('import');
-    if (k) queueMicrotask(() => this.startImport());
+    const k = this.route.snapshot.queryParamMap.get('import');
+    if (k && this.auth.canWrite()) queueMicrotask(() => this.startImport());
     return k;
   })();
 
   open(p: Position) { this.router.navigate(['/holding', p.id]); }
+
+  /** A tab click writes `?tab=` in place (replaceUrl), so Back leaves the page instead of stepping through tabs. */
+  setTab(t: Tab) {
+    if (t === this.tab()) return;
+    void this.router.navigate([], { relativeTo: this.route, queryParams: { tab: t }, queryParamsHandling: 'merge', replaceUrl: true });
+  }
+
+  /** Closes the import dialog and drops `?import=` from the URL, so a reload does not reopen it. */
+  closeImport() {
+    this.importing.set(false);
+    if (this.route.snapshot.queryParamMap.has('import')) {
+      void this.router.navigate([], { relativeTo: this.route, queryParams: { import: null }, queryParamsHandling: 'merge', replaceUrl: true });
+    }
+  }
 
   startImport() {
     this.importing.set(true);
@@ -223,7 +364,7 @@ export class P2pComponent {
         res.status_updated && `${res.status_updated} status(es) updated`, res.details_filled && `details filled for ${res.details_filled}`].filter(Boolean);
       this.toast.ok(done.length ? done.join(' · ') : 'Nothing to import');
       if (res.errors.length) this.toast.error(`${res.errors.length} row(s) skipped: ${res.errors[0].loan_id} ${res.errors[0].error}`);
-      this.importing.set(false);
+      this.closeImport();
       await this.store.changed();
     } catch (e) {
       this.importError.set(errorMessage(e));

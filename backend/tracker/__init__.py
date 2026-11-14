@@ -19,8 +19,8 @@ DEFAULT_ORIGINS = [
     "http://127.0.0.1:4200",
     "https://my-investment-tracker.netlify.app",
 ]
-# The market-scan job authenticates with its own token (X-Job-Token), not a user session
-PUBLIC_PATHS = {"/api/ping", "/api/auth/google-login", "/api/jobs/market-scan"}
+# The scheduled jobs (market scan, daily digest) authenticate with their own token (X-Job-Token), not a user session
+PUBLIC_PATHS = {"/api/ping", "/api/auth/google-login", "/api/jobs/market-scan", "/api/jobs/daily-digest"}
 
 
 def create_app(db: Database | None = None) -> Flask:

@@ -1,28 +1,48 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Subject, debounceTime, distinctUntilChanged, firstValueFrom, switchMap, of, catchError } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
-import { FORMAT_PIPES, relTime } from '../../core/format';
+import { FORMAT_PIPES, relTime, today } from '../../core/format';
 import { errorMessage } from '../../core/http';
 import { MarketAlert, MarketIdea, MarketOverview, SignalKey, SymbolHit, WatchItem } from '../../core/models';
 import { readSnapshot, snapshotKey, writeSnapshot } from '../../core/snapshot';
 import { StoreService } from '../../core/store.service';
 import { ToastService } from '../../core/toast.service';
 import { IconComponent } from '../../shared/icon.component';
+import { NeedsAttentionComponent } from '../../shared/priority/needs-attention.component';
 import { ConfirmService, ModalComponent } from '../../shared/ui';
-import { PerformanceComponent } from '../analytics/analytics.component';
 import { IposComponent } from './ipos.component';
-import { ChgComponent, RangeBarComponent, SignalChipsComponent, SparkComponent } from './market-parts';
+import { StatusBadgeComponent } from '../../shared/priority/status-badge.component';
+import { ChgComponent, RangeBarComponent, SIGNAL_TONE, SignalChipsComponent, SparkComponent, marketBannerMode, marketBannerSource, marketBannerText } from './market-parts';
 
-type Tab = 'performance' | 'today' | 'ideas' | 'watchlist';
-const TABS: { key: Tab; label: string; icon: string }[] = [
-  { key: 'performance', label: 'Your performance', icon: 'chart' },
-  { key: 'today', label: 'Today', icon: 'zap' }, { key: 'ideas', label: 'Ideas', icon: 'bulb' },
+export type MarketTab = 'today' | 'ideas' | 'watchlist';
+const TABS: { key: MarketTab; label: string; icon: string }[] = [
+  { key: 'today', label: 'Today', icon: 'zap' },
+  { key: 'ideas', label: 'Ideas', icon: 'bulb' },
   { key: 'watchlist', label: 'Watchlist & IPOs', icon: 'star' },
 ];
+/** `?tab=` values this page understands. IPOs live on the watchlist tab; older links and IPO reminders still say `ipos`. */
+const TAB_ALIASES: Record<string, MarketTab> = { today: 'today', ideas: 'ideas', watchlist: 'watchlist', ipos: 'watchlist' };
+
+/**
+ * The tab a `?tab=` value opens. No value, an unknown value or the retired `performance` tab open Today
+ * (the route itself sends `?tab=performance` to /performance; this only covers state reached directly).
+ */
+export function marketTab(v: string | null | undefined): MarketTab {
+  return (v && Object.prototype.hasOwnProperty.call(TAB_ALIASES, v) ? TAB_ALIASES[v] : null) ?? 'today';
+}
+
+/** Local calendar date (YYYY-MM-DD) of a UTC ISO timestamp, so "today" means the viewer's day, not UTC's. */
+function localDay(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso.slice(0, 10);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
 const LENSES: { title: string; hint: string; lists: { key: SignalKey; label: string; hint: string }[] }[] = [
   { title: 'Momentum', hint: 'Follows the trend: what keeps rising, what keeps falling',
     lists: [{ key: 'momentum_buy', label: 'Rising strongly', hint: 'Up over the month and still up this week — consider buying' },
@@ -32,25 +52,95 @@ const LENSES: { title: string; hint: string; lists: { key: SignalKey; label: str
             { key: 'profit_book', label: 'Cooling after a run', hint: 'Up sharply over the month, slipping this week — consider booking profit' }] },
 ];
 
+/**
+ * Markets (Part 1 §5.12): market context, not a verdict on your plan.
+ * Head → [crash/correction banner, P1.12, only when `market_state.mode` is correction or crash] → T0 (Nifty 50 hero + breadth, your stocks today, alerts today; the same on every tab) →
+ * T1 "Needs attention here" (`market:` actions) → tabs Today | Ideas | Watchlist & IPOs, synced to `?tab=`.
+ * Your returns against the index live on /performance (head chip).
+ */
 @Component({
   selector: 'app-markets',
   standalone: true,
-  imports: [FormsModule, DecimalPipe, RouterLink, IconComponent, ModalComponent, IposComponent, PerformanceComponent, SparkComponent, RangeBarComponent,
-    SignalChipsComponent, ChgComponent, ...FORMAT_PIPES],
+  imports: [FormsModule, DecimalPipe, RouterLink, IconComponent, ModalComponent, IposComponent, NeedsAttentionComponent, SparkComponent,
+    RangeBarComponent, SignalChipsComponent, ChgComponent, StatusBadgeComponent, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page">
       <div class="page-head">
         <div><h1>Markets</h1>
-          <p class="sub">How your money is doing against the market, today's moves across the Nifty 200, and ideas
-            @if (data(); as d) { · prices updated {{ rel(d.as_of) }} }</p></div>
+          <p class="sub">Today's moves across the Nifty 200, ideas from price patterns, and your watchlist
+            @if (data(); as d) { · prices updated {{ rel(d.as_of) }} }
+            @if (stale()) { · <span class="warn-text">couldn't refresh, showing saved prices</span> }</p></div>
         <div class="row wrap">
+          <a class="btn ghost sm" routerLink="/performance">→ Your performance</a>
           <a class="btn ghost sm" routerLink="/settings" fragment="alerts"><app-icon name="bell" [size]="15" /> Alerts {{ data()?.alerts_config?.enabled === false ? 'off' : 'on' }}</a>
           @if (auth.canWrite()) { <button class="btn sm" (click)="openWatch()"><app-icon name="star" [size]="15" /> Add to watchlist</button> }
         </div>
       </div>
 
-      <div class="tabs" role="tablist">
+      <!-- P1.12: the crash/correction banner sits above T0 (§5.12, K18). Context, never 'act' (§1.6); built from the loaded payload only. -->
+      @if (banner(); as bn) {
+        <section class="card verdict mkt-banner" id="market-state" data-status="watch" role="status" aria-labelledby="mkt-banner-h">
+          <header class="v-head">
+            <h2 id="mkt-banner-h">{{ bn.title }}</h2>
+            <app-status status="watch" />
+          </header>
+          <p class="v-sentence mb-line">{{ bn.text }}</p>
+          @if (bn.playbook.length) {
+            <button type="button" class="btn ghost sm mb-toggle" (click)="bookOpen.set(!bookOpen())" [attr.aria-expanded]="bookOpen()" aria-controls="mkt-playbook">
+              <app-icon [name]="bookOpen() ? 'chevronDown' : 'chevronRight'" [size]="13" /> {{ bookOpen() ? 'Hide the playbook' : 'The calm playbook · ' + bn.playbook.length + ' steps' }}</button>
+            <ul class="mb-book" id="mkt-playbook" [class.open]="bookOpen()" aria-label="The calm playbook">
+              @for (l of bn.playbook; track $index) { <li>{{ l }}</li> }
+            </ul>
+          }
+          <div class="mb-foot">
+            <small class="muted">{{ bn.source }}</small>
+            <a class="mb-link" routerLink="/performance">Your performance →</a>
+          </div>
+        </section>
+      }
+
+      <!-- T0: the same four numbers on every tab -->
+      @if (data(); as d) {
+        <section class="kpis" aria-label="Market today">
+          <div class="kpi hero">
+            <span class="label">{{ d.index.name || 'Nifty 50' }}</span>
+            <span class="value">{{ d.index.metrics ? (d.index.metrics.price | number: '1.0-0') : '—' }}</span>
+            @if (nifty(); as n) {
+              <span class="meta pills"><span class="pill">{{ n.m.d1 | pct }} today</span>
+                <span>{{ n.m.w1 | pct }} week</span><span>{{ n.m.m1 | pct }} month</span></span>
+              <span class="meta hero-verdict"><app-icon [name]="n.icon" [size]="13" /> {{ n.line }}</span>
+            } @else {
+              <span class="meta hero-verdict"><app-icon name="info" [size]="13" /> The index price isn't available right now.</span>
+            }
+            <button type="button" class="more-btn" (click)="moreStats.set(!moreStats())" [attr.aria-expanded]="moreStats()">
+              {{ moreStats() ? 'Less' : 'More' }} <app-icon [name]="moreStats() ? 'chevronDown' : 'chevronRight'" [size]="12" /></button>
+          </div>
+          <div class="kpi"><span class="chip green sm"><app-icon name="trend" [size]="15" /></span><span class="label">Market breadth</span>
+            @if (d.breadth.total) {
+              <span class="value"><span class="pos">{{ d.breadth.up }}</span> <small>up</small> <span class="neg">{{ d.breadth.down }}</span> <small>down</small></span>
+              <span class="meta">of {{ d.breadth.total }} stocks today</span>
+            } @else { <span class="value">—</span><span class="meta">No prices for today yet</span> }</div>
+          <div class="kpi"><span class="chip violet sm"><app-icon name="wallet" [size]="15" /></span><span class="label">Your stocks today</span>
+            <span class="value" [class]="mine().d1 | sign">{{ mine().d1 | pct: 2 }}</span>
+            <span class="meta">@if (mine().count) { {{ mine().count }} stock{{ mine().count === 1 ? '' : 's' }} & ETFs, by value · {{ mine().w1 | pct }} this week }
+              @else if (d.holdings.length) { No live prices for your stocks yet }
+              @else { No Indian stocks or ETFs held }</span></div>
+          <div class="kpi extra" [class.show]="moreStats()"><span class="chip amber sm"><app-icon name="bell" [size]="15" /></span><span class="label">Alerts today</span>
+            <span class="value">{{ todayAlerts() }}</span>
+            <span class="meta">@if (d.alerts_config.enabled === false) { Alerts are off }
+              @else { Moves of {{ d.alerts_config.day }}%+ in a day, {{ d.alerts_config.week }}%+ in a week }</span></div>
+        </section>
+      } @else if (error()) {
+        <div class="notice bad" role="alert"><app-icon name="alert" [size]="16" /> <div>Market prices couldn't load: {{ error() }} <button class="btn sm" (click)="load()">Retry</button></div></div>
+      } @else {
+        <div class="skeleton" style="height:128px;border-radius:14px" aria-label="Loading market prices"></div>
+      }
+
+      <!-- T1: market actions (none exist before P2, so this renders nothing for now) -->
+      <app-needs-attention [prefixes]="['/markets']" [ids]="['market:']" />
+
+      <div class="tabs" role="tablist" aria-label="Markets sections">
         @for (t of tabs; track t.key) {
           <button role="tab" [class.on]="tab() === t.key" [attr.aria-selected]="tab() === t.key" (click)="setTab(t.key)">
             <app-icon [name]="t.icon" [size]="14" /> {{ t.label }}
@@ -59,35 +149,9 @@ const LENSES: { title: string; hint: string; lists: { key: SignalKey; label: str
         }
       </div>
 
-
-      @if (tab() === 'performance') { <app-performance /> }
-      @else {
-      @if (data(); as d) {
-          <section class="kpis">
-            <div class="kpi"><span class="chip blue sm"><app-icon name="chart" [size]="15" /></span><span class="label">{{ d.index.name }}</span>
-              <span class="value">{{ d.index.metrics ? (d.index.metrics.price | number: '1.0-0') : '—' }}</span>
-              <span class="meta">{{ d.index.metrics?.d1 | pct }} today · {{ d.index.metrics?.w1 | pct }} week · {{ d.index.metrics?.m1 | pct }} month</span></div>
-            <div class="kpi"><span class="chip green sm"><app-icon name="trend" [size]="15" /></span><span class="label">Market breadth</span>
-              <span class="value pos">{{ d.breadth.up }} <small>rising</small></span>
-              <span class="meta">{{ d.breadth.down }} falling, of {{ d.breadth.total }} stocks today</span></div>
-            <div class="kpi"><span class="chip violet sm"><app-icon name="wallet" [size]="15" /></span><span class="label">Your stocks today</span>
-              <span class="value" [class]="mine().d1 | sign">{{ mine().d1 | pct: 2 }}</span>
-              <span class="meta">{{ mine().count }} tracked · {{ mine().w1 | pct }} this week</span></div>
-            <div class="kpi"><span class="chip amber sm"><app-icon name="bell" [size]="15" /></span><span class="label">Alerts</span>
-              <span class="value">{{ todayAlerts() }}</span>
-              <span class="meta">today · moves of {{ d.alerts_config.day }}%+ in a day, {{ d.alerts_config.week }}%+ in a week</span></div>
-          </section>
-        } @else if (error()) {
-          <div class="notice bad"><app-icon name="alert" [size]="16" /> <div>{{ error() }} <button class="btn sm" (click)="load()">Retry</button></div></div>
-        } @else {
-          <div class="skeleton" style="height:112px;border-radius:16px"></div>
-        }
-      @if (!data()) {
-        <div class="duo"><div class="card"><div class="skeleton" style="height:320px"></div></div><div class="card"><div class="skeleton" style="height:320px"></div></div></div>
-      } @else {
-        @let d = data()!;
-        @switch (tab()) {
-          @case ('today') {
+      @switch (tab()) {
+        @case ('today') {
+          @if (data(); as d) {
             <section class="card flush">
               <div class="card-head"><div><h2>Your stocks and ETFs</h2><span class="hint">Live prices; rows that moved past your alert level are highlighted</span></div>
                 <div class="seg"><button [class.on]="holdSort() === 'weight'" (click)="holdSort.set('weight')">By size</button>
@@ -99,7 +163,8 @@ const LENSES: { title: string; hint: string; lists: { key: SignalKey; label: str
                   <tbody>
                     @for (h of holdings(); track h.id) {
                       <tr class="clickable" [class.hot]="hot(h.metrics)" (click)="go('/holding/' + h.id)">
-                        <td class="name-cell"><div style="font-weight:500">{{ h.name }}</div><div class="sub">{{ h.symbol }}{{ h.gain_pct !== null ? ' · ' + (h.gain_pct | pct) + ' on cost' : '' }}</div>
+                        <td class="name-cell"><a class="nm-link" [routerLink]="['/holding', h.id]" (click)="$event.stopPropagation()">{{ h.name }}</a>
+                          <div class="sub">{{ h.symbol }}{{ h.gain_pct !== null ? ' · ' + (h.gain_pct | pct) + ' on cost' : '' }}</div>
                           @if (h.signals.length) { <app-signal-chips class="sm-only" [signals]="h.signals" /> }</td>
                         <td class="num">{{ h.metrics ? (h.metrics.price | inr: 2) : '—' }}</td>
                         <td class="num"><app-chg [v]="h.metrics?.d1" /></td><td class="num hide-sm"><app-chg [v]="h.metrics?.w1" /></td>
@@ -109,7 +174,7 @@ const LENSES: { title: string; hint: string; lists: { key: SignalKey; label: str
                         <td class="hide-sm"><app-signal-chips [signals]="h.signals" empty="—" /></td>
                         <td class="num hide-sm">{{ h.weight | pct: 1 : false }}</td>
                       </tr>
-                    } @empty { <tr><td colspan="9"><div class="empty">No Indian stocks or ETFs held yet.</div></td></tr> }
+                    } @empty { <tr><td colspan="9"><div class="empty">No Indian stocks or ETFs held yet. Market moves still show below.</div></td></tr> }
                   </tbody>
                 </table>
               </div>
@@ -121,12 +186,12 @@ const LENSES: { title: string; hint: string; lists: { key: SignalKey; label: str
                   <div class="seg"><button [class.on]="moverRange() === 'day'" (click)="moverRange.set('day')">Today</button>
                     <button [class.on]="moverRange() === 'week'" (click)="moverRange.set('week')">This week</button></div></div>
                 <div class="movers">
-                  @for (side of ['up', 'down']; track side) {
+                  @for (side of sides; track side) {
                     <div><small class="muted">{{ side === 'up' ? 'Gainers' : 'Losers' }}</small>
-                      @for (m of $any(d.movers[moverRange()])[side]; track m.symbol) {
+                      @for (m of d.movers[moverRange()][side]; track m.symbol) {
                         <div class="mv"><span class="ellipsis">{{ m.name }}@if (m.held) { <span class="badge sm">held</span> }</span>
                           <app-chg [v]="moverRange() === 'day' ? m.metrics.d1 : m.metrics.w1" /></div>
-                      }
+                      } @empty { <div class="empty small">No prices yet.</div> }
                     </div>
                   }
                 </div>
@@ -153,16 +218,21 @@ const LENSES: { title: string; hint: string; lists: { key: SignalKey; label: str
                 </div>
               </section>
             }
+          } @else if (!error()) {
+            <div class="skeleton" style="height:280px;border-radius:14px"></div>
+            <div class="duo"><div class="card"><div class="skeleton" style="height:240px"></div></div><div class="card"><div class="skeleton" style="height:240px"></div></div></div>
           }
+        }
 
-          @case ('ideas') {
-            <div class="notice"><app-icon name="info" [size]="16" /> <span>These come only from price movement over the last week and month across {{ d.covered }} Nifty 200 stocks. They're prompts to look closer, not research or advice — check the business, valuation and your own plan before acting.</span></div>
+        @case ('ideas') {
+          @if (data(); as d) {
+            <div class="notice"><app-icon name="info" [size]="16" /> <span>These are price patterns, not forecasts. They come only from price movement over the last week and month across {{ d.covered }} Nifty 200 stocks. They're prompts to look closer, not research or advice — check the business, valuation and your own plan before acting.</span></div>
             <div class="lenses">
               @for (lens of lenses; track lens.title) {
                 <section class="card">
                   <div class="card-head"><div><h2>{{ lens.title }}</h2><span class="hint">{{ lens.hint }}</span></div></div>
                   @for (l of lens.lists; track l.key) {
-                    <h3 class="lh"><span class="badge" [class]="tone(l.key)">{{ l.label }}</span><small class="muted">{{ l.hint }}</small></h3>
+                    <h3 class="lh"><span class="badge" [class]="tone[l.key]">{{ l.label }}</span><small class="muted">{{ l.hint }}</small></h3>
                     @for (i of d.ideas[l.key].slice(0, 8); track i.symbol) {
                       <div class="idea">
                         <span class="nm"><b class="ellipsis">{{ i.name }}</b><small class="muted ellipsis">{{ i.industry }}@if (i.held) { · <b>you hold this</b> }</small></span>
@@ -172,7 +242,7 @@ const LENSES: { title: string; hint: string; lists: { key: SignalKey; label: str
                         @if (auth.canWrite()) {
                           @if (i.watching) { <span class="badge sm" title="On your watchlist"><app-icon name="star" [size]="11" /></span> }
                           @else { <button class="btn ghost sm icon" (click)="quickWatch(i)" [title]="'Add ' + i.name + ' to watchlist'" [attr.aria-label]="'Watch ' + i.name"><app-icon name="star" [size]="14" /></button> }
-                        }
+                        } @else { <span></span> }
                       </div>
                     } @empty { <div class="empty small">Nothing meets this right now.</div> }
                   }
@@ -182,7 +252,7 @@ const LENSES: { title: string; hint: string; lists: { key: SignalKey; label: str
 
             <section class="card">
               <div class="card-head"><div><h2>Rebalancing with the signals</h2>
-                <span class="hint">Where your target allocation and the price signals point the same way · <a routerLink="/insights" fragment="rebalance">full rebalancing planner →</a></span></div></div>
+                <span class="hint">Where your target allocation and the price signals point the same way · <a routerLink="/risk" fragment="rebalance">full rebalancing planner →</a></span></div></div>
               @if (d.rebalance.has_targets) {
                 <div class="drifts">
                   @for (s of d.rebalance.segments; track s.segment) {
@@ -203,16 +273,20 @@ const LENSES: { title: string; hint: string; lists: { key: SignalKey; label: str
                   @empty { <p class="small muted">No fresh candidates today.</p> }</div>
               </div>
             </section>
+          } @else if (!error()) {
+            <div class="lenses"><div class="card"><div class="skeleton" style="height:320px"></div></div><div class="card"><div class="skeleton" style="height:320px"></div></div></div>
           }
+        }
 
-          @case ('watchlist') {
+        @case ('watchlist') {
+          @if (data(); as d) {
             <section class="card flush">
               <div class="card-head"><div><h2>Watchlist</h2><span class="hint">Set a buy or sell price and you'll get an alert when it's reached</span></div>
                 @if (auth.canWrite()) { <button class="btn sm" (click)="openWatch()"><app-icon name="plus" [size]="14" /> Add</button> }</div>
               <div class="table-wrap">
                 <table class="table">
                   <thead><tr><th>Stock</th><th class="num">Price</th><th class="num">Today</th><th class="num hide-sm">1 week</th><th class="num">1 month</th>
-                    <th class="num hide-sm">Since added</th><th class="num">Buy at</th><th class="num">Sell at</th><th class="hide-sm">Signal</th><th></th></tr></thead>
+                    <th class="num hide-sm">Since added</th><th class="num">Buy at</th><th class="num">Sell at</th><th class="hide-sm">Signal</th><th><span class="sr-only">Edit</span></th></tr></thead>
                   <tbody>
                     @for (w of d.watchlist; track w.id) {
                       <tr [class.hot]="!!w.target_hit">
@@ -232,10 +306,11 @@ const LENSES: { title: string; hint: string; lists: { key: SignalKey; label: str
                 </table>
               </div>
             </section>
-            <app-ipos />
+          } @else if (!error()) {
+            <div class="card"><div class="skeleton" style="height:200px"></div></div>
           }
+          <app-ipos />
         }
-      }
       }
     </div>
 
@@ -265,7 +340,27 @@ const LENSES: { title: string; hint: string; lists: { key: SignalKey; label: str
   `,
   styles: [`
     .tabs button { display: inline-flex; align-items: center; gap: 6px; }
+    /* P1.12 banner: the global .verdict stripe (data-status=watch) plus a list; copied rules only, styles.scss untouched (H19) */
+    .mkt-banner { min-height: 0; }
+    .mkt-banner .mb-line { margin: 0; color: var(--text); }
+    .mb-book { margin: 2px 0 0; padding-left: 20px; font-size: 13.5px; color: var(--text-2); }
+    .mb-book li { margin-bottom: 4px; }
+    .mb-toggle { display: none; align-self: flex-start; padding-left: 0; }
+    .mb-foot { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; }
+    .mb-foot small { font-size: 12px; }
+    .mb-link { font-size: 13px; font-weight: 500; white-space: nowrap; }
+    .warn-text { color: var(--warn); }
+    .kpi.hero .pills { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 2px; }
+    .kpi.hero .hero-verdict { display: flex; align-items: flex-start; gap: 6px; margin-top: 4px; color: rgba(255, 255, 255, .85); }
+    .kpi.hero .hero-verdict app-icon { flex: none; margin-top: 1px; }
+    .kpis .value small { font-size: 12px; font-weight: 500; color: rgba(255, 255, 255, .6); }
+    .kpis .value .pos { color: #6ee7b7; }
+    .kpis .value .neg { color: #fca5a5; }
+    .more-btn { display: none; align-self: flex-start; align-items: center; gap: 2px; margin-top: 6px; padding: 0; border: 0; background: none;
+      color: var(--gold-2); font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; }
     tr.hot td { background: color-mix(in srgb, var(--warn-soft) 60%, transparent); }
+    .nm-link { color: var(--text); font-weight: 500; text-decoration: none; }
+    .nm-link:hover { text-decoration: underline; }
     .movers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
     .sm-only { display: none; margin-top: 4px; }
     .mv { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
@@ -297,8 +392,22 @@ const LENSES: { title: string; hint: string; lists: { key: SignalKey; label: str
     .hits button { text-align: left; padding: 8px 10px; border: 0; background: none; cursor: pointer; font: inherit; font-size: 13px; }
     .hits button:hover { background: var(--surface-2); }
     .nowrap { white-space: nowrap; }
-    @media (max-width: 900px) { .lenses { grid-template-columns: minmax(0, 1fr); } .trio { grid-template-columns: minmax(0, 1fr); } .heat { grid-template-columns: minmax(0, 1fr); } }
-    @media (max-width: 760px) { .sm-only { display: inline-flex; } }
+    @media (max-width: 900px) {
+      .lenses { grid-template-columns: minmax(0, 1fr); } .trio { grid-template-columns: minmax(0, 1fr); } .heat { grid-template-columns: minmax(0, 1fr); }
+      /* the hero spans the first row, so the two tiles under it pair up and the third takes its own row */
+      .kpis .kpi:nth-child(2) { border-left: 0; }
+      .kpis .kpi:nth-child(3) { border-left: 1px solid rgba(255, 255, 255, .09); }
+      .kpis .kpi.extra { grid-column: span 2; border-left: 0; }
+    }
+    @media (max-width: 760px) {
+      .sm-only { display: inline-flex; }
+      /* phones keep T0 near the top: the five playbook lines wait behind one toggle (§1.5) */
+      .mb-toggle { display: inline-flex; }
+      .mb-book:not(.open) { display: none; }
+      /* ≤2 hero stats on phones (§1.5); the third waits behind More */
+      .kpis .kpi.extra:not(.show) { display: none; }
+      .more-btn { display: inline-flex; }
+    }
     @media (max-width: 560px) { .movers { grid-template-columns: minmax(0, 1fr); } .idea { grid-template-columns: minmax(0, 1fr) 70px 70px 30px; } .idea app-spark { display: none; } .hr { grid-template-columns: minmax(0, 1fr) 80px 52px; } }
   `],
 })
@@ -313,19 +422,26 @@ export class MarketsComponent {
 
   tabs = TABS;
   lenses = LENSES;
-  // IPOs live on the watchlist tab; older links (and IPO reminders) still say tab=ipos
-  tab = signal<Tab>(({ today: 'today', ideas: 'ideas', watchlist: 'watchlist', ipos: 'watchlist' } as Record<string, Tab>)[this.route.snapshot.queryParamMap.get('tab') ?? ''] ?? 'performance');
+  tone = SIGNAL_TONE;
+  sides = ['up', 'down'] as const;
+  tab = signal<MarketTab>(marketTab(this.route.snapshot.queryParamMap.get('tab')));
   data = signal<MarketOverview | null>(null);
   alerts = signal<MarketAlert[]>([]);
   error = signal<string | null>(null);
+  /** The last refresh failed while saved prices were on screen. */
+  stale = signal(false);
+  moreStats = signal(false);
   holdSort = signal<'weight' | 'move'>('weight');
   moverRange = signal<'day' | 'week'>('day');
+  /** Phones: the banner's playbook list is open. */
+  bookOpen = signal(false);
 
   watchForm = signal<{ id?: number; query: string; symbol: string; name: string; target_buy: number | null; target_sell: number | null; notes: string } | null>(null);
   hits = signal<SymbolHit[]>([]);
   saving = signal(false);
   formError = signal<string | null>(null);
   search$ = new Subject<string>();
+  private paintedFor: string | null = null;
 
   holdings = computed(() => {
     const h = [...(this.data()?.holdings ?? [])];
@@ -338,21 +454,54 @@ export class MarketsComponent {
     const avg = (f: 'd1' | 'w1') => h.reduce((a, x) => a + (x.metrics![f] ?? 0) * x.value, 0) / tot;
     return { count: h.length, d1: h.length ? avg('d1') : null, w1: h.length ? avg('w1') : null };
   });
+  /** Alerts raised on the viewer's calendar day (timestamps are UTC). */
   todayAlerts = computed(() => {
-    const today = new Date().toISOString().slice(0, 10);
-    return this.alerts().filter(a => a.created_at.slice(0, 10) === today).length;
+    const day = today();
+    return this.alerts().filter(a => localDay(a.created_at) === day).length;
+  });
+  /**
+   * P1.12 banner (K18): shown only in correction or crash, read from the `/markets` payload already on screen (no price call).
+   * Line 1 is `marketBannerText`, the backend's `markets.context_line` word for word; then the fixed playbook and the source.
+   */
+  banner = computed(() => {
+    const s = this.data()?.market_state ?? null;
+    const mode = marketBannerMode(s);
+    const text = marketBannerText(s);
+    if (!s || !mode || !text) return null;
+    return { mode, text, playbook: s.playbook ?? [], source: marketBannerSource(s),
+      title: mode === 'crash' ? 'The market has fallen sharply' : 'The market is in a correction' };
+  });
+  /** The hero's verdict line: today's direction and where the index sits against its month's high. Facts only, no forecast. */
+  nifty = computed(() => {
+    const m = this.data()?.index.metrics ?? null;
+    if (!m) return null;
+    const d1 = m.d1;
+    const flat = d1 === null || Math.abs(d1) < 0.05;
+    const icon = flat ? 'info' : d1! > 0 ? 'arrowUp' : 'arrowDown';
+    const day = d1 === null ? 'No move reported today' : flat ? 'Flat today' : `${d1 > 0 ? 'Up' : 'Down'} ${Math.abs(d1).toFixed(1)}% today`;
+    const fromHigh = m.high_1m > 0 ? (m.price / m.high_1m - 1) * 100 : null;
+    const high = fromHigh === null ? '' : fromHigh > -0.5 ? 'near its high for the month' : `${Math.abs(fromHigh).toFixed(1)}% below this month's high`;
+    return { m, icon, line: high ? `${day}, ${high}.` : `${day}.` };
   });
 
   constructor() {
+    // follow ?tab= when it changes under a reused component (a bell link, the back button)
+    this.route.queryParamMap.pipe(takeUntilDestroyed()).subscribe(q => this.tab.set(marketTab(q.get('tab'))));
     effect(() => {
       const scope = this.store.scopeKey();
       this.store.version();
       if (!this.auth.token()) return;
-      this.data.set(readSnapshot<MarketOverview>(snapshotKey('markets', scope)));
+      if (scope !== this.paintedFor) {
+        // a new portfolio: paint what this device saw last time for it, then refresh
+        this.paintedFor = scope;
+        this.stale.set(false);
+        this.data.set(readSnapshot<MarketOverview>(snapshotKey('markets', scope)));
+      }
       queueMicrotask(() => this.load());
     });
     this.search$.pipe(debounceTime(250), distinctUntilChanged(),
-      switchMap(q => q.trim().length < 2 ? of([]) : this.api.searchSymbols(q.trim(), 'equity').pipe(catchError(() => of([])))))
+      switchMap(q => q.trim().length < 2 ? of([]) : this.api.searchSymbols(q.trim(), 'equity').pipe(catchError(() => of([])))),
+      takeUntilDestroyed())
       .subscribe(h => this.hits.set(h.filter(x => /\.(NS|BO)$/.test(x.symbol)).slice(0, 8)));
   }
 
@@ -360,22 +509,25 @@ export class MarketsComponent {
     const scope = this.store.scopeKey();
     this.error.set(null);
     try {
-      const [d, a] = await Promise.all([firstValueFrom(this.api.markets()), firstValueFrom(this.api.marketAlerts()).catch(() => [])]);
+      const [d, a] = await Promise.all([firstValueFrom(this.api.markets()), firstValueFrom(this.api.marketAlerts()).catch(() => [] as MarketAlert[])]);
+      if (scope !== this.store.scopeKey()) return;
       this.data.set(d);
       this.alerts.set(a);
+      this.stale.set(false);
       writeSnapshot(snapshotKey('markets', scope), d);
     } catch (e) {
-      if (!this.data()) this.error.set(errorMessage(e));
+      if (scope !== this.store.scopeKey()) return;
+      if (this.data()) this.stale.set(true);
+      else this.error.set(errorMessage(e));
     }
   }
 
-  setTab(t: Tab) {
+  setTab(t: MarketTab) {
     this.tab.set(t);
-    this.router.navigate([], { queryParams: { tab: t === 'performance' ? null : t }, queryParamsHandling: 'merge', replaceUrl: true });
+    this.router.navigate([], { queryParams: { tab: t === 'today' ? null : t }, queryParamsHandling: 'merge', replaceUrl: true });
   }
   go(path: string) { this.router.navigateByUrl(path); }
   rel(iso: string) { return relTime(iso); }
-  tone(k: SignalKey) { return { momentum_buy: 'good', momentum_sell: 'bad', dip_buy: 'info', profit_book: 'warn' }[k]; }
   hot(m: { d1: number | null; w1: number | null } | null) {
     const c = this.data()?.alerts_config;
     return !!(m && c && ((m.d1 !== null && Math.abs(m.d1) >= c.day) || (m.w1 !== null && Math.abs(m.w1) >= c.week)));

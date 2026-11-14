@@ -1,0 +1,123 @@
+/* Portfolio › Performance. Global grammar (.kpis, .card, .seg, details.more) comes from styles.scss. */
+
+.toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.seg-select { width: auto; height: 32px; font-size: 12.5px; max-width: 100%; }
+
+.hero-skel { height: 150px; border-radius: 14px; }
+
+/* T0: hero + three tiles; on phones two tiles show and the third sits behind "More" (§1.5). */
+.perf-kpis { --kpi-cols: 4; grid-template-columns: minmax(0, 1.6fr) repeat(3, minmax(0, 1fr)); }
+.perf-kpis .verdict-line { margin-top: 10px; font-size: 15px; flex-wrap: wrap; row-gap: 2px; }
+.perf-kpis .verdict-line .v-word { font-weight: 500; color: rgba(255, 255, 255, .8); }
+.more-stats { display: none; align-self: flex-start; margin-top: 8px; padding: 2px 10px; border-radius: 999px; cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, .25); background: transparent; color: #fff; font-size: 12px; }
+@media (max-width: 900px) {
+  .perf-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .perf-kpis .kpi.extra { grid-column: span 2; border-left: 0; border-top: 1px solid rgba(255, 255, 255, .09); }
+}
+@media (max-width: 760px) {
+  .more-stats { display: inline-flex; }
+  .perf-kpis .kpi.extra:not(.show) { display: none; }
+}
+
+/* T1 work surface: chart and the Compared-with table side by side, stacked below 1100px. */
+.vs-row { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(320px, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 1100px) { .vs-row { grid-template-columns: minmax(0, 1fr); } }
+.vs-table .table th, .vs-table .table td { padding: 9px 8px; }
+.vs-table .table th:first-child, .vs-table .table td:first-child { padding-left: 0; }
+.vs-table .table th:last-child, .vs-table .table td:last-child { padding-right: 0; }
+.vs-table .table th { background: transparent; }
+.vs-table .table tr.on td:first-child { font-weight: 600; }
+.vs-table .table .sub { color: var(--muted); font-size: 12px; }
+.sub-h { font-size: 13px; font-weight: 600; margin: 0 0 8px; color: var(--text-2); }
+.foot { margin-top: 10px; }
+
+/* T2: monthly heat table */
+.heat { border-collapse: separate; border-spacing: 2px; width: 100%; font-size: 12px; }
+.heat th { color: var(--muted); font-weight: 500; padding: 4px 1px; text-align: center; font-size: 11px; }
+.heat td { text-align: center; padding: 7px 1px; border-radius: 3px; font-variant-numeric: tabular-nums; color: var(--text); min-width: 28px; font-size: 11px; white-space: nowrap; }
+.heat th.year { text-align: left; color: var(--text-2); font-weight: 600; font-size: 12px; padding-right: 4px; }
+.heat td.tot { min-width: 40px; }
+
+/* T2: attribution */
+.attr-sum { display: flex; flex-wrap: wrap; gap: 12px 28px; margin-bottom: 18px; }
+.attr-sum > div { display: flex; flex-direction: column; gap: 2px; }
+.attr-sum b { font-size: 18px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.attr-lists { margin-bottom: 18px; }
+.contrib { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border);
+  color: var(--text); font-size: 13px; text-decoration: none; min-width: 0; }
+.contrib:last-child { border-bottom: 0; }
+.contrib > span { min-width: 0; }
+.contrib:hover { text-decoration: none; color: var(--primary); }
+.contrib b { font-variant-numeric: tabular-nums; flex: none; }
+
+/* bars (attribution by class) */
+.bars { display: grid; gap: 10px; }
+.bar-row { display: grid; grid-template-columns: minmax(80px, 150px) 1fr 64px; gap: 10px; align-items: center; font-size: 13px; color: var(--text); text-decoration: none; }
+a.bar-row:hover { text-decoration: none; color: var(--primary); }
+.bar-row.on { font-weight: 600; }
+.track { height: 6px; background: var(--surface-hover); border-radius: 0 3px 3px 0; overflow: hidden; }
+.track > span { display: block; height: 100%; border-radius: 0 3px 3px 0; background: var(--s1); }
+.track > span.neg-bar { background: var(--s8); }
+
+/* Linked sections land below the sticky app bar (the shell's 80 px offset). */
+#attribution, #assumptions, #income { scroll-margin-top: 80px; }
+
+/* T2: assumptions check. The status shows as icon + word (badge) and the stripe; colour is never alone. */
+.check-line { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 10px 12px; border-radius: 10px;
+  border-left: var(--stripe, 3px) solid var(--st); background: var(--st-soft, var(--surface-2)); font-size: 14px; line-height: 1.45;
+  color: var(--text); font-variant-numeric: tabular-nums; }
+.check-line[data-status="unset"] { border-left-style: dashed; background: var(--surface-2); }
+.check-line app-icon { flex: none; color: var(--st); margin-top: 1px; }
+.check-line[data-status="unset"] app-icon, .check-line[data-status="info"] app-icon { color: var(--muted); }
+.check-note { margin: 8px 0 0; }
+.check-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; min-width: 0; }
+
+/* T2: income. Stacked month columns drawn in CSS (the shared bar chart does not stack). */
+.inc-notice { margin-bottom: 12px; }
+.inc-empty { padding: 18px 0 6px; }
+.inc-sum { display: flex; flex-wrap: wrap; gap: 12px 28px; margin-bottom: 16px; }
+.inc-sum > div { display: flex; flex-direction: column; gap: 2px; }
+.inc-sum b { font-size: 18px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.inc-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 900px) { .inc-row { grid-template-columns: minmax(0, 1fr); } }
+.inc-main { min-width: 0; }
+.inc-legend { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; color: var(--text-2); }
+.inc-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.inc-legend b { font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+.inc-legend .sw { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.inc-readout { min-height: 18px; margin: 0 0 10px; font-size: 12.5px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.inc-readout b { color: var(--text); font-weight: 600; }
+.inc-chart { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 6px; padding-top: 8px; }
+.inc-y { position: relative; height: 170px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.inc-y > span { position: absolute; right: 0; transform: translateY(-50%); white-space: nowrap; }
+.inc-plot { position: relative; min-width: 0; }
+.inc-grid { position: absolute; left: 0; right: 0; height: 0; border-top: 1px dashed var(--border); pointer-events: none; }
+.inc-cols { position: relative; height: 170px; display: grid; grid-template-columns: repeat(24, minmax(0, 1fr)); gap: 2px;
+  border-bottom: 1px solid var(--border-strong, var(--border)); }
+.inc-col { display: flex; flex-direction: column; justify-content: flex-end; height: 100%; min-width: 0; cursor: default; border-radius: 4px 4px 0 0; }
+.inc-col:hover, .inc-col.on { background: var(--surface-hover); }
+.inc-col .stack { display: flex; flex-direction: column-reverse; gap: 2px; min-height: 2px; width: 100%; max-width: 22px; margin: 0 auto;
+  border-radius: 4px 4px 0 0; overflow: hidden; }
+.inc-col .stack > span { display: block; flex: 1 1 0; min-height: 1px; }
+.inc-ticks { display: grid; grid-template-columns: repeat(24, minmax(0, 1fr)); gap: 2px; margin-top: 4px; height: 16px; }
+.inc-ticks > span { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: visible; }
+.inc-payers { min-width: 0; }
+.inc-payers .contrib b { font-weight: 600; }
+.inc-table { margin-top: 14px; }
+.inc-table .table th, .inc-table .table td { padding: 7px 8px; white-space: nowrap; }
+.inc-table .table td.num, .inc-table .table th.num { text-align: right; }
+
+/* T3 */
+details.more > .card { margin-top: 10px; }
+.method ul { margin: 0 0 14px; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-2); }
+.method .table td { padding: 8px 0; }
+.method .table td.num { text-align: right; }
+
+@media (max-width: 760px) {
+  .page-head .toolbar { width: 100%; justify-content: flex-start; }
+  .toolbar .seg-select { flex: 1 1 100%; }
+  .bar-row { grid-template-columns: minmax(70px, 110px) 1fr 60px; }
+  .inc-chart { grid-template-columns: 38px minmax(0, 1fr); }
+  .inc-cols, .inc-ticks { gap: 1px; }
+}

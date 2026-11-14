@@ -41,7 +41,11 @@ export const adminGuard: CanActivateFn = () => {
 export function errorMessage(err: unknown): string {
   if (err instanceof HttpErrorResponse) {
     if (err.status === 0) return 'Cannot reach the server. Check your connection — it may be waking up, try again in a moment.';
-    return err.error?.error || err.message;
+    const msg: string = err.error?.error || err.message;
+    // An all-or-nothing import refusal (K5) carries every row's outcome; name the first one to fix (L2)
+    const rows: unknown = err.error?.results;
+    const first = Array.isArray(rows) ? rows.find((r: { ok?: boolean; error?: string }) => r?.ok === false && r.error) : null;
+    return first ? `${msg}. First: ${first.name ?? 'row'}${first.date ? ` (${first.date})` : ''}: ${first.error}` : msg;
   }
   return (err as Error)?.message ?? 'Something went wrong';
 }

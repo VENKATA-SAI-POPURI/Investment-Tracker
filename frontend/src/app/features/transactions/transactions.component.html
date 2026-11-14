@@ -2,90 +2,180 @@
   <div class="page-head">
     <h1>Activity</h1>
     <div class="row wrap">
-      <button class="btn ghost sm" (click)="export()"><app-icon name="download" [size]="15" /> Export</button>
-      @if (auth.canWrite()) { <button class="btn sm" (click)="importing.set(true)"><app-icon name="upload" [size]="15" /> Import CSV</button> }
+      <button type="button" class="btn ghost sm" (click)="export()" [disabled]="exporting() || !data()?.total"><app-icon name="download" [size]="15" /> {{ exporting() ? 'Exporting…' : 'Export' }}</button>
+      @if (auth.canWrite()) {
+        <button type="button" class="btn sm" (click)="openImport()"><app-icon name="upload" [size]="15" /> Import CSV</button>
+      }
     </div>
   </div>
   <app-section-tabs group="activity" current="/transactions" style="margin-top:-12px" />
 
-  <section class="kpis">
-    <div class="kpi"><span class="label">Transactions</span><span class="value">{{ filtered().length }}</span><span class="meta">of {{ all().length }} recorded</span></div>
-    <div class="kpi"><span class="label">Money out</span><span class="value">{{ sums().out | inr }}</span><span class="meta">purchases, lending, USD transfers</span></div>
-    <div class="kpi"><span class="label">Money in</span><span class="value">{{ sums().in | inr }}</span><span class="meta">sales, repayments, income</span></div>
-    <div class="kpi"><span class="label">Net put to work</span><span class="value">{{ sums().out - sums().in | inr }}</span><span class="meta">for the filters applied</span></div>
-  </section>
+  @if (!data() && loading()) {
+    <div class="skeleton tx-skel" aria-label="Loading your transactions"></div>
+    <div class="card"><div class="skeleton" style="height:18px;width:40%"></div><div class="skeleton" style="height:260px;margin-top:14px"></div></div>
+  } @else if (!data() && loadError()) {
+    <div class="card"><div class="empty">
+      <app-icon name="alert" [size]="22" /><h3>Couldn't load your transactions</h3><p>{{ loadError() }}</p>
+      <button type="button" class="btn" (click)="load()"><app-icon name="refresh" [size]="15" /> Try again</button>
+    </div></div>
+  } @else {
+    @let d = data();
+    <!-- T0: the answer -->
+    <section class="kpis tx-kpis" aria-label="Your transactions at a glance">
+      <div class="kpi hero">
+        <span class="label">Net put to work</span>
+        <span class="value">{{ d ? (d.sums.net | inr) : '—' }}</span>
+        <span class="meta">money out less money in{{ filtersOn() ? ', for the filters applied' : ', across every transaction' }}</span>
+      </div>
+      <div class="kpi"><span class="chip blue sm"><app-icon name="list" [size]="15" /></span><span class="label">Transactions</span>
+        <span class="value">{{ d ? d.sums.count : '—' }}</span><span class="meta">{{ filtersOn() ? 'match the filters' : 'recorded' }}</span></div>
+      <div class="kpi"><span class="chip violet sm"><app-icon name="arrowUp" [size]="15" /></span><span class="label">Money out</span>
+        <span class="value">{{ d ? (d.sums.out | inr) : '—' }}</span><span class="meta">purchases and USD transfers</span></div>
+      <div class="kpi"><span class="chip green sm"><app-icon name="arrowDown" [size]="15" /></span><span class="label">Money in</span>
+        <span class="value">{{ d ? (d.sums.in | inr) : '—' }}</span><span class="meta">sales, repayments and income</span></div>
+    </section>
 
-  <section class="card flush" [class.loading-fade]="loading() && all().length">
-    <div class="card-head filters">
-      <input class="input" style="max-width:240px" placeholder="Search name or notes" [ngModel]="q()" (ngModelChange)="q.set($event)" aria-label="Search" />
-      <select class="input" style="width:auto" [ngModel]="cls()" (ngModelChange)="cls.set($event)" aria-label="Asset class">
-        <option value="">All holdings</option>@for (c of classes; track c[0]) { <option [value]="c[0]">{{ c[1] }}</option> }
-      </select>
-      <select class="input" style="width:auto" [ngModel]="type()" (ngModelChange)="type.set($event)" aria-label="Type">
-        <option value="">All types</option>@for (t of types; track t[0]) { <option [value]="t[0]">{{ t[1] }}</option> }
-      </select>
-      <input class="input" type="date" style="width:auto" [ngModel]="from()" (ngModelChange)="from.set($event)" aria-label="From" />
-      <span class="muted">→</span>
-      <input class="input" type="date" style="width:auto" [ngModel]="to()" (ngModelChange)="to.set($event)" aria-label="To" />
-      @if (q() || cls() || type() || from() || to()) { <button class="btn ghost sm" (click)="clear()">Clear</button> }
-    </div>
+    <!-- T2 filters + T3 ledger -->
+    <section class="card flush" id="tx-ledger" [class.loading-fade]="loading() && !!d" [attr.aria-busy]="loading()">
+      <div class="card-head filters" role="search">
+        <input class="input f-q" type="search" placeholder="Search name, symbol, type or notes" maxlength="100" [ngModel]="qText()" (ngModelChange)="onSearch($event)" aria-label="Search transactions" />
+        <select class="input f-sel" [ngModel]="cls()" (ngModelChange)="setClass($event)" aria-label="Asset class">
+          <option value="">All holdings</option>@for (c of classes; track c[0]) { <option [value]="c[0]">{{ c[1] }}</option> }
+        </select>
+        <select class="input f-sel" [ngModel]="type()" (ngModelChange)="setType($event)" aria-label="Type">
+          <option value="">All types</option>@for (t of types; track t[0]) { <option [value]="t[0]">{{ t[1] }}</option> }
+        </select>
+        <span class="f-range">
+          <input class="input f-date" type="date" [ngModel]="from()" (ngModelChange)="setFrom($event)" aria-label="From date" />
+          <span class="muted" aria-hidden="true">→</span>
+          <input class="input f-date" type="date" [ngModel]="to()" (ngModelChange)="setTo($event)" aria-label="To date" />
+        </span>
+        @if (filtersOn() || qText()) { <button type="button" class="btn ghost sm" (click)="clear()">Clear</button> }
+      </div>
 
-    <div class="table-wrap">
-      <table class="table">
-        <thead><tr><th>Date</th><th>Holding</th><th>Type</th><th class="num">Quantity</th><th class="num">Amount</th><th class="hide-sm">Notes</th><th class="hide-sm">Source</th>@if (auth.canWrite()) { <th></th> }</tr></thead>
-        <tbody>
-          @for (t of shown(); track t.id) {
-            <tr>
-              <td class="nowrap">{{ t.date | dt }}</td>
-              <td class="name-cell"><a [routerLink]="['/holding', t.instrument_id]">{{ t.instrument_name }}</a><div class="sub">{{ classLabel[t.asset_class!] }}</div></td>
-              <td><span class="badge" [attr.data-type]="t.type">{{ txnLabel[t.type] }}</span></td>
-              <td class="num">{{ t.quantity | qty }}</td>
-              <td class="num">{{ t.amount | inr: 2 }}@if (t.amount_fc) { <div class="sub">{{ t.amount_fc | usd }}</div> }</td>
-              <td class="hide-sm small muted ellipsis" style="max-width:220px" [title]="t.notes ?? ''">{{ t.notes }}</td>
-              <td class="hide-sm small muted">{{ t.source }}</td>
-              @if (auth.canWrite()) {
-                <td class="right nowrap">
-                  <button class="btn ghost icon sm" (click)="dialog.edit(t)" aria-label="Edit"><app-icon name="edit" [size]="15" /></button>
-                  <button class="btn ghost icon sm danger" (click)="remove(t)" aria-label="Delete"><app-icon name="trash" [size]="15" /></button>
-                </td>
-              }
-            </tr>
-          } @empty {
-            <tr><td colspan="8"><div class="empty">{{ loading() ? 'Loading…' : 'No transactions match these filters.' }}</div></td></tr>
-          }
-        </tbody>
-      </table>
-    </div>
-    @if (filtered().length > limit()) {
-      <div class="row" style="justify-content:center;padding:12px"><button class="btn" (click)="limit.set(limit() + 200)">Show more ({{ filtered().length - limit() }} left)</button></div>
-    }
-  </section>
+      @if (paramError(); as pe) {
+        <div class="notice bad tx-err" role="alert"><app-icon name="alert" [size]="16" /> <span>{{ pe }} · showing page 1</span></div>
+      }
+      @if (loadError() && d) {
+        <div class="notice warn tx-err" role="status"><app-icon name="alert" [size]="16" /> <span>Couldn't refresh, so this is the last page loaded · {{ loadError() }}</span>
+          <button type="button" class="btn ghost sm" (click)="load()">Try again</button></div>
+      }
+
+      @if (rows().length) {
+        <div class="table-wrap">
+          <table class="table tx-table">
+            <caption class="sr-only">Transactions, {{ byDate() ? 'grouped by month' : 'sorted by ' + (sort().endsWith('amount') ? 'amount' : 'holding') }}</caption>
+            <thead><tr>
+              <th scope="col" [attr.aria-sort]="ariaSort('date')"><button type="button" class="sort-btn" (click)="sortBy('date')">Date<span class="arr" aria-hidden="true">{{ ariaSort('date') === 'ascending' ? '↑' : ariaSort('date') === 'descending' ? '↓' : '' }}</span></button></th>
+              <th scope="col" [attr.aria-sort]="ariaSort('name')"><button type="button" class="sort-btn" (click)="sortBy('name')">Holding<span class="arr" aria-hidden="true">{{ ariaSort('name') === 'ascending' ? '↑' : ariaSort('name') === 'descending' ? '↓' : '' }}</span></button></th>
+              <th scope="col" class="hide-sm">Type</th>
+              <th scope="col" class="num hide-sm">Quantity</th>
+              <th scope="col" class="num" [attr.aria-sort]="ariaSort('amount')"><button type="button" class="sort-btn" (click)="sortBy('amount')">Amount<span class="arr" aria-hidden="true">{{ ariaSort('amount') === 'ascending' ? '↑' : ariaSort('amount') === 'descending' ? '↓' : '' }}</span></button></th>
+              <th scope="col" class="hide-sm">Notes</th>
+              <th scope="col" class="hide-sm">Source</th>
+              @if (auth.canWrite()) { <th scope="col"><span class="sr-only">Actions</span></th> }
+            </tr></thead>
+            @for (g of groups(); track g.month) {
+              <tbody>
+                @if (byDate()) {
+                  <tr class="month-row"><th [attr.colspan]="auth.canWrite() ? 8 : 7" scope="rowgroup">
+                    <span class="m-row"><span class="m-name">{{ monthLabel(g.month) }}</span>
+                      @if (months().get(g.month); as m) {
+                        <span class="m-sums">{{ m.count }} transaction{{ m.count === 1 ? '' : 's' }} · out {{ m.out | inr }} · in {{ m.in | inr }} · net {{ m.out - m.in | inr }}</span>
+                      }
+                    </span>
+                  </th></tr>
+                }
+                @for (t of g.rows; track t.id) {
+                  <tr>
+                    <td class="nowrap"><span class="d-full">{{ t.date | dt }}</span><span class="d-short">{{ t.date | dt: false }}<span class="sub">{{ t.date.slice(0, 4) }}</span></span></td>
+                    <td class="name-cell tx-name"><a [routerLink]="['/holding', t.instrument_id]">{{ t.instrument_name }}</a><div class="sub">{{ t.asset_class ? classLabel[t.asset_class] : '' }}<span class="sm-type"> · {{ txnLabel[t.type] }}</span></div></td>
+                    <td class="hide-sm"><span class="badge" [attr.data-type]="t.type">{{ txnLabel[t.type] }}</span></td>
+                    <td class="num hide-sm">{{ t.quantity | qty }}</td>
+                    <td class="num">{{ t.amount | inr: 2 }}@if (t.amount_fc) { <div class="sub">{{ t.amount_fc | usd }}</div> }</td>
+                    <td class="hide-sm small muted ellipsis" style="max-width:220px" [title]="t.notes ?? ''">{{ t.notes }}</td>
+                    <td class="hide-sm small muted">{{ t.source }}</td>
+                    @if (auth.canWrite()) {
+                      <td class="right nowrap"><span class="acts">
+                        <button type="button" class="btn ghost icon sm" (click)="dialog.edit(t)" [attr.aria-label]="'Edit ' + t.instrument_name + ' ' + t.date"><app-icon name="edit" [size]="15" /></button>
+                        <button type="button" class="btn ghost icon sm danger" (click)="remove(t)" [attr.aria-label]="'Delete ' + t.instrument_name + ' ' + t.date"><app-icon name="trash" [size]="15" /></button>
+                      </span></td>
+                    }
+                  </tr>
+                }
+              </tbody>
+            }
+          </table>
+        </div>
+      } @else {
+        @if (loading()) { <div class="empty" role="status">Loading…</div> }
+        @else if (filtersOn()) {
+          <div class="empty"><app-icon name="search" [size]="22" /><h3>No transactions match these filters</h3>
+            <p>Try a wider date range or another search.</p><button type="button" class="btn" (click)="clear()">Clear filters</button></div>
+        } @else {
+          <div class="empty"><app-icon name="list" [size]="22" /><h3>No transactions yet</h3>
+            <p>Record a purchase, or bring in your history from a statement.</p>
+            @if (auth.canWrite()) {
+              <div class="row wrap" style="justify-content:center">
+                <button type="button" class="btn primary" (click)="dialog.add()"><app-icon name="plus" [size]="15" /> Add a transaction</button>
+                <a class="btn" routerLink="/import">Import a statement</a>
+              </div>
+            }
+          </div>
+        }
+      }
+
+      @if (d && d.total) {
+        <nav class="pager" aria-label="Pages">
+          <span class="small muted pg-range">@if (range(); as r) { {{ r.start }}–{{ r.end }} of {{ d.total }} }</span>
+          <span class="pg-btns">
+            <button type="button" class="btn ghost sm" (click)="go(page() - 1)" [disabled]="page() <= 1 || loading()" aria-label="Previous page"><app-icon name="chevronLeft" [size]="15" /> Previous</button>
+            <span class="pg-of" aria-live="polite">Page {{ d.page }} of {{ d.pages }}</span>
+            <button type="button" class="btn ghost sm" (click)="go(page() + 1)" [disabled]="page() >= d.pages || loading()" aria-label="Next page">Next <app-icon name="chevronRight" [size]="15" /></button>
+          </span>
+        </nav>
+      }
+    </section>
+  }
 </div>
 
 @if (importing()) {
-  <app-modal title="Import transactions" [width]="860" (close)="importing.set(false); preview.set(null)">
+  <app-modal title="Import transactions" [width]="860" (close)="closeImport()">
     @if (!preview()) {
       <div class="form">
-        <p class="text-2 small">Use the template columns. For a <b>Zerodha tradebook</b>, use Tools → Import statements → Kite tradebook, which matches it against the trades you already have. You'll see a preview before anything is saved; rows already in your ledger are detected and skipped.</p>
-        <div class="row wrap">
-          <input type="file" accept=".csv,text/csv" class="input" style="padding:6px;max-width:340px" (change)="onFile($event)" />
-          <button class="btn ghost sm" (click)="downloadTemplate()"><app-icon name="download" [size]="14" /> Template</button>
-        </div>
+        <p class="text-2 small">Use the template columns. For a <b>Zerodha tradebook</b>, use <a routerLink="/import" [queryParams]="{ source: 'kite' }" (click)="closeImport()">Import statements → Kite tradebook</a>, which matches it against the trades you already have. You'll see a preview before anything is saved; rows already in your ledger are detected and skipped.</p>
+        <app-drop-zone accept=".csv,text/csv" [disabled]="busy()" [label]="busy() ? 'Reading…' : csvName() || 'Choose a CSV file'"
+          hint="One CSV in the template's columns. It is previewed first; nothing is saved until you import." (files)="onFiles($event)" />
+        <div class="row wrap"><button type="button" class="btn ghost sm" (click)="downloadTemplate()"><app-icon name="download" [size]="14" /> Template</button></div>
         <div class="field"><label for="csv-text">…or paste CSV</label><textarea id="csv-text" class="input" rows="8" [(ngModel)]="csv" style="font-family:ui-monospace,monospace;font-size:12px"></textarea></div>
         @if (importError()) { <div class="notice bad">{{ importError() }}</div> }
-        <div class="form-actions"><button class="btn primary" (click)="runPreview()" [disabled]="!csv.trim() || busy()">Preview</button></div>
+        <div class="form-actions"><button type="button" class="btn primary" (click)="runPreview()" [disabled]="!csv.trim() || busy()">Preview</button></div>
       </div>
     } @else {
       @let pv = preview()!;
       <p class="small text-2">Format: <b>{{ pv.format }}</b> · {{ pv.rows.length }} rows{{ pv.errors.length ? ' · ' + pv.errors.length + ' with errors' : '' }}</p>
       @for (e of pv.errors.slice(0, 5); track e.line) { <p class="small neg">Line {{ e.line }}: {{ e.error }}</p> }
+      @if (refused(); as rf) {
+        <div class="refused" id="csv-refused" role="alert">
+          <div class="notice bad"><app-icon name="alert" [size]="16" /> <span>{{ rf.error }}. Fix these rows in the file and preview it again.</span></div>
+          @if (rf.rows.length) {
+            <div class="table-wrap"><table class="table">
+              <caption class="sr-only">Rows that need fixing</caption>
+              <thead><tr><th scope="col">Holding</th><th scope="col">Date</th><th scope="col">What to fix</th></tr></thead>
+              <tbody>
+                @for (r of rf.rows; track $index) { <tr><td>{{ r.name || '—' }}</td><td class="nowrap">{{ r.date ? (r.date | dt) : '—' }}</td><td class="neg" style="white-space:normal;min-width:160px">{{ r.error }}</td></tr> }
+              </tbody>
+            </table></div>
+          }
+        </div>
+      }
       <div class="table-wrap" style="max-height:420px;margin-top:8px">
         <table class="table">
           <thead><tr><th></th><th>Date</th><th>Type</th><th>Holding</th><th class="num">Qty</th><th class="num">Amount</th><th></th></tr></thead>
           <tbody>
             @for (r of pv.rows; track $index) {
               <tr [class.muted]="r.duplicate">
-                <td><input type="checkbox" [(ngModel)]="r.selected" [attr.aria-label]="'Import row ' + $index" /></td>
+                <td><input type="checkbox" [(ngModel)]="r.selected" [attr.aria-label]="'Import row ' + ($index + 1)" /></td>
                 <td>{{ r.date }}</td><td>{{ r.type }}</td><td>{{ r.name }} <span class="sub">{{ r.symbol }}</span></td>
                 <td class="num">{{ r.quantity | qty }}</td><td class="num">{{ r.amount | inr: 2 }}</td>
                 <td>@if (r.duplicate) { <span class="badge">already recorded</span> } @else if (r.new_instrument) { <span class="badge info">new holding</span> }</td>
@@ -96,8 +186,8 @@
       </div>
       @if (importError()) { <div class="notice bad" style="margin-top:10px">{{ importError() }}</div> }
       <div class="form-actions" style="margin-top:12px">
-        <button class="btn" (click)="preview.set(null)">Back</button>
-        <button class="btn primary" (click)="commit()" [disabled]="busy() || !selectedRows().length">{{ busy() ? 'Importing…' : 'Import ' + selectedRows().length }}</button>
+        <button type="button" class="btn" (click)="backToPaste()">Back</button>
+        <button type="button" class="btn primary" (click)="commit()" [disabled]="busy() || !selectedRows().length">{{ busy() ? 'Importing…' : 'Import ' + selectedRows().length }}</button>
       </div>
     }
   </app-modal>

@@ -1,10 +1,30 @@
 <app-modal [title]="title()" [width]="kind() ? 600 : 560" (close)="done.emit()">
   @if (!kind()) {
+    @if (due().length) {
+      <section class="due-now" aria-labelledby="tf-due-head">
+        <div class="due-head" id="tf-due-head">Due now</div>
+        @for (a of due(); track a.id) {
+          <button type="button" class="due-row" [attr.data-status]="dueLate(a) ? 'watch' : 'info'" (click)="runDue(a)">
+            <span class="d-ic"><app-icon [name]="dueLate(a) ? 'alert' : 'calendar'" [size]="16" /></span>
+            <span class="d-text"><b>{{ a.title }}</b>@if (a.impact?.amount) { <small>{{ a.impact!.amount | inr }}</small> }</span>
+            @if (dueText(a.days, a.due); as dt) { <span class="due" [class.late]="dueLate(a)">{{ dt }}</span> }
+            <span class="d-go">{{ a.cta?.type === 'dialog' ? 'Record' : 'Open' }}</span>
+          </button>
+        }
+      </section>
+      <div class="kinds-head">Or add something else</div>
+    }
     <div class="kinds">
       @for (k of kinds; track k.kind) {
         <button class="kind" (click)="pick(k.kind)">
           <span class="ic"><app-icon [name]="k.icon" /></span>
           <span><b>{{ k.label }}</b><span class="h">{{ k.hint }}</span></span>
+        </button>
+      }
+      @if (canImport()) {
+        <button type="button" class="kind import-tile" (click)="goImport()">
+          <span class="ic"><app-icon name="upload" /></span>
+          <span><b>Import a statement</b><span class="h">CAS, Kite tradebook, EPF passbook or LenDen reports</span></span>
         </button>
       }
     </div>
@@ -213,6 +233,9 @@
       }
       @if (kind() !== 'forex') {
         <div class="field"><label for="tf-notes">Notes (optional)</label><input id="tf-notes" class="input" name="notes" [(ngModel)]="f.notes" /></div>
+      }
+      @if (state().actionId && !isEdit()) {
+        <p class="notice"><app-icon name="checkCircle" [size]="16" /> Saving this marks the action as done. Check the prefilled amount and date first.</p>
       }
       @if (error()) { <div class="notice bad"><app-icon name="alert" [size]="16" /> {{ error() }}</div> }
       <div class="form-actions">

@@ -8,6 +8,7 @@ from datetime import date, datetime, timedelta, timezone
 from flask import Blueprint, current_app, g, jsonify, request
 
 from .. import markets as mk
+from .. import notices
 from .. import prices as px
 from .. import push
 from ..ledger import NotFound, ValidationError
@@ -52,11 +53,20 @@ def _watchlist(scope):
 
 @bp.get("/markets")
 def overview():
+    """The overview plus `market_state` (AMENDMENTS H4): the Nifty's fall from its high over the stored ^NSEI
+    closes (None under 200 of them). market_state has its own memo (keyed on perf_ready), so it sits outside the
+    overview's cache entry and the cached dict is never mutated."""
     settings = S().settings()
     def build():
         port, _ = S().portfolio(g.scope, settings)
         return mk.build_overview(L(), port, _watchlist(g.scope), settings, settings.get("targetAllocation"))
-    return jsonify(L()._cached(("markets", g.scope, repr(sorted((settings.get("marketAlerts") or {}).items()))), build))
+    cached = L()._cached(("markets", g.scope, repr(sorted((settings.get("marketAlerts") or {}).items()))), build)
+    try:
+        state = S().market_state(g.scope, settings)
+    except Exception as e:  # noqa: BLE001 — the overview still answers
+        print(f"[markets] market_state unavailable: {e!r}")
+        state = None
+    return jsonify({**cached, "market_state": state})
 
 
 # ── watchlist ──
@@ -322,11 +332,17 @@ def scan_owner(owner: str, role: str) -> dict:
     return {"owner": owner, "new_alerts": len(fresh), "pushed": pushed}
 
 
-@bp.post("/jobs/market-scan")
-def market_scan():
+def _job_allowed() -> bool:
+    """The scheduled jobs' guard: the X-Job-Token header equals the JOB_TOKEN environment variable (constant-time);
+    with no JOB_TOKEN set, nothing is allowed."""
     token = os.environ.get("JOB_TOKEN") or ""
     given = request.headers.get("X-Job-Token") or ""
-    if not token or not hmac.compare_digest(token, given):
+    return bool(token) and hmac.compare_digest(token.encode(), given.encode())
+
+
+@bp.post("/jobs/market-scan")
+def market_scan():
+    if not _job_allowed():
         return jsonify({"error": "Not allowed"}), 403
     if not market_open() and not request.args.get("force"):
         return jsonify({"skipped": "market closed"})
@@ -336,4 +352,24 @@ def market_scan():
     directory = current_app.extensions["directory"]
     owners = {r["owner"] for r in L().db.query("SELECT DISTINCT owner FROM instruments UNION SELECT DISTINCT owner FROM watchlist")}
     results = [scan_owner(o, directory.role(o) or "user") for o in sorted(owners)]
+    return jsonify({"at": now_iso(), "owners": results})
+
+
+@bp.post("/jobs/daily-digest")
+def daily_digest():
+    """The daily action digest (SPEC §8.6, AMENDMENTS R10), called by .github/workflows/daily-digest.yml at
+    03:45 UTC every day; no market-hours gate. For each owner with a subscribed device, a member of the family
+    with `marketAlerts.digest` on gets one push of up to three tier-now actions never pushed before. pushed_at is
+    stamped only when a device received it, so a second run the same day sends nothing new and a run with push
+    off stamps nothing. Returns {at, owners: [{owner, new, pushed} | {owner, skipped}]}."""
+    if not _job_allowed():
+        return jsonify({"error": "Not allowed"}), 403
+    directory = current_app.extensions["directory"]
+    results = []
+    for owner in push.owners(L().db):
+        try:
+            results.append(notices.digest_owner(S(), push, owner, directory.role(owner)))
+        except Exception as e:  # noqa: BLE001 — one person's failure must not stop everyone else's digest
+            print(f"[digest] {owner}: {e!r}")
+            results.append({"owner": owner, "error": "digest failed"})
     return jsonify({"at": now_iso(), "owners": results})

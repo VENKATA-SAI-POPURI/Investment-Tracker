@@ -10,16 +10,21 @@ import { errorMessage } from '../../core/http';
 import { KiteBlock, KiteDay, KitePreview, KiteStock } from '../../core/models';
 import { StoreService } from '../../core/store.service';
 import { ToastService } from '../../core/toast.service';
+import { ActionService } from '../../core/action.service';
+import { DropZoneComponent, completeImportDue } from '../../shared/drop-zone.component';
 import { IconComponent } from '../../shared/icon.component';
 
 const signed = (r: { type: string; quantity: number }) => r.type === 'SELL' ? -r.quantity : r.quantity;
 const sum = <T>(rows: T[], f: (r: T) => number) => rows.reduce((a, r) => a + f(r), 0);
 
-/** Zerodha tradebook: reconciles Kite's trades with what the app already holds, stock by stock. */
+/**
+ * Zerodha tradebook: reconciles Kite's trades with what the app already holds, stock by stock.
+ * Files come through the shared drop zone (R21): .xlsx or .csv, several years at once.
+ */
 @Component({
   selector: 'app-tradebook-import',
   standalone: true,
-  imports: [FormsModule, NgTemplateOutlet, RouterLink, IconComponent, ...FORMAT_PIPES],
+  imports: [FormsModule, NgTemplateOutlet, RouterLink, IconComponent, DropZoneComponent, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="card">
@@ -27,11 +32,9 @@ const sum = <T>(rows: T[], f: (r: T) => number) => rows.reduce((a, r) => a + f(r
         <span class="hint">Console → Reports → Tradebook → Equity, for one financial year at a time (.xlsx or .csv). Several years at once is fine.</span></div></div>
       @if (!auth.canWrite()) { <div class="notice"><app-icon name="info" [size]="16" /> Read-only access: imports are not available for guests.</div> }
       @else {
-        <label class="drop">
-          <input type="file" accept=".xlsx,.csv" multiple (change)="onFiles($event)" [disabled]="busy()" aria-label="Choose tradebook files" />
-          <app-icon name="upload" [size]="20" />
-          <span>{{ busy() && !preview() ? 'Reading…' : files() || 'Choose tradebook files' }}</span>
-        </label>
+        <app-drop-zone accept=".xlsx,.csv" [multiple]="true" [disabled]="busy()"
+          [label]="busy() && !preview() ? 'Reading…' : files() || 'Choose tradebook files'"
+          hint="One file per financial year, .xlsx or .csv; drop several years together." (files)="onFiles($event)" />
         <p class="small muted" style="margin-top:10px"><app-icon name="shield" [size]="13" /> Trades already in the app are recognised, including ones you entered as one combined row. Nothing changes until you apply.</p>
       }
       @if (error()) { <div class="notice bad" style="margin-top:12px"><app-icon name="alert" [size]="16" /> {{ error() }}</div> }
@@ -165,10 +168,6 @@ const sum = <T>(rows: T[], f: (r: T) => number) => rows.reduce((a, r) => a + f(r
   `,
   styles: [`
     :host { display: flex; flex-direction: column; gap: 22px; }
-    .drop { position: relative; display: flex; align-items: center; gap: 10px; height: 64px; padding: 0 16px; border-radius: 10px;
-      border: 1.5px dashed var(--border-strong); background: var(--surface-2); color: var(--text-2); cursor: pointer; font-size: 13.5px; }
-    .drop:hover { border-color: var(--primary); color: var(--text); }
-    .drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
     .blk { padding: 12px 0; border-top: 1px solid var(--border); }
     .blk:first-of-type { border-top: 0; padding-top: 0; }
     .cmp { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 14px; align-items: start; margin: 8px 0 0 26px; }
@@ -184,6 +183,7 @@ export class TradebookImportComponent {
   private api = inject(ApiService);
   private store = inject(StoreService);
   private toast = inject(ToastService);
+  private actions = inject(ActionService);
 
   files = signal('');
   busy = signal(false);
@@ -228,10 +228,7 @@ export class TradebookImportComponent {
     this.bump();
   }
 
-  async onFiles(ev: Event) {
-    const input = ev.target as HTMLInputElement;
-    const picked = [...(input.files ?? [])];
-    input.value = '';
+  async onFiles(picked: File[]) {
     if (!picked.length) return;
     this.files.set(picked.map(f => f.name).join(', '));
     this.busy.set(true); this.error.set(null); this.done.set(null); this.preview.set(null);
@@ -263,6 +260,7 @@ export class TradebookImportComponent {
       this.done.set({ added: r.added, removed: r.removed, corrected: r.corrected, failed });
       this.toast.ok(`Tradebook applied: ${r.added} trades added`);
       if (failed.length) this.toast.error(`${failed.length} stock(s) skipped`);
+      if (r.added || r.removed || r.corrected) completeImportDue(this.actions);
       this.preview.set(null);
       this.files.set('');
       await this.store.changed();

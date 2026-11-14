@@ -1,146 +1,414 @@
 <div class="page">
-  <div class="page-head"><div><h1>Settings</h1><p class="sub">Targets, tax, prices and access</p></div></div>
+  <div class="page-head">
+    <div><h1>Settings</h1>
+      <p class="sub">{{ auth.portfolioLabel() }} · {{ auth.canWrite() ? 'Profile, alerts, prices, access and assumptions' : 'Read-only for guests' }}</p></div>
+  </div>
 
-  <section class="grid grid-2">
-    <div class="card">
-      <div class="card-head"><div><h2>Target allocation</h2><span class="hint">Drives drift alerts and the rebalancing planner</span></div>
-        <button class="btn ghost sm" (click)="matchCurrent()" [disabled]="!auth.canWrite()">Use current mix</button></div>
-      <form class="form" (ngSubmit)="saveTargets()">
-        <table class="table">
-          <thead><tr><th>Segment</th><th class="num">Now</th><th class="num" style="width:120px">Target %</th></tr></thead>
-          <tbody>
-            @for (s of segments; track s) {
-              <tr><td><span class="row"><i class="swatch" [style.background]="colorOf(s)"></i>{{ s }}</span></td>
-                <td class="num muted">{{ current()[s] | pct: 1 : false }}</td>
-                <td><input class="input num" type="number" min="0" max="100" step="1" [name]="s" [(ngModel)]="targets[s]" [disabled]="!auth.canWrite()" [attr.aria-label]="s + ' target'" /></td></tr>
-            }
-          </tbody>
-          <tfoot><tr><td>Total</td><td></td><td class="num" [class.neg]="targetSum() !== 100">{{ targetSum() }}%</td></tr></tfoot>
-        </table>
-        @if (auth.canWrite()) {
-          <div class="form-actions"><button class="btn primary" type="submit" [disabled]="saving() || targetSum() !== 100">Save targets</button></div>
-        }
-      </form>
+  @if (familyBanner()) {
+    <div class="notice family" role="note">
+      <app-icon name="users" [size]="16" />
+      <span><b>{{ auth.canWrite() ? 'Editing the family plan' : 'The family plan' }}</b> · the cushion, tax slab, alerts, targets, retirement plan and assumptions here are shared by the whole family view, not one member's.{{ auth.canWrite() ? '' : ' Guests can look but not change them.' }}</span>
     </div>
+  }
+  @if (memberPlan(); as m) {
+    <div class="notice family member" role="note">
+      <app-icon [name]="auth.canWrite() ? 'users' : 'eye'" [size]="16" />
+      <span><b>{{ auth.canWrite() ? 'Saving to ' + m.whose + ' plan' : 'Viewing ' + m.whose + ' plan' }}</b> · changes here go to {{ m.self ? 'your own settings' : m.name + "'s settings" }}, not the family plan. Anything not changed yet still comes from the family plan.{{ auth.canWrite() ? '' : ' Guests can look but not change them.' }}</span>
+    </div>
+  }
+  @if (store.error() && !store.portfolio()) {
+    <div class="notice bad" role="alert">
+      <app-icon name="alert" [size]="16" />
+      <span>Couldn't load your settings: {{ store.error() }} <button class="btn sm" style="margin-left:8px" (click)="store.reload()">Try again</button></span>
+    </div>
+  }
 
-    <div style="display:flex;flex-direction:column;gap:16px">
-      <div class="card">
-        <div class="card-head"><h2>Tax</h2></div>
-        <div class="form">
-          <div class="field">
-            <label for="slab">Your income-tax slab (used for short-term non-equity gains and interest)</label>
-            <div class="row">
-              <select id="slab" class="input" style="max-width:200px" [(ngModel)]="slab" [disabled]="!auth.canWrite()">
-                @for (r of [0, 5, 10, 15, 20, 25, 30]; track r) { <option [ngValue]="r">{{ r }}%</option> }
-              </select>
-              @if (auth.canWrite()) { <button class="btn" (click)="saveSlab()" [disabled]="saving()">Save</button> }
+  <div class="set-layout">
+    <nav class="rail" aria-label="Settings sections">
+      @for (s of sections(); track s.id) {
+        <a [attr.href]="'/settings#' + s.id" [class.on]="active() === s.id" [attr.aria-current]="active() === s.id ? 'location' : null" (click)="go(s.id, $event)">{{ s.label }}</a>
+      }
+    </nav>
+
+    <div class="set-body">
+      <nav class="seg rail-phone" aria-label="Settings sections">
+        @for (s of sections(); track s.id) {
+          <button type="button" [class.on]="active() === s.id" [attr.aria-current]="active() === s.id ? 'location' : null" (click)="go(s.id)">{{ s.short }}</button>
+        }
+      </nav>
+
+      <!-- ── Profile & cushion ── -->
+      <section id="profile" class="profile-grid" aria-label="Profile and cushion">
+        <div class="card" id="cushion">
+          <div class="card-head"><div><h2>Emergency cushion</h2>
+            <span class="hint">Money you could reach within days if income stopped. Home's Cushion check reads it, and goals never earmark it.</span></div>
+            @if (inherited('cushion')) { <span class="badge info inh">From the family plan until you change it</span> }</div>
+
+          <div class="form">
+            <div class="cov" [attr.data-status]="coverStatus()">
+              <div class="cov-top">
+                <span class="cov-num">{{ coverLabel() }} <small>months of expenses · target {{ efMonths() }}</small></span>
+                <app-status [status]="coverStatus()" [word]="coverWord()" />
+              </div>
+              <div class="cov-bar" role="progressbar" aria-label="Cushion coverage against the target" aria-valuemin="0" aria-valuemax="100" [attr.aria-valuenow]="coverPctNow()">
+                <span [style.width.%]="coverPct()"></span>
+              </div>
+              @if (coverMonths() === null) {
+                <p class="small text-2">Add your monthly expenses to see how many months your cushion covers.</p>
+              } @else {
+                <p class="small text-2">{{ coverAmount() | inr }} set aside{{ (efCash() ?? 0) > 0 ? ', including ' + ((efCash() ?? 0) | inr) + ' in the bank' : '' }}, against {{ efMonths() }} months of {{ efExpenses() | inr }}.
+                  @if (shortBy() > 0) { <b>{{ shortBy() | inr }} short</b> of the target. } @else { That meets your target. }
+                  <span class="muted">At today's values.</span></p>
+              }
+            </div>
+
+            <div class="cols">
+              <div class="field">
+                <label for="ef-exp">Monthly expenses (₹)</label>
+                <input id="ef-exp" class="input num" type="number" min="0" step="1000" placeholder="e.g. 60000" inputmode="numeric"
+                  [ngModel]="efExpenses()" (ngModelChange)="setExpenses($event)" [disabled]="!auth.canWrite()" [attr.aria-invalid]="!!expensesErr()" />
+                @if (expensesErr(); as err) { <span class="err">{{ err }}</span> }
+                @else if (efFromHint()) { <span class="hint">From your retirement plan; change it if it's off</span> }
+                @else { <span class="hint">What a normal month costs your household</span> }
+              </div>
+              <div class="field">
+                <label for="ef-months">Months to keep</label>
+                <select id="ef-months" class="input" [ngModel]="efMonths()" (ngModelChange)="setMonths($event)" [disabled]="!auth.canWrite()">
+                  @for (m of monthsOptions; track m) { <option [ngValue]="m">{{ m }} months</option> }
+                </select>
+                @if (monthsErr(); as err) { <span class="err">{{ err }}</span> } @else { <span class="hint">Six months is the usual rule of thumb</span> }
+              </div>
+            </div>
+
+            <div class="field">
+              <label id="ef-hold">Holdings that count · {{ efTicked().size }} ticked, {{ tickedAmount() | inr }}</label>
+              <div class="checklist" role="group" aria-labelledby="ef-hold">
+                @if (firstLoad() && !cushionRows().length) {
+                  <div class="skel"></div><div class="skel" style="width:60%"></div>
+                } @else {
+                  @for (r of cushionRows(); track r.id) {
+                    <label class="ck" [class.off]="!efTicked().has(r.id)" [class.gone]="r.gone">
+                      <input type="checkbox" [checked]="efTicked().has(r.id)" (change)="toggle(r.id, $any($event.target).checked)" [disabled]="!auth.canWrite()" />
+                      <span style="min-width:0;display:flex;flex-direction:column"><span class="nm">{{ r.name }}</span>@if (r.note !== r.name) { <span class="nt">{{ r.note }}</span> }</span>
+                      <span class="num small">{{ r.value | inr }}</span>
+                    </label>
+                  } @empty {
+                    <div class="ck-empty">No holdings look like emergency money yet. We suggest FDs maturing within a year, debt and liquid funds, and the USD wallet.{{ auth.canWrite() ? ' Add bank money below, or pick a holding.' : '' }}</div>
+                  }
+                }
+              </div>
+              @if (!suggest() && !firstLoad()) {
+                <span class="hint">Suggestions aren't available right now; your saved holdings still count.</span>
+              } @else {
+                <span class="hint">Suggested: FDs maturing within a year, debt and liquid funds, the USD wallet.</span>
+              }
+              @if (auth.canWrite() && addable().length) {
+                <select class="input" style="max-width:360px" aria-label="Add another holding"
+                  (change)="addHolding($any($event.target).value); $any($event.target).value = ''">
+                  <option value="">Add another holding…</option>
+                  @for (p of addable(); track p.id) { <option [value]="p.id">{{ p.name }} · {{ p.value | inrc }}</option> }
+                </select>
+              }
+            </div>
+
+            <div class="field">
+              <label for="ef-cash">Bank or savings money outside the tracker (₹)</label>
+              <input id="ef-cash" class="input num" style="max-width:240px" type="number" min="0" step="1000" placeholder="0" inputmode="numeric"
+                [ngModel]="efCash()" (ngModelChange)="setCash($event)" [disabled]="!auth.canWrite()" [attr.aria-invalid]="!!cashErr()" />
+              @if (cashErr(); as err) { <span class="err">{{ err }}</span> }
+              @else { <span class="hint">Counts toward the cushion only, never toward your portfolio value</span> }
+            </div>
+
+            @if (efError(); as err) {
+              <div class="notice bad" role="alert"><app-icon name="alert" [size]="16" /><span>Couldn't save the cushion: {{ err }}</span></div>
+            }
+            @if (auth.canWrite()) {
+              <div class="ef-actions">
+                @if (efDirty()) {
+                  <span class="grow small muted">Unsaved changes</span>
+                  <button class="btn ghost sm" type="button" (click)="discardCushion()" [disabled]="efSaving()">Discard</button>
+                } @else if (!savedEf()) {
+                  <span class="grow small muted">Not saved yet · the ticks are our suggestion</span>
+                }
+                <button class="btn primary" type="button" (click)="saveCushion()" [disabled]="!efValid() || efSaving()">
+                  {{ efSaving() ? 'Saving…' : savedEf() ? 'Save cushion' : 'Set cushion' }}</button>
+              </div>
+            } @else if (!savedEf() && !firstLoad()) {
+              <span class="small muted">No cushion saved yet · the ticks above are only our suggestion</span>
+            }
+          </div>
+        </div>
+
+        <div class="side">
+          <div class="card">
+            <div class="card-head"><h2>Tax</h2>
+              @if (inherited('tax')) { <span class="badge info inh">From the family plan until you change it</span> }</div>
+            <div class="form">
+              <div class="field">
+                <label for="slab">Your income-tax slab (used for short-term non-equity gains and interest)</label>
+                <div class="row">
+                  <select id="slab" class="input" style="max-width:200px" [(ngModel)]="slab" [disabled]="!auth.canWrite()">
+                    @for (r of [0, 5, 10, 15, 20, 25, 30]; track r) { <option [ngValue]="r">{{ r }}%</option> }
+                  </select>
+                  @if (auth.canWrite()) { <button class="btn" (click)="saveSlab()" [disabled]="saving()">Save</button> }
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><div><h2>Your plans</h2><span class="hint">Set on their own pages; shown here for reference</span></div>
+              @if (inherited('plans')) { <span class="badge info inh">From the family plan until you change it</span> }</div>
+            <div>
+              <a class="summary" routerLink="/risk" fragment="mix">
+                <span><span class="k">Target mix:</span> {{ targetsSet() ? 'set' + (profileLabel() ? ' · ' + profileLabel() : '') : 'not set' }}</span>
+                <span class="go">{{ targetsSet() || !auth.canWrite() ? 'Risk & mix' : 'Set it' }} →</span>
+              </a>
+              <a class="summary" routerLink="/plan" [queryParams]="{ tab: 'retirement' }">
+                <span><span class="k">Retirement plan:</span> {{ retireAge() ? 'retire at ' + retireAge() : retirementSet() ? 'set' : 'not set' }}</span>
+                <span class="go">{{ retirementSet() || !auth.canWrite() ? 'Plan' : 'Set it' }} →</span>
+              </a>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h2>Capital flows</h2>
+              @if (inherited('flows')) { <span class="badge info inh">From the family plan until you change it</span> }</div>
+            <div class="form">
+              <label class="check"><input type="checkbox" [(ngModel)]="autoFlows" (ngModelChange)="saveAuto()" [disabled]="!auth.canWrite()" />
+                Record capital flows automatically for mutual funds, FDs, P2P, USD transfers and dividends</label>
             </div>
           </div>
         </div>
-      </div>
-      <div class="card">
-        <div class="card-head"><h2>Preferences</h2></div>
-        <div class="form">
-          <label class="check"><input type="checkbox" [(ngModel)]="autoFlows" (ngModelChange)="saveAuto()" [disabled]="!auth.canWrite()" />
-            Record capital flows automatically for mutual funds, FDs, P2P, USD transfers and dividends</label>
-        </div>
-      </div>
-    </div>
-  </section>
+      </section>
 
-  <section class="card" id="alerts">
-    <div class="card-head"><div><h2>Price alerts</h2>
-      <span class="hint">For your Indian stocks, ETFs and watchlist, checked every 30 minutes while the market is open. Alerts appear under the bell and, if you turn them on, as notifications on this device.</span></div></div>
-    <div class="alerts-grid">
-      <div class="form">
-        <label class="check"><input type="checkbox" [(ngModel)]="alerts.enabled" [disabled]="!auth.canWrite()" /> Watch my holdings for big moves</label>
-        <div class="cols">
-          <div class="field"><label for="al-day">Alert when a holding moves in a day by</label>
-            <div class="row"><input id="al-day" class="input num" style="max-width:90px" type="number" min="1" max="20" step="0.5" [(ngModel)]="alerts.day" [disabled]="!alerts.enabled || !auth.canWrite()" /> %</div></div>
-          <div class="field"><label for="al-week">…or in a week by</label>
-            <div class="row"><input id="al-week" class="input num" style="max-width:90px" type="number" min="2" max="40" step="0.5" [(ngModel)]="alerts.week" [disabled]="!alerts.enabled || !auth.canWrite()" /> %</div></div>
-        </div>
-        <label class="check"><input type="checkbox" [(ngModel)]="alerts.push" [disabled]="!alerts.enabled || !auth.canWrite()" /> Send them as push notifications</label>
-        @if (auth.canWrite()) { <div><button class="btn primary sm" (click)="saveAlerts()" [disabled]="saving()">Save alert settings</button></div> }
-      </div>
-      <div class="device">
-        <b>This device</b>
-        @if (!push.deviceSupported) {
-          <p class="small muted">This browser can't receive push notifications here. On an iPhone, add the app to your Home Screen first (Share → Add to Home Screen), then open it from there. On a computer, use the installed site rather than a preview.</p>
-        } @else if (push.serverReady() === false) {
-          <p class="small muted">Push isn't set up on the server yet, so alerts show only under the bell for now.</p>
-        } @else if (push.subscribed()) {
-          <p class="small"><app-icon name="checkCircle" [size]="14" class="pos" /> Notifications are on for this device{{ push.devices() > 1 ? ' and ' + (push.devices() - 1) + ' other' + (push.devices() > 2 ? 's' : '') : '' }}.</p>
-          <div class="row wrap"><button class="btn sm" (click)="testPush()" [disabled]="push.busy()">Send a test</button>
-            <button class="btn ghost sm" (click)="push.disable()" [disabled]="push.busy()">Turn off here</button>
-            @if (push.devices() > 1) { <button class="btn ghost sm" (click)="push.disable(true)" [disabled]="push.busy()">Turn off everywhere</button> }</div>
-        } @else {
-          <p class="small muted">{{ push.blocked() ? 'Notifications are blocked for this site; allow them in the browser's site settings first.' : 'Get alerts here even when the app is closed.' }}
-            {{ push.devices() ? 'On for ' + push.devices() + ' other device' + (push.devices() > 1 ? 's' : '') + '.' : '' }}</p>
-          <button class="btn sm" (click)="enablePush()" [disabled]="push.busy() || push.blocked() || push.serverReady() === null"><app-icon name="bell" [size]="14" /> Turn on notifications</button>
-        }
-        @if (push.error()) { <p class="small neg">{{ push.error() }}</p> }
-      </div>
-    </div>
-  </section>
-
-  <section class="card flush" id="prices">
-    <div class="card-head">
-      <div><h2>Prices & tickers</h2><span class="hint">Last refresh {{ rel(store.portfolio()?.prices?.last_refresh) }} · USD/INR {{ store.portfolio()?.usd_inr ?? '—' }}</span></div>
-      <div class="row">
-        <div class="seg"><button [class.on]="priceFilter() === 'missing'" (click)="priceFilter.set('missing')">Missing</button><button [class.on]="priceFilter() === 'all'" (click)="priceFilter.set('all')">All</button></div>
-        <button class="btn sm" (click)="store.refreshPrices(true)" [disabled]="store.refreshingPrices()"><app-icon name="refresh" [size]="14" /> Refresh</button>
-      </div>
-    </div>
-    <div class="table-wrap" style="max-height:420px">
-      <table class="table">
-        <thead><tr><th>Holding</th><th>Ticker</th><th class="num">Price</th><th class="hide-sm">Updated</th>@if (auth.canWrite()) { <th></th> }</tr></thead>
-        <tbody>
-          @for (p of tradables(); track p.id) {
-            <tr [class.muted]="!p.is_open">
-              <td class="name-cell">{{ p.name }}<div class="sub">{{ classLabel[p.asset_class] }}{{ p.is_open ? '' : ' · closed' }}</div></td>
-              <td>@if (p.symbol) { <code>{{ p.symbol }}</code> } @else { <span class="badge warn">none</span> }</td>
-              <td class="num">@if (p.has_price) { {{ p.currency === 'USD' ? (p.price | usd) : (p.price | inr: 2) }} } @else { — }</td>
-              <td class="hide-sm small muted">{{ p.price_at ? rel(p.price_at) : '—' }}</td>
-              @if (auth.canWrite()) { <td class="right"><button class="btn sm" (click)="editing.set(p)">{{ p.symbol ? 'Change' : 'Set ticker' }}</button></td> }
-            </tr>
-          } @empty { <tr><td colspan="5"><div class="empty">Every open holding has a live price.</div></td></tr> }
-        </tbody>
-      </table>
-    </div>
-  </section>
-
-  @if (auth.isAdmin()) {
-    <section class="card flush" id="people">
-      <div class="card-head"><div><h2>Family members</h2><span class="hint">Each member signs in with Google and gets their own portfolio. Users see only theirs; admins and guests can switch to any member or the whole family; guests are read-only</span></div></div>
-      <div class="table-wrap">
-        <table class="table">
-          <thead><tr><th>Person</th><th>Role</th><th class="hide-sm">Last sign-in</th><th></th></tr></thead>
-          <tbody>
-            @for (u of users(); track u.email) {
-              <tr>
-                <td>{{ u.name || u.email }}<div class="sub">{{ u.email }}</div></td>
-                <td><select class="input" style="width:auto;height:30px" [ngModel]="u.role" (ngModelChange)="setRole(u, $event)" [attr.aria-label]="'Role for ' + u.email">
-                  <option value="admin">Admin</option><option value="user">User</option><option value="guest">Guest</option></select></td>
-                <td class="hide-sm small muted">{{ u.last_login ? rel(u.last_login) : 'never' }}</td>
-                <td class="right nowrap">
-                  @if (u.email !== auth.user()?.email) {
-                    <button class="btn sm" (click)="viewAs(u)"><app-icon name="eye" [size]="14" /> View as</button>
-                    <button class="btn ghost icon sm danger" (click)="removeUser(u)" aria-label="Remove"><app-icon name="trash" [size]="15" /></button>
-                  }
-                </td>
-              </tr>
+      <!-- ── Alerts ── -->
+      <section class="card" id="alerts">
+        <div class="card-head"><div><h2>Alerts</h2>
+          <span class="hint">Price alerts for your Indian stocks, ETFs and watchlist are checked every 30 minutes while the market is open. Alerts appear under the bell and, if you turn them on, as notifications on this device.</span></div>
+          @if (inherited('alerts')) { <span class="badge info inh">From the family plan until you change it</span> }</div>
+        <div class="alerts-grid">
+          <div class="form">
+            <label class="check"><input type="checkbox" [(ngModel)]="alerts.enabled" [disabled]="!auth.canWrite()" /> Watch my holdings for big moves</label>
+            <div class="cols">
+              <div class="field"><label for="al-day">Alert when a holding moves in a day by</label>
+                <div class="row"><input id="al-day" class="input num" style="max-width:90px" type="number" min="1" max="20" step="0.5" [(ngModel)]="alerts.day" [disabled]="!alerts.enabled || !auth.canWrite()" /> %</div></div>
+              <div class="field"><label for="al-week">…or in a week by</label>
+                <div class="row"><input id="al-week" class="input num" style="max-width:90px" type="number" min="2" max="40" step="0.5" [(ngModel)]="alerts.week" [disabled]="!alerts.enabled || !auth.canWrite()" /> %</div></div>
+            </div>
+            <label class="check"><input type="checkbox" [(ngModel)]="alerts.push" [disabled]="!alerts.enabled || !auth.canWrite()" /> Send them as push notifications</label>
+            <div class="digest">
+              <label class="check"><input id="al-digest" type="checkbox" [(ngModel)]="alerts.digest" [disabled]="!auth.canWrite()" aria-describedby="al-digest-hint" /> Daily action digest (09:15)</label>
+              <span class="hint" id="al-digest-hint">One notification each morning with up to 3 things that need you today, every day of the week.
+                @if (!push.subscribed()) { <span class="need">Needs alerts on this device.</span> }</span>
+            </div>
+            @if (auth.canWrite()) { <div><button class="btn primary sm" (click)="saveAlerts()" [disabled]="saving()">Save alert settings</button></div> }
+          </div>
+          <div class="device">
+            <b>This device</b>
+            @if (!push.deviceSupported) {
+              <p class="small muted">This browser can't receive push notifications here. On an iPhone, add the app to your Home Screen first (Share → Add to Home Screen), then open it from there. On a computer, use the installed site rather than a preview.</p>
+            } @else if (push.serverReady() === false) {
+              <p class="small muted">Push isn't set up on the server yet, so alerts show only under the bell for now.</p>
+            } @else if (push.subscribed()) {
+              <p class="small"><app-icon name="checkCircle" [size]="14" class="pos" /> Notifications are on for this device{{ push.devices() > 1 ? ' and ' + (push.devices() - 1) + ' other' + (push.devices() > 2 ? 's' : '') : '' }}.</p>
+              <div class="row wrap"><button class="btn sm" (click)="testPush()" [disabled]="push.busy()">Send a test</button>
+                <button class="btn ghost sm" (click)="push.disable()" [disabled]="push.busy()">Turn off here</button>
+                @if (push.devices() > 1) { <button class="btn ghost sm" (click)="push.disable(true)" [disabled]="push.busy()">Turn off everywhere</button> }</div>
+            } @else {
+              <p class="small muted">{{ push.blocked() ? 'Notifications are blocked for this site; allow them in the browser's site settings first.' : 'Get alerts here even when the app is closed.' }}
+                {{ push.devices() ? 'On for ' + push.devices() + ' other device' + (push.devices() > 1 ? 's' : '') + '.' : '' }}</p>
+              <button class="btn sm" (click)="enablePush()" [disabled]="push.busy() || push.blocked() || push.serverReady() === null"><app-icon name="bell" [size]="14" /> Turn on notifications</button>
             }
-          </tbody>
-        </table>
-      </div>
-      <form class="row wrap" style="padding:14px 20px;border-top:1px solid var(--border)" (ngSubmit)="addUser()">
-        <input class="input" style="max-width:280px" type="email" name="email" [(ngModel)]="newEmail" placeholder="name@gmail.com" aria-label="Email to add" />
-        <select class="input" style="width:auto" name="role" [(ngModel)]="newRole" aria-label="Role"><option value="user">User</option><option value="guest">Guest</option><option value="admin">Admin</option></select>
-        <button class="btn primary" type="submit" [disabled]="!newEmail.includes('@')">Add person</button>
-      </form>
-    </section>
-  }
+            @if (push.error()) { <p class="small neg">{{ push.error() }}</p> }
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Prices & tickers ── -->
+      <section class="card flush" id="prices">
+        <div class="card-head">
+          <div><h2>Prices & tickers</h2><span class="hint">Last refresh {{ rel(store.portfolio()?.prices?.last_refresh) }} · USD/INR {{ store.portfolio()?.usd_inr ?? '—' }}</span></div>
+          <div class="row">
+            <div class="seg" role="group" aria-label="Which holdings to list">
+              <button type="button" [class.on]="priceFilter() === 'missing'" (click)="setPriceFilter('missing')">Missing{{ missingCount() ? ' · ' + missingCount() : '' }}</button>
+              <button type="button" [class.on]="priceFilter() === 'all'" (click)="setPriceFilter('all')">All</button>
+            </div>
+            <button class="btn sm" (click)="store.refreshPrices(true)" [disabled]="store.refreshingPrices()"><app-icon name="refresh" [size]="14" /> Refresh</button>
+          </div>
+        </div>
+        <div class="table-wrap" style="max-height:420px">
+          <table class="table">
+            <thead><tr><th>Holding</th><th>Ticker</th><th class="num">Price</th><th class="hide-sm">Updated</th>@if (auth.canWrite()) { <th></th> }</tr></thead>
+            <tbody>
+              @for (p of tradables(); track p.id) {
+                <tr [class.muted]="!p.is_open">
+                  <td class="name-cell">{{ p.name }}<div class="sub">{{ classLabel[p.asset_class] }}{{ p.is_open ? '' : ' · closed' }}</div></td>
+                  <td>@if (p.symbol) { <code>{{ p.symbol }}</code> } @else { <span class="badge warn">none</span> }</td>
+                  <td class="num">@if (p.has_price) { {{ p.currency === 'USD' ? (p.price | usd) : (p.price | inr: 2) }} } @else { — }</td>
+                  <td class="hide-sm small muted">{{ p.price_at ? rel(p.price_at) : '—' }}</td>
+                  @if (auth.canWrite()) { <td class="right"><button class="btn sm" (click)="editing.set(p)">{{ p.symbol ? 'Change' : 'Set ticker' }}</button></td> }
+                </tr>
+              } @empty {
+                <tr><td colspan="5"><div class="empty">
+                  @if (firstLoad()) { Loading holdings… }
+                  @else if (priceFilter() === 'missing') { Every open holding has a live price. }
+                  @else { No stocks, funds or commodities in this portfolio yet. }
+                </div></td></tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ── Family ── -->
+      @if (auth.isAdmin()) {
+        <section class="card flush" id="people">
+          <div class="card-head"><div><h2>Family members</h2><span class="hint">Each member signs in with Google and gets their own portfolio. Users see only theirs; admins and guests can switch to any member or the whole family; guests are read-only</span></div></div>
+          <div class="table-wrap">
+            <table class="table">
+              <thead><tr><th>Person</th><th>Role</th><th class="hide-sm">Last sign-in</th><th></th></tr></thead>
+              <tbody>
+                @for (u of users(); track u.email) {
+                  <tr>
+                    <td>{{ u.name || u.email }}<div class="sub">{{ u.email }}</div></td>
+                    <td><select class="input" style="width:auto;height:30px" [ngModel]="u.role" (ngModelChange)="setRole(u, $event)" [attr.aria-label]="'Role for ' + u.email">
+                      <option value="admin">Admin</option><option value="user">User</option><option value="guest">Guest</option></select></td>
+                    <td class="hide-sm small muted">{{ u.last_login ? rel(u.last_login) : 'never' }}</td>
+                    <td class="right nowrap">
+                      @if (u.email !== auth.user()?.email) {
+                        <button class="btn sm" (click)="viewAs(u)"><app-icon name="eye" [size]="14" /> View as</button>
+                        <button class="btn ghost icon sm danger" (click)="removeUser(u)" aria-label="Remove"><app-icon name="trash" [size]="15" /></button>
+                      }
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+          <form class="row wrap" style="padding:14px 20px;border-top:1px solid var(--border)" (ngSubmit)="addUser()">
+            <input class="input" style="max-width:280px" type="email" name="email" [(ngModel)]="newEmail" placeholder="name@gmail.com" aria-label="Email to add" />
+            <select class="input" style="width:auto" name="role" [(ngModel)]="newRole" aria-label="Role"><option value="user">User</option><option value="guest">Guest</option><option value="admin">Admin</option></select>
+            <button class="btn primary" type="submit" [disabled]="!newEmail.includes('@')">Add person</button>
+          </form>
+        </section>
+      }
+
+      <!-- ── Assumptions (P2.10, R4, R19) ── -->
+      <section class="card flush" id="assumptions" aria-labelledby="as-title">
+        <div class="card-head">
+          <div><h2 id="as-title">Assumptions</h2>
+            <span class="hint">The long-run return and volatility behind every forecast, goal and retirement figure. {{ book()?.note || 'Long-run assumptions, not predictions.' }}</span></div>
+          <div class="head-meta">
+            @if (inherited('assumptions')) { <span class="badge info inh">From the family plan until you change it</span> }
+            @if (book(); as v) { <span class="hash small muted">Assumptions id <code>{{ v.hash }}</code></span> }
+          </div>
+        </div>
+
+        @if (!book()) {
+          @if (bookError(); as err) {
+            <div class="notice bad bk-msg" role="alert"><app-icon name="alert" [size]="16" />
+              <span>Couldn't load the assumptions: {{ err }} <button class="btn sm" style="margin-left:8px" type="button" (click)="loadBook()">Try again</button></span></div>
+          } @else {
+            <div class="bk-skel" aria-busy="true" aria-label="Loading the assumptions"><div class="skel"></div><div class="skel" style="width:70%"></div><div class="skel" style="width:85%"></div></div>
+          }
+        } @else {
+          @if (bookError(); as err) {
+            <div class="notice warn bk-msg" role="status"><app-icon name="alert" [size]="16" />
+              <span>Couldn't refresh the assumptions: {{ err }}. These are the last ones loaded. <button class="btn sm" style="margin-left:8px" type="button" (click)="loadBook()">Try again</button></span></div>
+          }
+          <div class="book">
+            <div class="bk head" [class.ro-row]="!auth.canWrite()" aria-hidden="true">
+              <span>Asset class</span><span>In use now</span>
+              @if (auth.canWrite()) { <span>Return, % a year</span><span>Volatility, % a year</span><span></span> }
+            </div>
+            @for (r of bookRows(); track r.key) {
+              <div class="bk" [class.ro-row]="!auth.canWrite()" [class.chg]="r.changed" [attr.data-key]="r.key">
+                <div class="b-name"><b>{{ r.label }}</b>
+                  <span class="small muted">{{ r.weight > 0 ? p(r.weight) + ' of your portfolio' : 'Not held' }}</span></div>
+                <div class="b-now">
+                  <span class="num">{{ p(r.ret) }} return · {{ p(r.vol) }} volatility</span>
+                  <span class="row wrap" style="gap:4px">
+                    <span class="badge" [class.info]="r.source === 'override'" [class.good]="r.source === 'holding rates'">{{ sourceWord(r.source) }}</span>
+                    @if (r.rated && r.saved) { <span class="badge info">Your volatility</span> }
+                  </span>
+                  @if (r.capped) { <span class="small muted">Capped at 12% a year after expected losses</span> }
+                </div>
+                @if (auth.canWrite()) {
+                  @if (r.clearing) {
+                    <div class="b-ret ro small text-2">Goes back to the default when you save</div>
+                    <div class="b-vol"></div>
+                  } @else {
+                    <div class="b-ret field">
+                      <label class="lbl" [attr.for]="'as-ret-' + $index">Return, % a year</label>
+                      @if (r.rated) {
+                        <span class="ro">{{ p(r.ret) }} · from your holdings</span>
+                      } @else {
+                        <input class="input num" type="number" step="0.1" [min]="ranges.ret[0]" [max]="ranges.ret[1]" inputmode="decimal" [id]="'as-ret-' + $index"
+                          [ngModel]="r.dRet" (ngModelChange)="setRet(r.key, $event)" [attr.aria-label]="r.label + ', return % a year'" [attr.aria-invalid]="!!r.retErr" />
+                        @if (r.retErr) { <span class="err">{{ r.retErr }}</span> }
+                      }
+                    </div>
+                    <div class="b-vol field">
+                      <label class="lbl" [attr.for]="'as-vol-' + $index">Volatility, % a year</label>
+                      <input class="input num" type="number" step="0.1" [min]="ranges.vol[0]" [max]="ranges.vol[1]" inputmode="decimal" [id]="'as-vol-' + $index"
+                        [ngModel]="r.dVol" (ngModelChange)="setVol(r.key, $event)" [attr.aria-label]="r.label + ', volatility % a year'" [attr.aria-invalid]="!!r.volErr" />
+                      @if (r.volErr) { <span class="err">{{ r.volErr }}</span> }
+                    </div>
+                  }
+                  <div class="b-act">
+                    @if (r.clearing) {
+                      <button class="btn ghost sm" type="button" (click)="keepOverride(r.key)">Keep mine</button>
+                    } @else if (r.saved) {
+                      <button class="btn ghost sm" type="button" (click)="useDefault(r.key)">Use default</button>
+                    }
+                  </div>
+                }
+              </div>
+            } @empty {
+              <div class="empty">No assumption rows came back from the server.</div>
+            }
+          </div>
+
+          <div class="infl">
+            <div class="field">
+              <label for="as-infl">Inflation, % a year</label>
+              @if (auth.canWrite()) {
+                <input id="as-infl" class="input num" type="number" step="0.1" [min]="ranges.infl[0]" [max]="ranges.infl[1]" inputmode="decimal"
+                  [ngModel]="inflValue()" (ngModelChange)="setInfl($event)" [attr.aria-invalid]="!!inflErr()" />
+                @if (inflErr(); as err) { <span class="err">{{ err }}</span> }
+                @else { <span class="hint">Turns future money into today's money and sizes retirement, unless a plan names its own. Leave it empty for the default.</span> }
+              } @else {
+                <span class="ro">{{ p(book()!.inflation_pct) }} · {{ savedInfl() != null ? 'your setting' : 'default' }}</span>
+              }
+            </div>
+          </div>
+
+          @if (bookSaveError(); as err) {
+            <div class="notice bad bk-msg" role="alert"><app-icon name="alert" [size]="16" /><span>Couldn't save the assumptions: {{ err }}</span></div>
+          }
+          @if (bookSaved(); as s) {
+            <div class="notice bk-msg saved" role="status"><app-icon name="checkCircle" [size]="16" class="pos" />
+              <span><b>{{ s.reset ? 'Back to the defaults' : 'Saved' }} · Assumptions id <code>{{ s.hash }}</code></b> · Every forecast now uses these.</span></div>
+          }
+          @if (auth.canWrite()) {
+            <div class="bk-foot">
+              <span class="grow small muted">
+                @if (bookDirty()) { Unsaved changes }
+                @else if (hasOverrides()) { {{ changedWord() }} }
+                @else { All defaults }
+              </span>
+              @if (bookDirty()) { <button class="btn ghost sm" type="button" (click)="discardBook()" [disabled]="bookSaving()">Discard</button> }
+              <button class="btn sm" type="button" (click)="resetBook()" [disabled]="bookSaving() || !hasOverrides()">Reset to defaults</button>
+              <button class="btn primary" type="button" (click)="saveBook()" [disabled]="!bookDirty() || !bookValid() || bookSaving()">{{ bookSaving() ? 'Saving…' : 'Save assumptions' }}</button>
+            </div>
+          } @else {
+            <p class="small muted bk-msg">Read-only for guests.</p>
+          }
+        }
+      </section>
+    </div>
+  </div>
 </div>
 
 @if (editing(); as p) { <app-instrument-edit [position]="p" (done)="editing.set(null)" /> }

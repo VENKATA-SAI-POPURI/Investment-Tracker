@@ -1,0 +1,366 @@
+<div class="page perf">
+  <app-portfolio-tabs />
+
+  <div class="page-head">
+    <div>
+      <h1>Performance</h1>
+      <p class="sub">{{ segment() || 'Whole portfolio' }} · {{ rangeLabel() }}@if (m()?.start) { · {{ m()!.start | dt }} – {{ m()!.end | dt }} }</p>
+    </div>
+    <div class="toolbar">
+      <select class="input seg-select" [ngModel]="segment()" (ngModelChange)="setSegment($event)" aria-label="Asset class">
+        <option value="">Whole portfolio</option>@for (s of segments; track s) { <option [value]="s">{{ s }}</option> }
+      </select>
+      <div class="seg" role="group" aria-label="Period">
+        @for (r of ranges; track r) {
+          <button type="button" [class.on]="range() === r" [attr.aria-pressed]="range() === r" (click)="setRange(r)">{{ r }}</button>
+        }
+      </div>
+    </div>
+  </div>
+
+  @if (!perf()) {
+    @if (error()) {
+      <div class="card"><div class="empty">
+        <app-icon name="alert" [size]="22" /><h3>Couldn't load your performance</h3><p>{{ error() }}</p>
+        <button type="button" class="btn" (click)="retry()"><app-icon name="refresh" [size]="15" /> Try again</button>
+      </div></div>
+    } @else {
+      <div class="skeleton hero-skel" aria-label="Loading your returns"></div>
+      <div class="card"><div class="skeleton" style="height:280px"></div></div>
+    }
+  } @else if (empty()) {
+    <div class="card"><div class="empty">
+      <app-icon name="chart" [size]="22" />
+      @if (segment()) {
+        <h3>Nothing in {{ segment() }} yet</h3><p>Once you add a {{ segment() }} transaction, its returns show here.</p>
+        <button type="button" class="btn" (click)="setSegment('')">Show the whole portfolio</button>
+      } @else {
+        <h3>No returns to show yet</h3><p>Add or import your first investment and your returns, against the same money in an index, show here.</p>
+        <a class="btn primary" routerLink="/import">Import transactions</a>
+      }
+    </div></div>
+  } @else {
+   @if (m(); as m) {
+    @if (error()) {
+      <div class="notice warn" role="status"><app-icon name="alert" [size]="16" /><span>Couldn't refresh, so these are the last numbers this device saw · {{ error() }}</span>
+        <button type="button" class="btn ghost sm" (click)="retry()">Try again</button></div>
+    }
+
+    <!-- T0: the answer -->
+    <section class="kpis perf-kpis" [class.loading-fade]="loading()" aria-label="Your return">
+      <div class="kpi hero">
+        <span class="label">Your return (XIRR)</span>
+        <span class="value">{{ m.xirr | pct }}</span>
+        <span class="meta">a year, money-weighted · {{ rangeLabel() }}@if (m.days < 365) { · annualised from {{ m.days }} days, so it swings a lot }</span>
+        <div class="verdict-line" [attr.data-status]="verdict()?.status ?? 'unset'">
+          <app-icon [name]="verdict() && verdict()!.excess !== null ? verdictMeta().icon : 'circleDashed'" [size]="18" />
+          <span>{{ verdictText() }}</span>
+          @if (verdict(); as v) {
+            @if (v.excess !== null && v.status !== 'unset') { <span class="v-word">· {{ verdictMeta().word }}</span> }
+          }
+        </div>
+        <span class="meta">
+          since you started@if (verdict()?.since) { ({{ verdict()!.since | dt }}) }
+          @if (verdict(); as v) {
+            @if (v.diff !== null && v.excess !== null) {
+              · {{ (v.diff < 0 ? -v.diff : v.diff) | inrc }} {{ v.diff >= 0 ? 'more' : 'less' }} than the same money in Nifty 50
+            }
+          }
+          @if (segment()) { · whole portfolio }
+        </span>
+        <button type="button" class="more-stats" (click)="moreStats.set(!moreStats())" [attr.aria-expanded]="moreStats()">{{ moreStats() ? 'Less' : 'More' }}</button>
+      </div>
+      <div class="kpi">
+        <span class="chip green sm"><app-icon name="trend" [size]="15" /></span>
+        <span class="label">Gain in period</span>
+        <span class="value" [class]="m.gain | sign">{{ m.gain | inr: 0 : true }}</span>
+        <span class="meta">after {{ m.net_flows | inrc }} added</span>
+      </div>
+      <div class="kpi">
+        <span class="chip violet sm"><app-icon name="chart" [size]="15" /></span>
+        <span class="label">Time-weighted (TWR)</span>
+        <span class="value" [class]="twr() | sign">{{ twr() | pct }}</span>
+        <span class="meta">{{ twrAnnual() ? 'a year, your timing taken out' : 'over the period, your timing taken out' }}</span>
+      </div>
+      <div class="kpi extra" [class.show]="moreStats()">
+        <span class="chip amber sm"><app-icon name="arrowDown" [size]="15" /></span>
+        <span class="label">Fall from peak</span>
+        <span class="value" [class]="m.current_drawdown | sign">{{ m.current_drawdown | pct }}</span>
+        <span class="meta">worst fall {{ m.max_drawdown | pct }} in this period</span>
+      </div>
+    </section>
+
+    <!-- T1: needs attention here (A27) -->
+    <app-needs-attention [prefixes]="['/performance']" />
+
+    <!-- T1 work surface (A21): one plain card, painted from this page's call -->
+    <section class="card work" [class.loading-fade]="loading()">
+      <div class="card-head">
+        <div><h2>You vs the same money in an index</h2>
+          <span class="hint">Each deposit and withdrawal mirrored into the index on the same day · {{ rangeLabel() }}</span></div>
+        @if (benchOptions().length) {
+          <select class="input seg-select" [ngModel]="activeBench()?.key" (ngModelChange)="bench.set($event)" aria-label="Benchmark">
+            @for (b of benchOptions(); track b.key) { <option [value]="b.key">{{ b.label }}</option> }
+          </select>
+        }
+      </div>
+      <div class="vs-row">
+        <div class="vs-chart">
+          @if (labels().length > 1) {
+            <app-line-chart [labels]="labels()" [series]="valueSeries()" [height]="280" [yFormat]="inrc" [tipFormat]="inrFull" ariaLabel="Your portfolio value against the same money in an index" />
+          } @else { <p class="muted small">Not enough history in this period to draw.</p> }
+        </div>
+        <div class="vs-table">
+          <h3 class="sub-h">Compared with</h3>
+          @if (compared().length) {
+            <div class="table-wrap">
+              <table class="table">
+                <thead><tr><th>Index</th><th class="num">Their XIRR</th><th class="num">You vs it</th><th class="num">Difference</th></tr></thead>
+                <tbody>
+                  @for (b of compared(); track b.key) {
+                    <tr [class.on]="b.key === activeBench()?.key">
+                      <td>{{ b.label }}<div class="sub">would be {{ b.end_value | inrc }}</div></td>
+                      <td class="num">{{ b.xirr | pct }}</td>
+                      <td class="num" [class]="b.excess_xirr | sign">{{ pts(b.excess_xirr) }}</td>
+                      <td class="num" [class]="b.diff | sign">{{ b.diff === null ? '—' : (b.diff | inrc: true) }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+            <p class="muted small foot">XIRR a year with your exact cash flows. Difference is your value at the end of the period minus what the same money would be worth in the index.</p>
+          } @else { <p class="muted small">No index prices for this period yet.</p> }
+        </div>
+      </div>
+    </section>
+
+    <!-- T2: explanations -->
+    <section class="grid grid-2 top" [class.loading-fade]="loading()">
+      <div class="card">
+        <div class="card-head"><div><h2>Growth of ₹100</h2>
+          <span class="hint">Time-weighted · {{ m.twr | pct }} over the period{{ m.twr_annualised !== null ? ', ' + (m.twr_annualised | pct) + ' a year' : '' }} · Explains: Your return</span></div></div>
+        @if (labels().length > 1) {
+          <app-line-chart [labels]="labels()" [series]="indexSeries()" [height]="230" [yFormat]="idxFmt" [tipFormat]="idxTip" ariaLabel="Growth of 100 rupees, time-weighted" />
+        } @else { <p class="muted small">Not enough history in this period to draw.</p> }
+      </div>
+      <div class="card">
+        <div class="card-head"><div><h2>Monthly returns</h2><span class="hint">% a month · ▲ gain, ▼ loss</span></div></div>
+        @if (heat().length) {
+          <div class="table-wrap">
+            <table class="heat">
+              <thead><tr><th scope="col"><span class="sr-only">Year</span></th>@for (mo of months; track mo) { <th scope="col" [attr.aria-label]="mo">{{ mo.slice(0, 1) }}</th> }<th scope="col">Year</th></tr></thead>
+              <tbody>
+                @for (r of heat(); track r.year) {
+                  <tr><th scope="row" class="year">{{ r.year }}</th>
+                    @for (v of r.vals; track $index) { <td [style.background]="heatBg(v)" [title]="months[$index] + ' ' + r.year + ': ' + (v === null ? '—' : (v | pct))">{{ heatCell(v) }}</td> }
+                    <td class="tot" [style.background]="heatBg(r.total)" [title]="r.year + ': ' + (r.total === null ? '—' : (r.total | pct))"><b>{{ heatCell(r.total, 1) }}</b></td></tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        } @else { <p class="muted small">No whole months in this period yet.</p> }
+      </div>
+    </section>
+
+    <section class="card" id="attribution" aria-labelledby="attr-h">
+      <div class="card-head">
+        <div><h2 id="attr-h">Attribution</h2>
+          <span class="hint">Where your gain came from · since you started{{ segment() ? ' · ' + segment() : '' }} · Explains: Your return</span></div>
+        @if (why(); as w) { <span class="badge">winners {{ w.winners }} · losers {{ w.losers_count }}</span> }
+      </div>
+      @if (why(); as w) {
+        <div class="attr-sum">
+          <div><span class="muted small">Total gain</span><b [class]="w.total | sign">{{ w.total | inr: 0 : true }}</b></div>
+          <div><span class="muted small">Still held</span><b>{{ w.unrealized | inrc: true }}</b></div>
+          <div><span class="muted small">Booked</span><b>{{ w.realized | inrc: true }}</b></div>
+          <div><span class="muted small">Income</span><b>{{ w.income | inrc: true }}</b></div>
+        </div>
+        <div class="grid grid-2 attr-lists">
+          <div>
+            <h3 class="sub-h">Biggest gainers</h3>
+            @for (c of attr().gainers; track c.id) {
+              <a class="contrib" [routerLink]="['/holding', c.id]"><span class="ellipsis">{{ c.name }}<span class="muted small"> · {{ c.segment }}{{ c.is_open ? '' : ' · sold' }}</span></span>
+                <b class="pos">{{ c.gain | inrc: true }}</b></a>
+            } @empty { <p class="muted small">{{ segment() ? 'None of your five biggest gainers are in ' + segment() + '.' : 'Nothing has gained yet.' }}</p> }
+          </div>
+          <div>
+            <h3 class="sub-h">Biggest losers</h3>
+            @for (c of attr().losers; track c.id) {
+              <a class="contrib" [routerLink]="['/holding', c.id]"><span class="ellipsis">{{ c.name }}<span class="muted small"> · {{ c.segment }}{{ c.is_open ? '' : ' · sold' }}</span></span>
+                <b class="neg">{{ c.gain | inrc: true }}</b></a>
+            } @empty { <p class="muted small">{{ segment() ? 'None of your five biggest losers are in ' + segment() + '.' : 'Nothing is down. Nice.' }}</p> }
+          </div>
+        </div>
+        @if (attrSegments().length) {
+          <h3 class="sub-h">By asset class</h3>
+          <div class="bars">
+            @for (s of attrSegments(); track s.segment) {
+              <div class="bar-row" [class.on]="s.on"><span class="ellipsis">{{ s.segment }}</span>
+                <div class="track"><span [class.neg-bar]="s.gain < 0" [style.width.%]="s.w"></span></div>
+                <span class="num right" [class]="s.gain | sign">{{ s.gain | inrc: true }}</span></div>
+            }
+          </div>
+        }
+        <p class="muted small foot">Since you started, whatever period is picked above. Each holding's total return: price gain, booked gains and income. Top five each way.</p>
+      } @else if (briefError()) {
+        <div class="notice warn"><app-icon name="alert" [size]="16" /><span>Couldn't load where your gain came from · {{ briefError() }}</span>
+          <button type="button" class="btn ghost sm" (click)="retryBrief()">Try again</button></div>
+      } @else {
+        <div class="skeleton" style="height:160px" aria-label="Loading attribution"></div>
+      }
+    </section>
+
+    <!-- T2: is the plan's return realistic? (J18) Whole portfolio, since you started, whatever is picked above. -->
+    <section class="card check-card" id="assumptions" aria-labelledby="check-h">
+      <div class="card-head">
+        <div><h2 id="check-h">Assumptions check</h2>
+          <span class="hint">What you have earned against what the plan assumes · whole portfolio, since you started{{ segment() ? ', not ' + segment() + ' alone' : '' }} · Explains: Plan status</span></div>
+        @if (checkView(); as c) { <app-status [status]="c.status" [word]="c.word" /> }
+      </div>
+      @if (checkView(); as c) {
+        <p class="check-line" [attr.data-status]="c.status"><app-icon [name]="statusMeta[c.status].icon" [size]="18" /><span>{{ c.sentence }}</span></p>
+        <p class="muted small check-note">{{ c.note }}</p>
+        <div class="check-foot">
+          @if (c.cta; as cta) { <a class="btn sm primary" [routerLink]="cta.path" [queryParams]="cta.query">{{ cta.label }}</a> }
+          <app-assumption-chip [block]="brief()?.assumptions" />
+        </div>
+      } @else if (brief()) {
+        @if (rechecking()) {
+          <div class="skeleton" style="height:64px" aria-label="Working out the assumptions check"></div>
+        } @else if (brief()!.empty) {
+          <p class="muted small">Once you have a year of history, this compares what you have earned with what the plan assumes.</p>
+        } @else {
+          <p class="muted small">Not worked out yet: it needs your return since you started and a priced portfolio.</p>
+          @if (!isAll()) {
+            <div class="check-foot"><button type="button" class="btn sm" (click)="setSegment(''); setRange('ALL')">Show the whole portfolio since you started</button></div>
+          }
+        }
+      } @else if (briefError()) {
+        <div class="notice warn"><app-icon name="alert" [size]="16" /><span>Couldn't load the assumptions check · {{ briefError() }}</span>
+          <button type="button" class="btn ghost sm" (click)="retryBrief()">Try again</button></div>
+      } @else {
+        <div class="skeleton" style="height:64px" aria-label="Loading the assumptions check"></div>
+      }
+    </section>
+
+    <!-- T2: income, fetched after paint. Past payments are facts, so there is no est. tag. -->
+    <section class="card income" id="income" aria-labelledby="inc-h">
+      <div class="card-head">
+        <div><h2 id="inc-h">Income</h2>
+          <span class="hint">Dividends and interest paid to you · last 24 months{{ segment() ? ' · whole portfolio' : '' }} · Explains: Your return</span></div>
+      </div>
+      @if (income(); as inc) {
+        @if (incomeError()) {
+          <div class="notice warn inc-notice" role="status"><app-icon name="alert" [size]="16" /><span>Couldn't refresh, so this is the last income this page saw · {{ incomeError() }}</span>
+            <button type="button" class="btn ghost sm" (click)="retryIncome()">Try again</button></div>
+        }
+        @if (incomeEmpty()) {
+          <div class="empty inc-empty">
+            <app-icon name="wallet" [size]="22" /><h3>No income in the last 24 months</h3>
+            <p>Dividends, P2P interest and FD interest you record show here, month by month.</p>
+          </div>
+        } @else {
+          <div class="inc-sum" [class.loading-fade]="incomeLoading()">
+            <div><span class="muted small">Last 12 months</span><b>{{ inc.last_12m | inr }}</b></div>
+            <div><span class="muted small">A month, on average</span><b>{{ inc.monthly_avg | inr }}</b></div>
+          </div>
+          <div class="inc-row" [class.loading-fade]="incomeLoading()">
+            <div class="inc-main">
+              <ul class="inc-legend" aria-label="Legend, totals over 24 months">
+                @for (k of incomeTotals(); track k.key) {
+                  <li><span class="sw" [style.background]="k.color" aria-hidden="true"></span>{{ k.label }} <b>{{ k.amount | inrc }}</b></li>
+                }
+              </ul>
+              <p class="inc-readout" aria-live="polite">
+                @if (incomeFocus(); as f) {
+                  <b>{{ f.label }}</b> · {{ f.total | inr }}@for (s of f.segs; track s.key) { · {{ s.label }} {{ s.amount | inr }} }
+                }
+              </p>
+              <div class="inc-chart" role="img"
+                [attr.aria-label]="'Income each month for the last 24 months, stacked by dividends, P2P interest and FD interest. Highest month ' + (incomeMax() | inr) + '. The table below lists every month.'">
+                <div class="inc-y" aria-hidden="true">
+                  <span style="top:0">{{ incomeMax() | inrc }}</span><span style="top:50%">{{ incomeMax() / 2 | inrc }}</span><span style="top:100%">0</span>
+                </div>
+                <div class="inc-plot">
+                  <span class="inc-grid" style="top:0" aria-hidden="true"></span><span class="inc-grid" style="top:50%" aria-hidden="true"></span>
+                  <div class="inc-cols" (mouseleave)="hoverIncome(null)">
+                    @for (b of incomeBars(); track b.month; let i = $index) {
+                      <div class="inc-col" [class.on]="incomeHover() === i" (mouseenter)="hoverIncome(i)" (click)="hoverIncome(i)"
+                        [title]="b.label + ': ' + (b.total | inr)">
+                        @if (b.total > 0) {
+                          <div class="stack" [style.height.%]="b.h">
+                            @for (s of b.segs; track s.key) { <span [style.flex-grow]="s.share" [style.background]="s.color"></span> }
+                          </div>
+                        }
+                      </div>
+                    }
+                  </div>
+                  <div class="inc-ticks" aria-hidden="true">@for (b of incomeBars(); track b.month) { <span>{{ b.tick }}</span> }</div>
+                </div>
+              </div>
+            </div>
+            <div class="inc-payers">
+              <h3 class="sub-h">Top payers <span class="muted small">· dividends, last 12 months</span></h3>
+              @for (t of topPayers(); track t.instrument_id) {
+                <a class="contrib" [routerLink]="['/holding', t.instrument_id]"><span class="ellipsis">{{ t.name }}</span><b>{{ t.amount | inr }}</b></a>
+              } @empty { <p class="muted small">No dividends in the last 12 months.</p> }
+            </div>
+          </div>
+          <details class="more inc-table">
+            <summary>Month by month</summary>
+            <div class="table-wrap">
+              <table class="table">
+                <thead><tr><th>Month</th>@for (k of incomeKinds; track k.key) { <th class="num">{{ k.label }}</th> }<th class="num">Total</th></tr></thead>
+                <tbody>
+                  @for (b of incomeRows(); track b.month) {
+                    <tr><td>{{ b.label }}</td>
+                      @for (k of incomeKinds; track k.key) { <td class="num">{{ amountOf(b, k.key) | inr }}</td> }
+                      <td class="num"><b>{{ b.total | inr }}</b></td></tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          </details>
+        }
+      } @else if (incomeError()) {
+        <div class="notice warn"><app-icon name="alert" [size]="16" /><span>Couldn't load your income · {{ incomeError() }}</span>
+          <button type="button" class="btn ghost sm" (click)="retryIncome()">Try again</button></div>
+      } @else {
+        <div class="skeleton" style="height:220px" aria-label="Loading your income"></div>
+      }
+    </section>
+
+    <!-- T3: detail, collapsed -->
+    <details class="more">
+      <summary>How these are worked out</summary>
+      <div class="card method">
+        <ul>
+          <li><b>Your return (XIRR)</b> is money-weighted: it counts when you added and took out money, like the rate on a loan. Over less than a year it is annualised and swings a lot.</li>
+          <li><b>Time-weighted return (TWR)</b> takes your deposits and withdrawals out, so it measures the investments alone. Growth of ₹100 charts it.</li>
+          <li><b>You vs an index</b> mirrors every deposit and withdrawal into the index on the same day (the public market equivalent), so both sides have your timing.</li>
+          <li><b>vs Nifty 50</b> at the top always compares the whole portfolio since you started, with Home's rule: level or ahead is on track, up to 3 points behind is watch, more is act. Under 6 months it is not judged.</li>
+          <li><b>Assumptions check</b> compares your time-weighted return since you started with the typical range the plan's long-run figures give over the same number of years. Under a year it is not judged. When you have run 3 points or more below the typical figure for 2 years or more, it offers your own return for the Plan.</li>
+          <li><b>Income</b> is dividends, the interest part of P2P repayments, and FD interest and maturity gains, by the month they were paid. Top payers counts dividends only.</li>
+          <li>These are past returns, not a forecast.</li>
+        </ul>
+        <div class="table-wrap">
+          <table class="table">
+            <tbody>
+              <tr><td>Period</td><td class="num">{{ m.start | dt }} – {{ m.end | dt }} ({{ m.days }} days)</td></tr>
+              <tr><td>Value at start</td><td class="num">{{ m.start_value | inr }}</td></tr>
+              <tr><td>Money added, net</td><td class="num">{{ m.net_flows | inr: 0 : true }}</td></tr>
+              <tr><td>Value at end</td><td class="num">{{ m.end_value | inr }}</td></tr>
+              <tr><td>Best day</td><td class="num" [class]="m.best_day | sign">{{ m.best_day | pct: 2 }}</td></tr>
+              <tr><td>Worst day</td><td class="num" [class]="m.worst_day | sign">{{ m.worst_day | pct: 2 }}</td></tr>
+              <tr><td>Days that went up</td><td class="num">{{ m.positive_days_pct | pct: 0 : false }}</td></tr>
+              <tr><td>Volatility</td><td class="num">{{ m.volatility | pct: 1 : false }} a year</td></tr>
+              <tr><td>Sharpe ratio</td><td class="num">{{ m.sharpe ?? '—' }}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </details>
+
+   }
+  }
+</div>

@@ -4,8 +4,10 @@ import { Observable } from 'rxjs';
 import { environment } from '../../environments/environment';
 import {
   AllowlistUser, CashMovement, Goal, Income, Insight, Instrument, Benchmark, PerfMetrics, Performance, Portfolio,
-  PriceHistory, Pulse, RebalancePlan, Settings, SymbolHit, TaxReport, Transaction, Member, Notice, Report, ReportMeta, CasPreview, LendenPreview, KitePreview, EpfPreview, MarketOverview, WatchItem, Ipo, MarketAlert, PushConfig,
+  PriceHistory, Pulse, RebalancePlan, Settings, SymbolHit, TaxReport, Transaction, Member, Report, ReportMeta, CasPreview, LendenPreview, KitePreview, EpfPreview, MarketOverview, WatchItem, Ipo, MarketAlert, PushConfig,
   Projection, StressTest, RetirementPlan, CashFlow, PortfolioRisk, Outlook, OptimizerResult, SipPlan,
+  Action, ActionsResponse, ActionStatusBody, Brief, Plan, AssumptionsView, WhatIfParams, WhatIfSale, SipsResponse,
+  NotificationsResponse, NotificationsSeenResponse, PlanCompare, PlanCompareRequest, TransactionsPage, TransactionsPageParams,
 } from './models';
 
 type Params = Record<string, string | number | boolean | null | undefined>;
@@ -30,7 +32,10 @@ export class ApiService {
 
   // family, reminders, reports, statement import
   portfolios() { return this.get<{ family: boolean; members: Member[] }>('/portfolios'); }
-  notifications() { return this.get<{ items: Notice[] }>('/notifications'); }
+  /** `unread` arrives with W7-B1 (K19); until then only `items`. */
+  notifications() { return this.get<NotificationsResponse>('/notifications'); }
+  /** Marks notices seen in `action_log.seen_at` (D15): action notices are `act:<action id>`. Returns the new unread count. */
+  notificationsSeen(ids: string[]) { return this.post<NotificationsSeenResponse>('/notifications/seen', { ids }); }
   reportCatalog() { return this.get<{ reports: ReportMeta[]; years: string[]; asset_classes: string[] }>('/reports'); }
   report(key: string, p?: Params) { return this.get<Report>(`/reports/${key}`, p); }
   reportXlsx(key: string, p?: Params) {
@@ -67,11 +72,28 @@ export class ApiService {
   tax(fy?: string) { return this.get<TaxReport>('/tax', { fy }); }
   insights(performance = true) { return this.get<{ insights: Insight[]; benchmarks: Benchmark[]; metrics: PerfMetrics }>('/insights', { performance: performance ? 1 : 0 }); }
   dismissInsight(id: string, days = 30) { return this.post(`/insights/${encodeURIComponent(id)}/dismiss`, { days }); }
-  rebalance(newMoney: number, allowSell: boolean) { return this.get<RebalancePlan>('/rebalance', { new_money: newMoney, allow_sell: allowSell ? 1 : 0 }); }
+  /**
+   * Rebalance plan for `newMoney`. `net: 'deploy'` (A15) tells the server that the money is the brief's
+   * `deploy.suggested`, already held inside its source segments, so it is netted out before planning.
+   * Send it only when the amount is that default; a typed amount sends no `net`.
+   */
+  rebalance(newMoney: number, allowSell: boolean, net?: 'deploy') {
+    return this.get<RebalancePlan>('/rebalance', { new_money: newMoney, allow_sell: allowSell ? 1 : 0, net });
+  }
+  /** The tax on a hypothetical sale (H8). A read, so guests may call it; a bad input is a 400 with the reason. */
+  whatIf(p: WhatIfParams) {
+    return this.get<WhatIfSale>('/tax/what-if', { instrument_id: p.instrument_id, qty: p.qty, price: p.price, date: p.date });
+  }
   pulse() { return this.get<Pulse>('/pulse'); }
   income() { return this.get<Income>('/income'); }
   instrumentHistory(id: number) { return this.get<PriceHistory>(`/instruments/${id}/history`); }
   completeReview() { return this.post<{ lastReviewDate: string }>('/review/complete'); }
+
+  // priority: the answer-ladder brief and ranked actions
+  brief(since?: string | null) { return this.get<Brief>('/brief', { since }); }
+  actions(p?: { status?: string; category?: string; instrument_id?: number }) { return this.get<ActionsResponse>('/actions', p); }
+  /** Action ids contain ':' (e.g. `fd:maturing:12`), so the id is URL-encoded. */
+  setActionStatus(id: string, body: ActionStatusBody) { return this.post<Action>(`/actions/${encodeURIComponent(id)}/status`, body); }
 
   // ledger
   instruments(assetClass?: string) { return this.get<Instrument[]>('/instruments', { asset_class: assetClass }); }
@@ -79,6 +101,13 @@ export class ApiService {
   updateInstrument(id: number, body: Partial<Instrument>) { return this.put<Instrument>(`/instruments/${id}`, body); }
   deleteInstrument(id: number) { return this.delete(`/instruments/${id}`); }
   transactions(p?: Params) { return this.get<Transaction[]>('/transactions', p); }
+  /** One page of the ledger (K4): sending `page` switches GET /transactions to the paged object; a bad page/size/sort is a 400. */
+  transactionsPage(p: TransactionsPageParams) {
+    return this.get<TransactionsPage>('/transactions', {
+      page: p.page, size: p.size, q: p.q?.trim() || null, sort: p.sort, asset_class: p.asset_class,
+      instrument_id: p.instrument_id, type: p.type, from: p.from, to: p.to,
+    });
+  }
   addTransaction(body: unknown) { return this.post<Transaction>('/transactions', body); }
   updateTransaction(id: number, body: unknown) { return this.put<Transaction>(`/transactions/${id}`, body); }
   deleteTransaction(id: number) { return this.delete(`/transactions/${id}`); }
@@ -103,14 +132,34 @@ export class ApiService {
   searchSymbols(q: string, assetClass?: string) { return this.get<SymbolHit[]>('/symbols/search', { q, asset_class: assetClass }); }
 
   // forecasting & planning
-  forecast(p: { years: number; sip?: number | null; step?: number; sims?: number; return?: number | null }) { return this.get<Projection>('/forecast', p); }
+  /** `after_tax: true` sends `after_tax=1`, which fills `end.after_tax` (D5, K19); false or absent sends nothing. */
+  forecast(p: { years: number; sip?: number | null; step?: number; sims?: number; return?: number | null; after_tax?: boolean }) {
+    const { after_tax, ...rest } = p;
+    return this.get<Projection>('/forecast', { ...rest, after_tax: after_tax ? 1 : null });
+  }
   stress() { return this.get<StressTest>('/forecast/stress'); }
   retirement(p?: Params) { return this.get<RetirementPlan>('/forecast/retirement', p); }
   cashflow(months = 12) { return this.get<CashFlow>('/forecast/cashflow', { months }); }
   risk() { return this.get<PortfolioRisk>('/risk'); }
   outlook(id: number) { return this.get<Outlook>(`/instruments/${id}/outlook`); }
   optimizer(profile?: string | null) { return this.get<OptimizerResult>('/optimizer', { profile }); }
-  sips() { return this.get<{ plans: SipPlan[]; monthly_total: number }>('/sips'); }
+  /** The Plan hub in one call (H6). `detail: true` sends `detail=1`, which adds `sensitivities` (§6.10). */
+  plan(p?: { detail?: boolean }) { return this.get<Plan>('/plan', { detail: p?.detail ? 1 : null }); }
+  /**
+   * Scenarios against the baseline on common random numbers (§6.10, K19): ≤ 4, each a `planScenarios` index or inline.
+   * A read (guests get ≤ 2 × 500 sims); an invalid scenario is a 400 with the reason.
+   */
+  planCompare(body: PlanCompareRequest) { return this.post<PlanCompare>('/plan/compare', body); }
+  /**
+   * The Assumption Book (H7). `mix` ({segment name: pct}, summing to 100) adds `proposed`, the chip for that mix;
+   * it is sent as `mix=Equity (India):60,Mutual Funds:40`.
+   */
+  assumptions(mix?: Record<string, number>) {
+    const m = mix ? Object.entries(mix).map(([k, v]) => `${k}:${v}`).join(',') : undefined;
+    return this.get<AssumptionsView>('/assumptions', { mix: m });
+  }
+  /** Plans with their totals; P1 adds `adherence`, `arriving` and `arriving_total` (H9). */
+  sips() { return this.get<SipsResponse>('/sips'); }
   addSip(body: unknown) { return this.post<SipPlan>('/sips', body); }
   updateSip(id: number, body: unknown) { return this.put<SipPlan>(`/sips/${id}`, body); }
   deleteSip(id: number) { return this.delete<{ message: string }>(`/sips/${id}`); }

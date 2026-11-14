@@ -20,6 +20,15 @@ def to_date(s: str) -> date:
     return date.fromisoformat(str(s)[:10])
 
 
+def elss_unlock(buy_date) -> date:
+    """ELSS units unlock three years after purchase; a 29 February purchase unlocks on 1 March."""
+    b = to_date(buy_date)
+    try:
+        return b.replace(year=b.year + ELSS_LOCK_YEARS)
+    except ValueError:
+        return date(b.year + ELSS_LOCK_YEARS, 3, 1)
+
+
 def _f(v) -> float:
     try:
         return float(v or 0)
@@ -243,7 +252,7 @@ def _tradable_position(inst: dict, ts: list[dict], fx: float, today: date) -> tu
         pos["fx_gain"] = r2(cost_fc * fx - cost)
         pos["stock_gain"] = r2((qty * price - cost_fc) * fx)
     if (inst.get("category") or "").upper() == "ELSS" and lots:
-        unlock = lambda l: to_date(l.date).replace(year=to_date(l.date).year + ELSS_LOCK_YEARS)
+        unlock = lambda l: elss_unlock(l.date)
         free = [l for l in lots if unlock(l) <= today]
         locked = [l for l in lots if unlock(l) > today]
         pos["elss"] = {

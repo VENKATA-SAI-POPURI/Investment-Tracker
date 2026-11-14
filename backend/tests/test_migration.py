@@ -18,10 +18,60 @@ def legacy_fingerprint(db):
 def test_legacy_import_reconciles_and_never_touches_legacy_rows(legacy_copy):
     db = SqliteDatabase(legacy_copy)
     before = legacy_fingerprint(db)
-    assert run_migrations(db, log=lambda *_: None) == [1, 2, 3, 4]
+    assert run_migrations(db, log=lambda *_: None) == [1, 2, 3, 4, 5, 6]
+    assert "goal_id" in db.columns("sip_plans")
     assert verify_legacy_import(db) == []
     assert legacy_fingerprint(db) == before
     assert run_migrations(db, log=lambda *_: None) == []  # idempotent
+
+
+def _instrument(db, owner, name):
+    ts = "2026-01-01T00:00:00Z"
+    return db.execute("INSERT INTO instruments (owner, asset_class, name, created_at, updated_at) VALUES (?, 'equity', ?, ?, ?)",
+                      (owner, name, ts, ts)).lastrowid
+
+
+def test_m005_migrates_snoozes_to_the_right_owner_and_is_idempotent(tmp_path, monkeypatch):
+    from datetime import date
+    from tracker import migrations
+    db = SqliteDatabase(str(tmp_path / "m005.db"))
+    monkeypatch.setattr(migrations, "MIGRATIONS", migrations.MIGRATIONS[:4])
+    assert run_migrations(db, log=lambda *_: None) == [1, 2, 3, 4]
+    monkeypatch.undo()
+    mine, theirs = _instrument(db, "user@example.com", "TCS"), _instrument(db, "other@example.com", "INFY")
+    settings = {
+        "__global__": {f"concentration:{theirs}": "2026-12-31", "fd:maturing:9999": "2026-12-01",   # instrument gone
+                       f"tax:wait-lt:{mine}:2027-01-15": "2026-12-15", "review:due": "2026-11-30",
+                       "winner:abc": "2026-12-02"},
+        "user@example.com": {"tax:ltcg-harvest": "2027-01-01", f"loser:{mine}": "2026-12-20"},
+    }
+    for owner, value in settings.items():
+        db.execute("INSERT INTO user_settings (owner, key, value, updated_at) VALUES (?, 'dismissedInsights', ?, 'x')",
+                   (owner, json.dumps(value)))
+    db.execute("INSERT INTO user_settings (owner, key, value, updated_at) VALUES ('bad@example.com', 'dismissedInsights', 'oops', 'x')")
+
+    assert run_migrations(db, log=lambda *_: None) == [5, 6]
+    rows = {(r["owner"], r["id"]): r for r in db.query("SELECT * FROM action_log")}
+    assert {k: rows[k]["snooze_until"] for k in rows} == {
+        ("other@example.com", f"concentration:{theirs}"): "2026-12-31",
+        ("user@example.com", f"tax:wait-lt:{mine}:2027-01-15"): "2026-12-15",
+        ("__global__", "review:due"): "2026-11-30",
+        ("__global__", "winner:abc"): "2026-12-02",           # not an instrument id: stays with the setting's owner
+        ("user@example.com", "tax:ltcg-harvest"): "2027-01-01",
+        ("user@example.com", f"loser:{mine}"): "2026-12-20",
+    }
+    assert {r["status"] for r in rows.values()} == {"snoozed"}
+    assert {r["first_seen"] for r in rows.values()} == {date.today().isoformat()}
+    assert db.table_exists("kpi_snapshots")
+    # The setting is kept for rollback
+    assert db.one("SELECT COUNT(*) AS n FROM user_settings WHERE key = 'dismissedInsights'")["n"] == 3
+
+    # Idempotent: the version is recorded, and replaying the step itself changes nothing
+    assert run_migrations(db, log=lambda *_: None) == []
+    db.execute("UPDATE action_log SET status = 'done' WHERE id = 'review:due'")
+    db.batch(migrations.m005_actions_snapshots(db))
+    after = {(r["owner"], r["id"]): r["status"] for r in db.query("SELECT * FROM action_log")}
+    assert len(after) == len(rows) and after[("__global__", "review:due")] == "done"
 
 
 def test_imported_p2p_outstanding_matches_legacy_dashboard(legacy_copy):

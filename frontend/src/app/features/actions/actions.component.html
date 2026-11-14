@@ -1,0 +1,355 @@
+<div class="page">
+  <div class="page-head">
+    <div><h1>Actions</h1><p class="sub">Everything worth doing, ranked by real ₹ and urgency.</p></div>
+  </div>
+
+  <!-- T0: the answer -->
+  <section class="kpis act-kpis" [class.cols-5]="!!followThrough()" [class.cols-4]="!followThrough()" [class.more-open]="moreStats()"
+    [class.loading-fade]="svc.loading() && !svc.loaded() && !firstLoad()" aria-label="What needs you">
+    <div class="kpi hero">
+      <span class="label">What needs you</span>
+      @if (firstLoad()) {
+        <span class="value">…</span><span class="meta">Loading your actions</span>
+      } @else {
+        <span class="value">{{ summary().now }} now · {{ summary().month }} this month</span>
+        <span class="verdict-line" [attr.data-status]="heroStatus()">
+          <app-icon [name]="heroIcon()" [size]="16" /><span class="sr-only">{{ heroStatus() === 'act' ? 'Act now' : heroStatus() === 'watch' ? 'Watch' : 'On track' }}: </span>
+          <span class="ellipsis" [attr.title]="heroVerdict()">{{ heroVerdict() }}</span>
+        </span>
+      }
+    </div>
+    <div class="kpi">
+      <span class="label">₹ at stake</span>
+      <span class="value">{{ summary().impact_total | inrc }}</span>
+      <span class="meta">lump sums in Now and This month</span>
+    </div>
+    <div class="kpi">
+      <span class="label">Tax you can still save</span>
+      <span class="value">{{ taxToSave() | inrc }}</span>
+      <span class="meta">@if (taxCount()) { est. · {{ taxCount() }} tax move{{ taxCount() === 1 ? '' : 's' }} open · <a routerLink="/tax">Tax →</a> } @else { no tax move open }</span>
+    </div>
+    @if (followThrough(); as ft) {
+      <div class="kpi extra ft" [attr.title]="ftTitle()">
+        <span class="label">Follow-through</span>
+        @if (ft.acted_90d.total) {
+          <span class="value"><span class="ft-lead">Acted on </span>{{ ft.acted_90d.done }} of {{ ft.acted_90d.total }}</span>
+          <span class="meta">in 90 days@if (ftExtras()) { · {{ ftExtras() }} }</span>
+        } @else {
+          <span class="value">—</span>
+          <span class="meta">Nothing was due in the last 90 days@if (ftExtras()) { · {{ ftExtras() }} }</span>
+        }
+        @if (ft.impact_realised_fy !== null && ft.impact_realised_fy !== undefined) {
+          <span class="meta">{{ ft.impact_realised_fy | inrc }} realised this FY<app-est [basis]="ftBasis" /></span>
+        }
+      </div>
+    }
+    <div class="kpi extra">
+      <span class="label">Last review</span>
+      <span class="value">{{ lastReviewText() }}</span>
+      @if (!auth.canWrite() && lastReview() && lastReviewText() !== (lastReview() | dt)) { <span class="meta">{{ lastReview() | dt }}</span> }
+      <span class="meta kpi-btns">
+        <button type="button" class="kpi-btn start" (click)="openReview()" [disabled]="reviewOpen()" [attr.aria-pressed]="reviewOpen()">
+          <app-icon name="list" [size]="13" /> {{ reviewOpen() ? 'Reviewing below' : 'Start the quarterly review' }}</button>
+        @if (auth.canWrite() && !reviewOpen()) {
+          <button type="button" class="kpi-btn quiet" (click)="markReviewed()" [disabled]="reviewing()">
+            <app-icon name="checkCircle" [size]="13" /> {{ reviewing() ? 'Saving…' : 'Mark review done' }}</button>
+        }
+      </span>
+    </div>
+  </section>
+  <button type="button" class="btn ghost sm more-stats" (click)="moreStats.set(!moreStats())" [attr.aria-expanded]="moreStats()">
+    <app-icon [name]="moreStats() ? 'chevronDown' : 'chevronRight'" [size]="14" /> {{ moreStats() ? 'Fewer' : 'More' }} stats
+  </button>
+
+  <!-- Filter chips (?filter=, E20): hidden while reviewing (R17) -->
+  @if (!reviewOpen()) {
+    <nav class="filter-bar" aria-label="Filter actions">
+      @for (f of filters; track f.key) {
+        <button type="button" class="fchip" [class.on]="filter() === f.key" [attr.aria-pressed]="filter() === f.key" (click)="setFilter(f.key)">
+          {{ f.label }}@if (counts()[f.key]) { <span class="n">{{ counts()[f.key] }}</span> }
+        </button>
+      }
+    </nav>
+  }
+
+  @if (failed()) {
+    <div class="notice bad" role="alert"><app-icon name="alert" [size]="16" />
+      <span>Couldn't load your actions. The rest of the app still works.</span><span class="spacer"></span>
+      <button type="button" class="btn sm" (click)="svc.reload()">Try again</button></div>
+  } @else if (stale()) {
+    <div class="notice warn" role="status"><app-icon name="alert" [size]="16" />
+      <span>Showing your last copy · couldn't refresh your actions, so counts and amounts may be out of date.</span><span class="spacer"></span>
+      <button type="button" class="btn sm" (click)="svc.reload()">Retry</button></div>
+  } @else if (svc.notes().length) {
+    <div class="notice warn" role="status"><app-icon name="info" [size]="16" />
+      <span>Some checks were skipped this time, so this list may be missing items: {{ svc.notes().join(' · ') }}</span></div>
+  }
+
+  @if (reviewOpen()) {
+  <!-- T2 (P2): the quarterly review in place of the lists (?tab=review, R17) -->
+  <app-review [newMoney]="suggested() ?? 0" [useNet]="suggested() !== null" (closed)="closeReview()" />
+  } @else {
+
+  <!-- T1: Now -->
+  <section class="sec" aria-labelledby="h-now">
+    <h2 class="sec-h" id="h-now">Now @if (now().length) { <span class="n">{{ now().length }}</span> }</h2>
+    @if (firstLoad()) {
+      <div class="list"><div class="skeleton" style="height:112px"></div><div class="skeleton" style="height:112px"></div></div>
+    } @else {
+      <div class="list">
+        @for (a of now(); track a.id; let first = $first) {
+          <div class="slot" [class.hl]="highlight() === a.id"><app-action-card [action]="a" [primary]="first" [showWhy]="true" /></div>
+        } @empty {
+          <div class="empty-row"><app-icon name="checkCircle" [size]="18" />
+            <span>Nothing needs you this week{{ filter() !== 'all' ? ' in ' + filterLabel() : '' }}.</span></div>
+        }
+      </div>
+    }
+  </section>
+
+  <!-- T1: This month (one-line rows that open on click) -->
+  @if (!firstLoad()) {
+    <section class="sec" aria-labelledby="h-month">
+      <h2 class="sec-h" id="h-month">This month @if (month().length) { <span class="n">{{ month().length }}</span> }</h2>
+      <div class="list">
+        @for (a of month(); track a.id; let first = $first) {
+          <ng-container *ngTemplateOutlet="oneLine; context: { $implicit: a, primary: first && !now().length }" />
+        } @empty {
+          <div class="empty-row"><app-icon name="checkCircle" [size]="18" /><span>Nothing else due this month.</span></div>
+        }
+      </div>
+    </section>
+  }
+
+  <!-- T1: Planned -->
+  @if (planned().length) {
+    <section class="sec" aria-labelledby="h-planned">
+      <h2 class="sec-h" id="h-planned">Planned <span class="n">{{ planned().length }}</span></h2>
+      <div class="card flush">
+        <div class="table-wrap">
+          <table class="table t-planned">
+            <thead><tr>
+              <th scope="col">Action</th><th scope="col">Planned for</th><th scope="col" class="num">Amount</th>
+              <th scope="col">Days late</th><th scope="col"><span class="sr-only">Do it now</span></th><th scope="col"><span class="sr-only">Unplan</span></th>
+            </tr></thead>
+            <tbody>
+              @for (a of planned(); track a.id) {
+                <tr [id]="'row-' + a.id" [class.hl]="highlight() === a.id">
+                  <td class="name-cell" [attr.title]="a.title">{{ a.title }}</td>
+                  <td>{{ a.planned_for | dt }}</td>
+                  <td class="num">{{ impactText(a) }}</td>
+                  <td>@if (daysLate(a) > 0) {
+                      <span class="due late"><app-icon name="alert" [size]="12" />{{ daysLate(a) }} day{{ daysLate(a) === 1 ? '' : 's' }}</span>
+                    } @else { <span class="muted small">On time</span> }</td>
+                  <td>@if (plannedCta(a); as label) { <button type="button" class="btn sm nowrap" (click)="run(a)">{{ label }}</button> }</td>
+                  <td>@if (auth.canWrite()) { <button type="button" class="btn ghost sm" (click)="reopen(a)">Unplan</button> }</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  }
+
+  <!-- T2: Deploy money (#deploy) -->
+  @if (showDeploy()) {
+    <section class="card anchor" id="deploy" aria-labelledby="h-deploy">
+      <div class="card-head">
+        <div>
+          <h2 id="h-deploy">Deploy money</h2>
+          <span class="hint">Where new money should go to move your mix toward its targets: by asset class; you choose the fund.</span>
+        </div>
+        <button type="button" class="explains" (click)="setFilter('mix')">Explains: Mix</button>
+      </div>
+      @if (newMoneyParam() !== null && !plannerNet()) {
+        <p class="small text-2 dep-line">Planning {{ newMoneyParam() | inr }} from the action you opened.@if (deploySources().length) { The money arriving is listed below; the plan does not include it. }</p>
+      }
+      @if (deploySources().length) {
+        <div class="dep-arriving">
+          <h3 class="dep-h" id="h-arriving">Money arriving@if (suggested() !== null) { <b>{{ suggested() | inr }}</b> }</h3>
+          <ul class="dep-sources" aria-labelledby="h-arriving">
+            @for (s of deploySources(); track $index) {
+              <li>
+                <span class="ds-label ellipsis" [attr.title]="s.label">{{ s.label }}</span>
+                <span class="ds-date muted">{{ s.date ? (s.date | dt: false) : 'now' }}</span>
+                <b class="ds-amt">{{ s.amount | inr }}</b>
+                @if (s.link) { <a class="ds-link" [routerLink]="s.link" [attr.aria-label]="'Open ' + s.label">Open →</a> } @else { <span class="ds-link"></span> }
+              </li>
+            }
+          </ul>
+        </div>
+      } @else if (deployFailed() && newMoneyParam() === null) {
+        <p class="small muted dep-line">Couldn't work out the money ready to invest. Enter an amount to plan it.</p>
+      } @else if (deployReady() && !suggested() && newMoneyParam() === null) {
+        <p class="small muted dep-line">No money is waiting to be invested right now. Enter an amount to see where it would go.</p>
+      }
+      @if (deployReady()) {
+        <app-rebalance-planner [newMoney]="plannerMoney()" [allowSell]="false" [useNet]="plannerNet()" />
+      } @else {
+        <div class="skeleton" style="height:180px"></div>
+      }
+    </section>
+  }
+
+  <!-- T2: Tax moves this FY -->
+  @if (showTax()) {
+    <section class="sec" aria-labelledby="h-tax">
+      <h2 class="sec-h" id="h-tax">Tax moves this FY @if (tax(); as t) { <span class="muted fy">{{ t.fy }}</span> }
+        <a class="sec-link" routerLink="/tax" [queryParams]="{ tab: 'save' }">Tax →</a></h2>
+      @if (taxError() && !tax()) {
+        <div class="notice warn"><app-icon name="alert" [size]="16" /><span>Couldn't load tax opportunities · {{ taxError() }}</span>
+          <span class="spacer"></span><button type="button" class="btn sm" (click)="retryTax()">Try again</button></div>
+      } @else if (!tax()) {
+        <div class="grid grid-3"><div class="skeleton" style="height:150px"></div><div class="skeleton" style="height:150px"></div><div class="skeleton" style="height:150px"></div></div>
+      } @else {
+        <div class="grid grid-3" [class.loading-fade]="taxLoading()">
+          @for (m of taxMoves(); track m.key) {
+            <article class="card move" [class.idle]="m.amount === null">
+              <h3>{{ m.title }}</h3>
+              @if (m.amount !== null) {
+                <div class="mv-num">{{ m.amount | inrc }}<app-est [basis]="m.basis" />
+                  <span class="mv-lab">{{ m.amountLabel }}</span></div>
+              } @else { <div class="mv-num muted">Nothing to do</div> }
+              <p class="small text-2">{{ m.sentence }}@if (m.more; as l) { · <a [routerLink]="l.route" [queryParams]="l.query">{{ l.label }}</a> }</p>
+              <div class="mv-cta">
+                @if (m.whatif) { <button type="button" class="btn sm" (click)="planSale(m)">Plan the sale</button> }
+                @if (!m.more) { <a class="small" routerLink="/tax" [queryParams]="{ tab: 'save' }">Open Tax →</a> }
+              </div>
+            </article>
+          }
+        </div>
+      }
+    </section>
+  }
+
+  <!-- T2: Worth considering / Good news (collapsed) -->
+  @if (consider().length || good().length) {
+    <section class="sec t2-lists">
+      @if (consider().length) {
+        <details class="more" [open]="considerOpen()" (toggle)="considerOpen.set($any($event.target).open)">
+          <summary>Worth considering ({{ consider().length }})</summary>
+          <div class="list">
+            @for (a of consider(); track a.id) { <ng-container *ngTemplateOutlet="oneLine; context: { $implicit: a, primary: false }" /> }
+          </div>
+        </details>
+      }
+      @if (good().length) {
+        <details class="more" [open]="goodOpen()" (toggle)="goodOpen.set($any($event.target).open)">
+          <summary>Good news ({{ good().length }})</summary>
+          <div class="list">
+            @for (a of good(); track a.id) { <ng-container *ngTemplateOutlet="oneLine; context: { $implicit: a, primary: false }" /> }
+          </div>
+        </details>
+      }
+    </section>
+  }
+
+  <!-- T3: Done, Snoozed & hidden, Ask the analyst -->
+  <section class="sec t3">
+    @if (done().length) {
+      <details class="more" [open]="doneOpen()" (toggle)="doneOpen.set($any($event.target).open)">
+        <summary>Done in the last 90 days ({{ done().length }})</summary>
+        <div class="card flush">
+          <div class="table-wrap">
+            <table class="table">
+              <thead><tr>
+                <th scope="col">Done on</th><th scope="col">Action</th><th scope="col">How</th>
+                <th scope="col" class="num">Amount moved</th><th scope="col" class="num">Impact</th><th scope="col"><span class="sr-only">Undo</span></th>
+              </tr></thead>
+              <tbody>
+                @for (a of done(); track a.id) {
+                  <tr [id]="'row-' + a.id" [class.hl]="highlight() === a.id">
+                    <td>{{ (a.done_at ? a.done_at.slice(0, 10) : null) | dt }}</td>
+                    <td class="name-cell" [attr.title]="a.title">{{ a.title }}</td>
+                    <td class="text-2 how"><app-icon [name]="isAuto(a) ? 'zap' : 'check'" [size]="13" />{{ howDone(a) }}</td>
+                    <td class="num">@if (amountMoved(a); as m) { {{ m | inr }} } @else { <span class="muted">—</span> }</td>
+                    <td class="num">{{ impactText(a) }}</td>
+                    <td>@if (auth.canWrite()) { <button type="button" class="btn ghost sm" (click)="reopen(a)">Undo</button> }</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+    }
+
+    @if (snoozed().length) {
+      <details class="more" [open]="snoozedOpen()" (toggle)="snoozedOpen.set($any($event.target).open)">
+        <summary>Snoozed &amp; hidden ({{ snoozed().length }})</summary>
+        <div class="card flush">
+          <div class="table-wrap">
+            <table class="table">
+              <thead><tr>
+                <th scope="col">Action</th><th scope="col">Until</th><th scope="col">Reason</th><th scope="col"><span class="sr-only">Restore</span></th>
+              </tr></thead>
+              <tbody>
+                @for (a of snoozed(); track a.id) {
+                  <tr [id]="'row-' + a.id" [class.hl]="highlight() === a.id">
+                    <td class="name-cell" [attr.title]="a.title">{{ a.title }}</td>
+                    <td>{{ snoozedUntil(a) }}</td>
+                    <td class="text-2">{{ snoozeReason(a) }}</td>
+                    <td>@if (auth.canWrite()) { <button type="button" class="btn ghost sm" (click)="reopen(a)">Restore</button> }</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+    }
+
+    <details class="more" (toggle)="onAiToggle($event)">
+      <summary>Ask the analyst</summary>
+      <div class="card ai">
+        <div class="card-head">
+          <div><h2>AI portfolio analyst</h2><span class="hint">Explains your numbers in plain language. It reads the same data as this page and can be wrong.</span></div>
+          @if (ai()?.enabled) {
+            <button type="button" class="btn" (click)="analyze()" [disabled]="analyzing()"><app-icon name="sparkle" [size]="16" />
+              {{ analyzing() ? 'Analysing…' : analysis() ? 'Re-run analysis' : 'Analyse my portfolio' }}</button>
+          }
+        </div>
+        @if (!ai()) {
+          <div class="skeleton" style="height:60px"></div>
+        } @else if (!ai()!.enabled) {
+          <div class="notice"><app-icon name="info" [size]="16" /> AI is off. Set <code>GROQ_API_KEY</code> or <code>GEMINI_API_KEY</code> on the server to enable it. Everything else on this page works without it.</div>
+        } @else {
+          @if (analysis()) { <div class="md" [innerHTML]="analysis() | markdown"></div><div class="divider" style="margin:16px 0"></div> }
+          <div class="chat" aria-live="polite">
+            @for (m of chat(); track $index) { <div class="msg md" [class]="m.role" [innerHTML]="m.content | markdown"></div> }
+            @if (sending()) { <div class="msg assistant muted">Thinking…</div> }
+          </div>
+          @if (!chat().length) {
+            <div class="row wrap" style="margin:8px 0">@for (s of suggestions; track s) { <button type="button" class="btn sm" (click)="send(s)">{{ s }}</button> }</div>
+          }
+          <form class="input-group" style="margin-top:10px" (ngSubmit)="send()">
+            <input class="input" name="draft" [(ngModel)]="draft" placeholder="Ask about your portfolio…" aria-label="Ask the AI analyst" />
+            <button class="btn" type="submit" [disabled]="sending()" aria-label="Send"><app-icon name="send" [size]="15" /></button>
+          </form>
+          <p class="small muted" style="margin-top:8px">{{ ai()?.disclaimer }}</p>
+        }
+      </div>
+    </details>
+  </section>
+  }
+</div>
+
+<!-- A one-line action that opens into the full card -->
+<ng-template #oneLine let-a let-primary="primary">
+  <div class="slot" [class.hl]="highlight() === a.id">
+    @if (isExpanded(a.id)) {
+      <div class="m-row open">
+        <button type="button" class="btn ghost icon sm m-tog" (click)="toggle(a.id)" aria-expanded="true" [attr.aria-label]="'Collapse ' + a.title">
+          <app-icon name="chevronDown" [size]="16" /></button>
+        <app-action-card [action]="a" [primary]="primary" [showWhy]="true" />
+      </div>
+    } @else {
+      <div class="m-row" (click)="rowClick(a.id, $event)">
+        <button type="button" class="btn ghost icon sm m-tog" (click)="toggle(a.id)" aria-expanded="false" [attr.aria-label]="'Show details for ' + a.title">
+          <app-icon name="chevronRight" [size]="16" /></button>
+        <app-action-card [action]="a" [compact]="true" [primary]="primary" />
+      </div>
+    }
+  </div>
+</ng-template>

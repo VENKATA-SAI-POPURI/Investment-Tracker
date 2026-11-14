@@ -33,8 +33,8 @@ interface IpoForm { id?: number; name: string; board: string; symbol: string; op
       <div class="card-head"><div><h2>IPO tracker</h2>
         <span class="hint">Add the IPOs you're considering; you'll be reminded when they open, close, allot and list. Details are on the exchange's or your broker's IPO page.</span></div>
         @if (auth.canWrite()) { <button class="btn sm" (click)="edit()"><app-icon name="plus" [size]="14" /> Add IPO</button> }</div>
-      @if (error()) { <div class="notice bad">{{ error() }}</div> }
-      @if (!ipos()) { <div class="skeleton" style="height:160px"></div> }
+      @if (error()) { <div class="notice bad" role="alert"><span>IPOs couldn't load: {{ error() }}</span> <button class="btn sm" (click)="load()">Retry</button></div> }
+      @if (!ipos()) { @if (!error()) { <div class="skeleton" style="height:160px"></div> } }
       @else if (!ipos()!.length) {
         <div class="empty"><app-icon name="rocket" [size]="22" /><p>No IPOs yet. Add one to track its dates, price band and grey-market premium.</p></div>
       } @else {

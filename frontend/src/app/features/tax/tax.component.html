@@ -1,152 +1,367 @@
 <div class="page">
   <div class="page-head">
-    <div><h1>Tax</h1><p class="sub">Estimate for planning — check with a tax professional before filing</p></div>
-    @if (r(); as r) {
-      <div class="row">
-        <select class="input" style="width:auto;height:30px;font-size:12.5px" [ngModel]="r.fy" (ngModelChange)="fy.set($event)" aria-label="Financial year">
+    <div><h1>Tax</h1><p class="sub">Estimates for planning — check with a tax professional before filing</p></div>
+    @if (report(); as r) {
+      <div class="head-tools">
+        @if (daysLeft(); as n) { <span class="badge info fy-left"><app-icon name="calendar" [size]="13" /> {{ n }} day{{ n === 1 ? '' : 's' }} left in {{ r.fy }}</span> }
+        <select class="input" [ngModel]="r.fy" (ngModelChange)="setFy($event)" aria-label="Financial year">
           @for (y of r.years; track y) { <option [value]="y">{{ y }}</option> }
         </select>
-        <button class="btn ghost sm" (click)="export()" [disabled]="!r.realized.length"><app-icon name="download" [size]="15" /> Export</button>
+        <button type="button" class="btn ghost sm" (click)="export()" [disabled]="!r.realized.length"
+          [attr.title]="r.realized.length ? 'Download the realised gains of ' + r.fy + ' as CSV' : 'No sales in ' + r.fy"><app-icon name="download" [size]="15" /> Export CSV</button>
       </div>
     }
   </div>
-  @if (error()) { <div class="notice bad">{{ error() }}</div> }
 
-  @if (r(); as r) {
-    <section class="kpis" [class.loading-fade]="loading()">
-      <div class="kpi"><span class="chip green sm"><app-icon name="trend" [size]="15" /></span><span class="label">Capital gains</span><span class="value" [class]="r.total_realized | sign">{{ r.total_realized | inr: 0 : true }}</span>
-        <span class="meta">short {{ gainsByTerm()['STCG'] | inrc: true }} · long {{ gainsByTerm()['LTCG'] | inrc: true }}</span></div>
-      <div class="kpi"><span class="chip indigo sm"><app-icon name="receipt" [size]="15" /></span><span class="label">Estimated tax</span><span class="value">{{ r.estimate.total | inr }}</span>
-        <span class="meta">at {{ r.slab_rate }}% slab · <a routerLink="/settings">change</a></span></div>
-      <div class="kpi"><span class="chip violet sm"><app-icon name="shield" [size]="15" /></span><span class="label">Tax-free LTCG left</span><span class="value">{{ r.equity_exemption.remaining | inr }}</span><span class="meta">of ₹1.25L this year</span></div>
-      <div class="kpi"><span class="chip amber sm"><app-icon name="coins" [size]="15" /></span><span class="label">Dividends & interest</span><span class="value">{{ r.income_total | inr }}</span><span class="meta">taxed at your slab</span></div>
+  @if (!report() && !error()) {
+    <div class="skeleton hero-skel" aria-label="Loading your tax estimate"></div>
+    <div class="card"><div class="skeleton" style="height:18px;width:40%"></div><div class="skeleton" style="height:200px;margin-top:14px"></div></div>
+  } @else if (!report()) {
+    <div class="card"><div class="empty">
+      <app-icon name="alert" [size]="22" /><h3>Couldn't load your tax estimate</h3><p>{{ error() }}</p>
+      <div class="row" style="gap:8px;justify-content:center">
+        <button type="button" class="btn" (click)="load()"><app-icon name="refresh" [size]="15" /> Try again</button>
+        @if (fyParam()) { <a class="btn ghost" routerLink="/tax">This year's tax</a> }
+      </div>
+    </div></div>
+  } @else {
+    @let r = report()!;
+    @let v = verdict();
+    @if (error()) {
+      <div class="notice warn" role="status"><app-icon name="alert" [size]="16" /><span>Couldn't refresh, so these are the last numbers this page saw · {{ error() }}</span>
+        <button type="button" class="btn ghost sm" (click)="load()">Try again</button></div>
+    }
+
+    <!-- T0: the answer -->
+    <section class="kpis t-kpis" [class.loading-fade]="loading()" aria-label="Your tax at a glance">
+      <div class="kpi hero">
+        <span class="label">Estimated tax {{ r.fy }}</span>
+        <span class="value">{{ r.estimate.total | inr }}<app-est [basis]="estimateBasis()" /></span>
+        <span class="meta">at {{ r.slab_rate }}% slab@if (auth.canWrite()) { · <a routerLink="/settings" fragment="profile">change</a>}</span>
+        <div class="verdict-line" [attr.data-status]="v.status">
+          <app-icon [name]="statusMeta[v.status].icon" [size]="16" />
+          <span class="vt">{{ v.text }}@if (v.amount) { {{ v.amount | inr }}<app-est basis="Tax saved by the tax moves still open or planned on Actions, before the 4% cess, at today's prices" />}</span>
+          @if (v.amount && wsView() !== 'save') {
+            <span class="nowrap"><span aria-hidden="true">· </span><button type="button" class="verdict-cta" (click)="showWays()">See how</button></span>
+          }
+          <span class="sr-only">· {{ v.status === 'info' ? 'FY closed' : statusMeta[v.status].word }}</span>
+        </div>
+        <button type="button" class="more-stats" (click)="moreStats.set(!moreStats())" [attr.aria-expanded]="moreStats()">{{ moreStats() ? 'Less' : 'More' }}</button>
+      </div>
+      <div class="kpi"><span class="chip violet sm"><app-icon name="shield" [size]="15" /></span><span class="label">Tax-free LTCG left</span>
+        <span class="value">{{ r.equity_exemption.remaining | inr }}</span><span class="meta">of {{ r.equity_exemption.limit | inr }} in {{ r.fy }}</span></div>
+      <div class="kpi"><span class="chip green sm"><app-icon name="trend" [size]="15" /></span><span class="label">Capital gains</span>
+        <span class="value" [class]="r.total_realized | sign">{{ r.total_realized | inr: 0 : true }}</span>
+        <span class="meta">short {{ gains().short | inrc: true }} · long {{ gains().long | inrc: true }}@if (gains().intraday) { · intraday {{ gains().intraday | inrc: true }}}</span></div>
+      <div class="kpi extra" [class.show]="moreStats()"><span class="chip amber sm"><app-icon name="bell" [size]="15" /></span><span class="label">Next deadline</span>
+        @if (nextDeadline(); as d) {
+          <span class="value wrap">{{ d.title }}</span>
+          <span class="meta">{{ d.date | dt: false }} · {{ d.days === 0 ? 'today' : d.days === 1 ? 'tomorrow' : d.days + ' days' }}</span>
+        } @else {
+          <span class="value">—</span><span class="meta">{{ upcoming() === undefined ? 'Checking the calendar…' : 'None in the next 90 days' }}</span>
+        }
+      </div>
     </section>
 
-    <section class="grid grid-2">
+    <!-- T1: needs attention here (A27) -->
+    <app-needs-attention class="t-strip" [prefixes]="['/tax']" />
+
+    <!-- T1 work surface (A21): ways to save, or the what-if form; current FY only -->
+    @if (isCurrentFy()) {
+      <section class="card ws" id="ways" [class.loading-fade]="loading()" aria-labelledby="tax-ws">
+        <div class="card-head">
+          <div><h2 id="tax-ws">{{ wsView() === 'save' ? 'Ways to save' : 'What if I sell?' }}</h2>
+            <span class="hint">{{ wsView() === 'save' ? 'Moves that cut tax before ' + (r.end | dt) + ', worked out from your open lots' : "The tax on a sale before you make it, worked out lot by lot" }}</span></div>
+          <div class="seg" role="group" aria-label="Work surface view">
+            <button type="button" [class.on]="wsView() === 'save'" [attr.aria-pressed]="wsView() === 'save'" (click)="setTab('save')">Ways to save</button>
+            <button type="button" [class.on]="wsView() === 'whatif'" [attr.aria-pressed]="wsView() === 'whatif'" (click)="setTab('whatif')">What if I sell</button>
+          </div>
+        </div>
+
+        @if (wsView() === 'save') {
+          @let o = r.opportunities;
+          @let hp = harvest();
+
+          <!-- 1. Harvest plan -->
+          <h3>Book gains tax-free <span class="h-meta">harvest plan</span></h3>
+          @if (hp.rows.length) {
+            <div class="table-wrap">
+              <table class="table stacked">
+                <thead><tr>
+                  <th>Holding</th><th class="num">Units to sell</th>
+                  <th class="num hide-sm">Proceeds <app-est basis="At today's price; the sale price on the day will differ" /></th>
+                  <th class="num">Gain booked <app-est basis="At today's price, from the oldest lots first (FIFO)" /></th>
+                  <th class="hide-sm">Lots</th><th><span class="sr-only">Plan</span></th>
+                </tr></thead>
+                <tbody>
+                  @for (row of hp.rows; track row.instrument_id) {
+                    <tr>
+                      <td class="name-cell"><a [routerLink]="['/holding', row.instrument_id]">{{ row.name }}</a>
+                        <div class="sub only-sm">{{ lotCount(row.lots) }} · {{ row.proceeds | inrc }}</div></td>
+                      <td class="num" data-label="Units to sell">{{ row.qty | qty }}</td>
+                      <td class="num hide-sm" data-label="Proceeds (est.)">{{ row.proceeds | inr }}</td>
+                      <td class="num pos" data-label="Gain booked (est.)">{{ row.gain | inr: 0 : true }}</td>
+                      <td class="hide-sm" data-label="Lots">{{ lotCount(row.lots) }}</td>
+                      <td class="num cta"><button type="button" class="btn sm plan-btn" (click)="planSale(row.instrument_id, row.qty)"
+                        [attr.aria-label]="'Plan the sale of ' + row.name">Plan the sale</button></td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+            <p class="ws-total">Books {{ hp.total_gain | inr }} tax-free · saves ≈ {{ hp.future_tax_saved | inr }} later<app-est [basis]="harvestBasis" /></p>
+            <p class="small muted ws-note">{{ hp.note }}</p>
+          } @else {
+            <p class="small muted">
+              @if (exemptionUsedUp(r.equity_exemption.remaining)) { This year's tax-free allowance for long-term equity gains is used up, so there is nothing to book.
+              } @else { No long-term equity gains to book yet: {{ r.equity_exemption.remaining | inr }} of this year's allowance is unused. }
+            </p>
+          }
+
+          <!-- 2. Offset gains with losses -->
+          <h3>Offset gains with losses</h3>
+          @if (lossRows().length) {
+            @if (o.loss_harvest_offsettable > 0) {
+              <p class="ws-lead">Selling holdings below cost can cancel <b>{{ o.loss_harvest_offsettable | inr }}</b> of the gains booked this year
+                @if (lossSaving() > 0) { · saves ≈ <b>{{ lossSaving() | inr }}</b><app-est basis="This year's taxable gains the losses can cancel, highest rate first, before the 4% cess; never more than the capital-gains tax due" /> }
+                @else { <app-est basis="Booked gains this year that the losses can cancel, at today's prices" /> }
+              </p>
+            } @else {
+              <p class="ws-lead">You have {{ o.loss_harvest_total | inr }} of losses on paper<app-est basis="At today's prices" />, but no taxable gains booked this year for them to cancel yet.</p>
+            }
+            <div class="table-wrap">
+              <table class="table stacked">
+                <thead><tr><th>Holding</th><th class="num">Units</th><th class="num">Loss <app-est basis="At today's price" /></th><th><span class="sr-only">Plan</span></th></tr></thead>
+                <tbody>
+                  @for (h of lossRows(); track h.instrument_id) {
+                    <tr>
+                      <td class="name-cell"><a [routerLink]="['/holding', h.instrument_id]">{{ h.name }}</a>
+                        <div class="sub">{{ h.st_loss ? 'short-term ' + (h.st_loss | inrc) : '' }}{{ h.st_loss && h.lt_loss ? ' · ' : '' }}{{ h.lt_loss ? 'long-term ' + (h.lt_loss | inrc) : '' }}</div></td>
+                      <td class="num" data-label="Units">{{ h.qty | qty }}
+                        @if (h.sellQty > h.qty) { <div class="sub">a sale takes {{ h.sellQty | qty }}, oldest first</div> }</td>
+                      <td class="num neg" data-label="Loss (est.)">−{{ h.st_loss + h.lt_loss | inr }}</td>
+                      <td class="num cta"><button type="button" class="btn sm plan-btn" (click)="planSale(h.instrument_id, h.sellQty)"
+                        [attr.title]="h.sellQty > h.qty ? 'Sells ' + (h.sellQty | qty) + ' units: a sale takes the oldest lots first, so older lots in gain go too' : null"
+                        [attr.aria-label]="'Plan the sale of ' + h.name + (h.sellQty > h.qty ? ', older lots first' : '')">Plan the sale</button></td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          } @else { <p class="small muted">No holding is below cost, so there are no losses to book.</p> }
+
+          <!-- 3. Wait before selling -->
+          <h3>Wait before selling <span class="h-meta">lots turning long-term in 90 days</span></h3>
+          @if (waitRows().length) {
+            <div class="table-wrap">
+              <table class="table stacked">
+                <thead><tr><th>Holding</th><th>Long-term on</th><th class="num hide-sm">Units</th><th class="num">Saves by waiting <app-est basis="Short-term minus long-term tax on this lot at today's price; surcharge not modelled" /></th><th><span class="sr-only">Plan</span></th></tr></thead>
+                <tbody>
+                  @for (w of waitRows(); track w.lot.instrument_id + w.lot.date + $index) {
+                    <tr>
+                      <td class="name-cell"><a [routerLink]="['/holding', w.lot.instrument_id]">{{ w.lot.name }}</a><div class="sub">bought {{ w.lot.date | dt }}</div></td>
+                      <td data-label="Long-term on"><span>{{ w.lot.lt_on | dt: false }}<span class="sub"> · in {{ w.lot.days_to_lt }} day{{ w.lot.days_to_lt === 1 ? '' : 's' }}</span></span></td>
+                      <td class="num hide-sm" data-label="Units in this lot">{{ w.lot.qty | qty }}</td>
+                      <td class="num" data-label="Saves by waiting (est.)">{{ (w.lot.tax_saving ?? 0) > 0 ? (w.lot.tax_saving | inr) : '—' }}</td>
+                      <td class="num cta"><button type="button" class="btn sm plan-btn" (click)="planSale(w.lot.instrument_id, w.sellQty)"
+                        [attr.title]="'Sells ' + (w.sellQty | qty) + ' units: this lot and every older one, oldest first'"
+                        [attr.aria-label]="'Plan the sale of ' + w.lot.name + ' up to this lot'">Plan the sale</button></td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+            <p class="small muted ws-note">A sale always takes the oldest units first, so "Plan the sale" sells this lot and every older one.</p>
+          } @else { <p class="small muted">No lot with a gain turns long-term in the next 90 days.</p> }
+        } @else {
+          <!-- What if I sell? (inline form) -->
+          @if (!holdings().length && !wiPos()) {
+            <p class="small muted">{{ store.portfolio() ? 'No open shares, mutual funds or commodities to plan a sale of.' : 'Loading your holdings…' }}</p>
+          } @else {
+            <form class="form wi-form" (ngSubmit)="runWhatIf()" autocomplete="off">
+              <div class="cols four">
+                <div class="field"><label for="wi-holding">Holding</label>
+                  <select id="wi-holding" class="input" name="holding" [ngModel]="wiId()" (ngModelChange)="pickHolding($event)">
+                    @if (wiId() === null) { <option [ngValue]="null" disabled>Choose a holding…</option> }
+                    @if (wiId() !== null && !wiPos()) { <option [ngValue]="wiId()" disabled>Holding #{{ wiId() }}</option> }
+                    @if (wiPos() && wiProblem()) { <option [ngValue]="wiId()" disabled>{{ wiPos()!.name }}</option> }
+                    @for (p of holdings(); track p.id) { <option [ngValue]="p.id">{{ p.name }}</option> }
+                  </select></div>
+                <div class="field"><label for="wi-qty">Units to sell</label>
+                  <input id="wi-qty" class="input num" type="number" step="any" min="0" name="qty" [ngModel]="wiQty()" (ngModelChange)="wiQty.set($event)" [disabled]="!wiPos() || !!wiProblem()" />
+                  @if (wiPos(); as p) { <span class="hint">You hold {{ p.quantity | qty }}@if (p.elss?.locked_qty) { · {{ p.elss!.locked_qty | qty }} locked (ELSS)}</span> }</div>
+                <div class="field"><label for="wi-price">Price per unit ({{ wiUsd() ? '$' : '₹' }})</label>
+                  <input id="wi-price" class="input num" type="number" step="any" min="0" name="price" [ngModel]="wiPrice()" (ngModelChange)="wiPrice.set($event)"
+                    [disabled]="!wiPos() || !!wiProblem()" [placeholder]="wiPos()?.has_price ? '' : 'Enter a price'" />
+                  @if (wiPos(); as p) { <span class="hint">{{ p.has_price && p.price ? 'Last price ' + (wiUsd() ? (p.price | usd) : (p.price | inr: 2)) : 'No price yet' }}</span> }</div>
+                <div class="field"><label for="wi-date">Sale date</label>
+                  <input id="wi-date" class="input" type="date" name="date" [min]="todayIso" [max]="maxDate" [ngModel]="wiDate()" (ngModelChange)="wiDate.set($event)" [disabled]="!wiPos() || !!wiProblem()" /></div>
+              </div>
+              <div class="wi-run">
+                @if (auth.canWrite()) {
+                  <button type="button" class="btn" (click)="recordSale()" [disabled]="!wiCanRecord()" title="Opens the transaction dialog with this sale filled in">Record this sale</button>
+                }
+                <button type="submit" class="btn primary" [disabled]="wiLoading() || !wiPos() || !!wiProblem()">
+                  @if (wiLoading()) { Working it out… } @else { <app-icon name="refresh" [size]="14" /> Work it out }</button>
+              </div>
+            </form>
+
+            @if (wiProblem(); as m) { <div class="notice" role="status"><app-icon name="info" [size]="16" /><span>{{ m }}</span></div> }
+            @if (wiError(); as e) { <div class="notice bad" role="alert"><app-icon name="alert" [size]="16" /><span>{{ e }}</span></div> }
+
+            @if (wiResult(); as w) {
+              <section class="wi-result" [class.stale]="wiLoading()" aria-live="polite" aria-label="What this sale means for your tax">
+                <div class="wi-answer" [attr.data-status]="w.tax_now > 0 ? 'watch' : 'good'">
+                  <span class="wi-label">{{ w.tax_now < 0 ? 'This sale saves' : 'Tax on this sale' }}</span>
+                  <span class="wi-big">
+                    @if (w.tax_now < 0) { saves {{ -w.tax_now | inr }} } @else if (w.tax_now === 0) { No tax } @else { {{ w.tax_now | inr }} }
+                    <app-est [basis]="w.note" />
+                  </span>
+                  <span class="wi-line">You'd keep {{ w.net_cash | inr }}<app-est [basis]="'Proceeds less this tax. ' + w.note" /> of {{ w.proceeds | inr }}
+                    @if (w.effective_pct !== null) { · {{ w.effective_pct | pct: 1 : false }} of the gain }
+                    · incl. 4% cess · sold {{ w.sell_date | dt }}, {{ w.fy }}</span>
+                </div>
+
+                @if (w.wait; as wt) {
+                  <div class="notice warn"><app-icon name="calendar" [size]="16" />
+                    <span><b>Wait {{ wt.days }} day{{ wt.days === 1 ? '' : 's' }}</b> — sold on {{ wt.date | dt }} at the same price
+                      ({{ w.currency === 'USD' ? (w.price | usd) : (w.price | inr: 2) }}), the tax is {{ wt.tax_then | inr }}<app-est [basis]="waitBasis(w)" />,
+                      which saves {{ wt.saving | inr }}: that is when the short-term lots it sells turn long-term.</span></div>
+                }
+
+                <dl class="wi-facts">
+                  <div><dt>Proceeds</dt><dd>{{ w.proceeds | inr }}@if (w.amount_fc !== undefined) { <small>{{ w.amount_fc | usd }} at ₹{{ w.usd_inr }}</small> }</dd></div>
+                  <div><dt>Cost</dt><dd>{{ w.cost | inr }}</dd></div>
+                  <div><dt>Gain</dt><dd [class]="w.gain | sign">{{ w.gain | inr: 0 : true }}</dd></div>
+                  <div><dt>Short-term gain</dt><dd [class]="w.st_gain | sign">{{ w.st_gain | inr: 0 : true }}</dd></div>
+                  <div><dt>Long-term gain</dt><dd [class]="w.lt_gain | sign">{{ w.lt_gain | inr: 0 : true }}</dd></div>
+                  <div><dt>Tax-free allowance</dt><dd>{{ w.exemption_used | inr }} used<small>{{ w.exemption_left | inr }} left this FY</small></dd></div>
+                </dl>
+
+                @if (w.lots.length) {
+                  <details class="wi-lots" [open]="w.lots.length <= 4">
+                    <summary>Lots sold, oldest first ({{ w.lots.length }})</summary>
+                    <div class="table-wrap">
+                      <table class="table">
+                        <thead><tr><th>Bought</th><th class="num">Units</th><th class="num hide-sm">Cost</th><th class="num hide-sm">Proceeds</th><th class="num">Gain</th><th>Term</th><th class="num hide-sm">Rate</th><th class="hide-sm">Long-term on</th></tr></thead>
+                        <tbody>
+                          @for (l of w.lots; track $index) {
+                            <tr>
+                              <td>{{ l.date | dt }}</td><td class="num">{{ l.qty | qty }}</td><td class="num hide-sm">{{ l.cost | inr }}</td>
+                              <td class="num hide-sm">{{ l.proceeds | inr }}</td><td class="num" [class]="l.gain | sign">{{ l.gain | inr: 0 : true }}</td>
+                              <td><span class="badge">{{ termLabel(l.term) }}</span></td>
+                              <td class="num hide-sm">{{ l.rate_pct === null ? 'slab' : l.rate_pct + '%' }}</td>
+                              <td class="hide-sm">{{ l.term === 'STCG' && l.lt_on ? (l.lt_on | dt) : '—' }}</td>
+                            </tr>
+                          }
+                        </tbody>
+                      </table>
+                    </div>
+                  </details>
+                }
+                <p class="small muted ws-note">{{ note(w) }}</p>
+              </section>
+            } @else if (wiLoading()) {
+              <div class="wi-result" aria-busy="true"><div class="skeleton" style="height:72px"></div></div>
+            } @else if (!wiError() && !wiProblem()) {
+              <p class="small muted">{{ wiPos() ? 'Enter the units, price and date, then work it out.' : 'Choose a holding to see the tax on selling it.' }}</p>
+            }
+          }
+        }
+      </section>
+    }
+
+    <!-- T2: why the numbers are what they are -->
+    <section class="grid grid-2" [class.loading-fade]="loading()">
       <div class="card">
-        <div class="card-head"><div><h2>Tax-free long-term gains</h2><span class="hint">Equity LTCG allowance for {{ r.fy }}</span></div></div>
+        <div class="card-head"><div><h2>Tax-free long-term gains</h2>
+          <span class="hint explains">Explains: Tax-free LTCG left · {{ r.equity_exemption.remaining > 0 ? 'room to book' : 'used up' }}</span></div></div>
         <div class="row" style="justify-content:space-between;margin-bottom:8px">
-          <span class="small text-2"><b class="num" style="font-size:18px;color:var(--text)">{{ r.equity_exemption.used | inr }}</b> used</span>
+          <span class="small text-2"><b class="num" style="font-size:var(--t-stat);color:var(--text)">{{ r.equity_exemption.used | inr }}</b> used</span>
           <span class="small muted">of {{ r.equity_exemption.limit | inr }}</span>
         </div>
-        <div class="meter"><i [style.width.%]="r.equity_exemption.limit ? r.equity_exemption.used / r.equity_exemption.limit * 100 : 0"></i></div>
-        <p class="small muted" style="margin-top:12px">{{ r.equity_exemption.remaining | inr }} of long-term equity gains can still be booked this year without tax.</p>
+        <div class="meter" role="img" [attr.aria-label]="(r.equity_exemption.used | inr) + ' of ' + (r.equity_exemption.limit | inr) + ' used'"><i [style.width.%]="exemptionPct()"></i></div>
+        <p class="small muted" style="margin-top:12px">{{ r.equity_exemption.remaining | inr }} of long-term equity gains can still be booked in {{ r.fy }} without tax.</p>
       </div>
       <div class="card">
-        <div class="card-head"><div><h2>Where your tax comes from</h2><span class="hint">Estimated {{ r.estimate.total | inr }} including {{ r.estimate.cess | inr }} cess</span></div></div>
+        <div class="card-head"><div><h2>Where your tax comes from</h2>
+          <span class="hint explains">Explains: Estimated tax {{ r.fy }} · {{ v.status === 'info' ? 'FY closed' : statusMeta[v.status].word }}</span></div></div>
         @for (l of taxLines(); track l.label) {
           <div class="tl">
             <div class="row" style="justify-content:space-between"><span class="small">{{ l.label }} <span class="muted">· {{ l.rate }}</span></span><b class="small num">{{ l.tax | inr }}</b></div>
-            <div class="meter thin"><i [style.width.%]="l.share" style="background:var(--primary)"></i></div>
+            <div class="meter thin" role="img" [attr.aria-label]="l.label + ': ' + (l.tax | inr)"><i [style.width.%]="l.share" style="background:var(--primary)"></i></div>
           </div>
-        } @empty { <p class="small muted">No tax due on gains or income so far this year.</p> }
+        } @empty { <p class="small muted">No tax due on gains or income in {{ r.fy }}{{ isCurrentFy() ? ' so far' : '' }}.</p> }
+        @if (taxLines().length) {
+          <p class="small muted" style="margin-top:12px">{{ r.estimate.total | inr }} in all<app-est [basis]="estimateBasis()" />, including {{ r.estimate.cess | inr }} cess.</p>
+        }
       </div>
     </section>
 
-    <div class="tabs">
-      @if (isCurrentFy()) { <button [class.on]="tab() === 'save'" (click)="tab.set('save')">Ways to save</button> }
-      <button [class.on]="tab() === 'gains'" (click)="tab.set('gains')">Realized gains <span class="muted">{{ r.realized.length }}</span></button>
-      <button [class.on]="tab() === 'estimate'" (click)="tab.set('estimate')">Tax estimate</button>
-    </div>
-
-    <div [class.loading-fade]="loading()" style="display:flex;flex-direction:column;gap:20px">
-      @switch (activeTab()) {
-        @case ('save') {
-          @let o = r.opportunities;
-          <section class="grid grid-3">
-            <div class="card">
-              <div class="row" style="gap:10px"><span class="chip green sm"><app-icon name="sparkle" [size]="15" /></span><span class="section-title">Book gains tax-free</span></div>
-              @if (o.ltcg_harvest.suggested_booking > 0) {
-                <div class="hero-value pos" style="font-size:26px;margin:8px 0 4px">{{ o.ltcg_harvest.suggested_booking | inr }}</div>
-                <p class="small text-2">of long-term equity gains can be sold and bought back before 31 March without tax, saving about {{ o.ltcg_harvest.future_tax_saved | inr }} later.</p>
-                <details class="more" style="margin-top:10px"><summary>Which lots</summary>
-                  <ul class="small text-2" style="margin:6px 0 0;padding-left:18px">
-                    @for (l of o.ltcg_harvest.lots.slice(0, 6); track l.instrument_id + l.date) { <li>{{ l.name }} · {{ l.qty | qty }} units ({{ l.date | dt }}) · {{ l.gain | inr: 0 : true }}</li> }
-                  </ul>
-                </details>
-              } @else { <p class="small muted" style="margin-top:8px">Nothing to harvest right now.</p> }
-            </div>
-            <div class="card">
-              <div class="row" style="gap:10px"><span class="chip indigo sm"><app-icon name="scale" [size]="15" /></span><span class="section-title">Offset gains with losses</span></div>
-              @if (o.loss_harvest.length) {
-                <div class="hero-value" style="font-size:26px;margin:8px 0 4px">{{ o.loss_harvest_offsettable | inr }}</div>
-                <p class="small text-2">of this year's gains can be cancelled by selling holdings that are below cost ({{ o.loss_harvest_total | inr }} of losses available).</p>
-                <details class="more" style="margin-top:10px"><summary>Which holdings</summary>
-                  <table class="table" style="margin-top:6px">
-                    <tbody>
-                      @for (h of o.loss_harvest.slice(0, 6); track h.instrument_id) {
-                        <tr><td class="name-cell"><a [routerLink]="['/holding', h.instrument_id]">{{ h.name }}</a></td><td class="num neg">-{{ h.st_loss + h.lt_loss | inr }}</td></tr>
-                      }
-                    </tbody>
-                  </table>
-                </details>
-              } @else { <p class="small muted" style="margin-top:8px">No holdings are below cost.</p> }
-            </div>
-            <div class="card">
-              <div class="row" style="gap:10px"><span class="chip amber sm"><app-icon name="calendar" [size]="15" /></span><span class="section-title">Wait before selling</span></div>
-              @if (o.upcoming_long_term.length) {
-                @for (l of o.upcoming_long_term.slice(0, 4); track l.instrument_id + l.date) {
-                  <div class="row" style="justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
-                    <span class="small">{{ l.name }}<br><span class="muted">{{ l.days_to_lt }} days to long-term</span></span>
-                    <span class="small pos nowrap">saves {{ l.tax_saving | inr }}</span>
-                  </div>
-                }
-              } @else { <p class="small muted" style="margin-top:8px">No profitable lots turn long-term in the next 90 days.</p> }
-            </div>
-          </section>
-        }
-        @case ('gains') {
-          <section class="card flush">
-            <div class="card-head" style="padding-bottom:12px">
-              <div class="seg">@for (t of ['', 'STCG', 'LTCG', 'Intraday']; track t) { <button [class.on]="termFilter() === t" (click)="termFilter.set(t)">{{ t || 'All' }}</button> }</div>
-            </div>
-            <div class="table-wrap" style="max-height:560px">
-              <table class="table">
-                <thead><tr><th>Holding</th><th class="hide-sm">Held</th><th class="num hide-sm">Cost</th><th class="num hide-sm">Sold for</th><th class="num">Gain</th><th>Type</th></tr></thead>
-                <tbody>
-                  @for (l of lots(); track $index) {
-                    <tr>
-                      <td class="name-cell">{{ l.name }}<div class="sub">sold {{ l.sell_date | dt }}</div></td>
-                      <td class="hide-sm">{{ l.holding_days }} days</td>
-                      <td class="num hide-sm">{{ l.cost | inr }}</td><td class="num hide-sm">{{ l.proceeds | inr }}</td>
-                      <td class="num" [class]="l.gain | sign">{{ l.gain | inr: 0 : true }}</td>
-                      <td><span class="badge" [class.good]="l.term === 'LTCG'">{{ l.term === 'LTCG' ? 'Long-term' : l.term === 'STCG' ? 'Short-term' : l.term }}</span></td>
-                    </tr>
-                  } @empty { <tr><td colspan="6"><div class="empty">No sales in {{ r.fy }}.</div></td></tr> }
-                </tbody>
-              </table>
-            </div>
-          </section>
-        }
-        @case ('estimate') {
-          <section class="grid grid-2">
+    <!-- T3: the detail, collapsed unless asked for -->
+    <section class="t3" id="tax-details">
+      <details class="more" [open]="t3Open()" (toggle)="onT3Toggle($event)">
+        <summary>Realised gains and the full estimate for {{ r.fy }}</summary>
+        <div class="t3-body" [class.loading-fade]="loading()">
+          <div class="tabs" role="group" aria-label="Detail view">
+            <button type="button" [class.on]="t3View() === 'gains'" [attr.aria-pressed]="t3View() === 'gains'" (click)="setTab('gains')">Realised gains <span class="muted">{{ r.realized.length }}</span></button>
+            <button type="button" [class.on]="t3View() === 'estimate'" [attr.aria-pressed]="t3View() === 'estimate'" (click)="setTab('estimate')">Tax estimate</button>
+          </div>
+          @if (t3View() === 'gains') {
             <div class="card flush">
-              <table class="table">
-                <tbody>
-                  @for (l of r.tax_lines; track $index) {
-                    <tr><td>{{ l.group === 'LT' ? 'Long-term gains' : 'Short-term gains' }} at {{ l.rate }}%{{ l.slab ? ' (slab)' : '' }}<div class="sub">on {{ l.taxable | inr }}</div></td><td class="num">{{ l.tax | inr }}</td></tr>
+              <div class="card-head" style="padding-bottom:12px">
+                <div class="seg" role="group" aria-label="Filter by term">@for (t of ['', 'STCG', 'LTCG', 'Intraday']; track t) {
+                  <button type="button" [class.on]="termFilter() === t" [attr.aria-pressed]="termFilter() === t" (click)="termFilter.set(t)">{{ t || 'All' }}</button> }</div>
+              </div>
+              <div class="table-wrap" style="max-height:560px">
+                <table class="table">
+                  <thead><tr><th>Holding</th><th class="hide-sm">Held</th><th class="num hide-sm">Cost</th><th class="num hide-sm">Sold for</th><th class="num">Gain</th><th>Type</th></tr></thead>
+                  <tbody>
+                    @for (l of lots(); track $index) {
+                      <tr>
+                        <td class="name-cell">{{ l.name }}<div class="sub">sold {{ l.sell_date | dt }}</div></td>
+                        <td class="hide-sm">{{ l.holding_days }} days</td>
+                        <td class="num hide-sm">{{ l.cost | inr }}</td><td class="num hide-sm">{{ l.proceeds | inr }}</td>
+                        <td class="num" [class]="l.gain | sign">{{ l.gain | inr: 0 : true }}</td>
+                        <td><span class="badge" [class.good]="l.term === 'LTCG'">{{ termLabel(l.term) }}</span></td>
+                      </tr>
+                    } @empty { <tr><td colspan="6"><div class="empty">{{ termFilter() ? 'No ' + termLabel(termFilter()).toLowerCase() + ' sales' : 'No sales' }} in {{ r.fy }}.</div></td></tr> }
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          } @else {
+            <div class="grid grid-2">
+              <div class="card flush">
+                <table class="table">
+                  <tbody>
+                    @for (l of r.tax_lines; track $index) {
+                      <tr><td>{{ l.group === 'LT' ? 'Long-term gains' : 'Short-term gains' }} at {{ l.rate }}%{{ l.slab ? ' (slab)' : '' }}<div class="sub">on {{ l.taxable | inr }}</div></td><td class="num">{{ l.tax | inr }}</td></tr>
+                    }
+                    @if (r.income_total) { <tr><td>Dividends & interest at {{ r.slab_rate }}%<div class="sub">on {{ r.income_total | inr }}</div></td><td class="num">{{ r.estimate.income_tax | inr }}</td></tr> }
+                    <tr><td>Cess 4%</td><td class="num">{{ r.estimate.cess | inr }}</td></tr>
+                  </tbody>
+                  <tfoot><tr><td>Estimated total <app-est [basis]="estimateBasis()" /></td><td class="num">{{ r.estimate.total | inr }}</td></tr></tfoot>
+                </table>
+              </div>
+              <div class="card">
+                <dl class="kv">
+                  <dt>Equity exemption used</dt><dd>{{ r.equity_exemption.used | inr }} of {{ r.equity_exemption.limit | inr }}</dd>
+                  <dt>Short-term losses set off</dt><dd>{{ r.set_off.st_loss | inr }}</dd>
+                  <dt>Long-term losses set off</dt><dd>{{ r.set_off.lt_loss | inr }}</dd>
+                  @if (r.set_off.carry_forward_st || r.set_off.carry_forward_lt) {
+                    <dt>Losses left after set-off</dt><dd>{{ r.set_off.carry_forward_st + r.set_off.carry_forward_lt | inr }}</dd>
                   }
-                  @if (r.income_total) { <tr><td>Dividends & interest at {{ r.slab_rate }}%<div class="sub">on {{ r.income_total | inr }}</div></td><td class="num">{{ r.estimate.income_tax | inr }}</td></tr> }
-                  <tr><td>Cess 4%</td><td class="num">{{ r.estimate.cess | inr }}</td></tr>
-                </tbody>
-                <tfoot><tr><td>Estimated total</td><td class="num">{{ r.estimate.total | inr }}</td></tr></tfoot>
-              </table>
+                  @for (i of incomeRows(); track i[0]) { <dt>{{ incomeLabel[i[0]] ?? i[0] }}</dt><dd>{{ i[1] | inr }}</dd> }
+                </dl>
+                <p class="small muted" style="margin-top:14px">Equity: long-term after 12 months, 12.5% above ₹1.25L, 20% short-term. Foreign stocks: long-term after 24 months.
+                  Gold/silver ETFs: long-term after 12 months at 12.5%. Debt funds and other short-term gains at your slab. Surcharge and earlier years' losses are not included.
+                  {{ chargesNote }}</p>
+              </div>
             </div>
-            <div class="card">
-              <dl class="kv">
-                <dt>Equity exemption used</dt><dd>{{ r.equity_exemption.used | inr }} of {{ r.equity_exemption.limit | inr }}</dd>
-                <dt>Short-term losses set off</dt><dd>{{ r.set_off.st_loss | inr }}</dd>
-                <dt>Long-term losses set off</dt><dd>{{ r.set_off.lt_loss | inr }}</dd>
-                @for (i of incomeRows(); track i[0]) { <dt>{{ incomeLabel[i[0]] ?? i[0] }}</dt><dd>{{ i[1] | inr }}</dd> }
-              </dl>
-              <p class="small muted" style="margin-top:14px">Equity: long-term after 12 months, 12.5% above ₹1.25L, 20% short-term. Foreign stocks: long-term after 24 months.
-                Gold/silver ETFs: long-term after 12 months at 12.5%. Debt funds and other short-term gains at your slab. Surcharge and earlier years' losses are not included.</p>
-            </div>
-          </section>
-        }
-      }
-    </div>
-  } @else if (!error()) {
-    <div class="card"><div class="skeleton" style="height:240px"></div></div>
+          }
+        </div>
+      </details>
+    </section>
   }
 </div>

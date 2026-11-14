@@ -1,15 +1,42 @@
-import { ChangeDetectionStrategy, Component, OnInit, computed, inject, input, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { firstValueFrom } from 'rxjs';
+import { Router } from '@angular/router';
+import { Observable, firstValueFrom } from 'rxjs';
+import { ActionRunnerService } from '../core/action-runner.service';
+import { ActionService } from '../core/action.service';
 import { ApiService } from '../core/api.service';
+import { AuthService } from '../core/auth.service';
 import { FORMAT_PIPES, inr, today } from '../core/format';
 import { errorMessage } from '../core/http';
-import { AssetClass, Position, SymbolHit, TXN_LABEL, TxnType } from '../core/models';
+import { Action, AssetClass, Position, SymbolHit, TXN_LABEL, Transaction, TxnType } from '../core/models';
 import { StoreService } from '../core/store.service';
 import { ToastService } from '../core/toast.service';
 import { AddKind, TxnDialogState } from '../core/txn-dialog.service';
 import { IconComponent } from './icon.component';
+import { dueText, isInstalment } from './priority/priority';
 import { ModalComponent } from './ui';
+
+/** "Due now" in the Add sheet shows at most this many instalments (§3.1). */
+const DUE_NOW_MAX = 3;
+
+/**
+ * The SIP instalments to offer first in the Add sheet (§3.1, AMENDMENTS H17): visible open or planned
+ * `sip:due:*` / `sip:missed:*` actions, earliest due first (no due date last), at most three.
+ */
+export function dueNow(actions: Action[], planned: Action[]): Action[] {
+  const seen = new Set<string>();
+  return [...actions, ...planned]
+    .filter(a => isInstalment(a.id) && (a.status === 'open' || a.status === 'planned') && !seen.has(a.id) && !!seen.add(a.id))
+    .sort((a, b) => (a.due ?? '9999-12-31').localeCompare(b.due ?? '9999-12-31') || a.id.localeCompare(b.id))
+    .slice(0, DUE_NOW_MAX);
+}
+
+/** Two dialog states that differ only in `actionId` (the shell clears it after a save that fulfilled an action). */
+function sameButAction(a: TxnDialogState, b: TxnDialogState): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]) as Set<keyof TxnDialogState>;
+  for (const k of keys) if (k !== 'actionId' && a[k] !== b[k]) return false;
+  return true;
+}
 
 const KINDS: { kind: AddKind; label: string; hint: string; icon: string }[] = [
   { kind: 'equity', label: 'Stock', hint: 'Buy or sell shares (India or US)', icon: 'trend' },
@@ -43,22 +70,49 @@ const MF_CATEGORIES = ['Equity', 'ELSS', 'Index', 'Hybrid', 'Sectoral', 'Debt', 
     .kind .ic { display: inline-flex; width: 32px; height: 32px; border-radius: 8px; background: var(--accent-soft); color: var(--accent-strong); align-items: center; justify-content: center; flex: none; }
     .kind b { display: block; font-weight: 600; }
     .kind span.h { font-size: 12.5px; color: var(--text-2); }
+    .kind.import-tile { grid-column: 1 / -1; border-style: dashed; }
     .hits { max-height: 220px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
     .hit { display: flex; justify-content: space-between; gap: 10px; width: 100%; text-align: left; padding: 8px 10px; border: 0; border-bottom: 1px solid var(--border); background: none; cursor: pointer; }
     .hit:hover { background: var(--surface-2); }
     .calc { font-size: 12.5px; color: var(--text-2); background: var(--surface-2); border-radius: 8px; padding: 8px 10px; }
-    @media (max-width: 480px) { .kinds { grid-template-columns: minmax(0, 1fr); } }
+    .due-now { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+    .due-head, .kinds-head { font-size: var(--t-label); font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+    .kinds-head { margin-bottom: 8px; }
+    .due-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 6px 10px 6px 12px; text-align: left; cursor: pointer;
+      background: var(--surface); border: 1px solid var(--border-strong); border-left: var(--stripe) solid var(--st); border-radius: 10px; color: var(--text); font: inherit; }
+    .due-row:hover { background: var(--surface-2); border-color: var(--accent); }
+    .due-row .d-ic { display: inline-flex; color: var(--st); flex: none; }
+    .due-row .d-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .due-row .d-text b { font-weight: 600; font-size: var(--t-meta); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .due-row .d-text small { font-size: var(--t-label); color: var(--muted); }
+    .due-row .due { flex: none; }
+    .due-row .d-go { flex: none; font-size: var(--t-label); font-weight: 600; color: var(--accent); }
+    @media (max-width: 480px) { .kinds { grid-template-columns: minmax(0, 1fr); } .due-row .d-go { display: none; } }
   `],
 })
 export class TxnFormComponent implements OnInit {
   state = input.required<TxnDialogState>();
   done = output<void>();
+  /** After every successful save: the ids of the transactions it wrote ([] when the endpoint returns an instrument). */
+  saved = output<number[]>();
 
   private api = inject(ApiService);
   private store = inject(StoreService);
   private toast = inject(ToastService);
+  private actions = inject(ActionService);
+  private runner = inject(ActionRunnerService);
+  private auth = inject(AuthService);
+  private router = inject(Router);
 
   kinds = KINDS; sectors = SECTORS; caps = CAPS; mfCategories = MF_CATEGORIES;
+
+  /**
+   * "Due now": instalments the action list already built from SIP adherence, with their prefill and id.
+   * Running one through ActionRunner reopens this dialog prefilled, so saving it marks the action done.
+   */
+  readonly due = computed(() => this.isEdit() ? [] : dueNow(this.actions.actions(), this.actions.planned()));
+  dueText = dueText;
+  dueLate = (a: Action) => a.days !== null && a.days < 0;
   kind = signal<AddKind | null>(null);
   saving = signal(false);
   error = signal<string | null>(null);
@@ -95,8 +149,50 @@ export class TxnFormComponent implements OnInit {
   loans = computed(() => this.store.positions().filter(p => p.asset_class === 'p2p' && (p.is_open || p.id === this.f.instrument_id))
     .sort((a, b) => (a.ref ?? '').localeCompare(b.ref ?? '')));
 
+  /** The state the form was last filled from. */
+  private applied: TxnDialogState | null = null;
+
+  constructor() {
+    // The dialog can be re-aimed while open ("Due now", or an action run from behind it): refill the form then.
+    // The shell clearing `actionId` after a save is not a new request, so "Save & add another" keeps its values.
+    effect(() => {
+      const s = this.state();
+      untracked(() => {
+        const prev = this.applied;
+        if (!prev || s === prev) return;  // ngOnInit fills the first state
+        this.applied = s;
+        if (sameButAction(prev, s) && !s.actionId) return;
+        this.f = this.blank();
+        this.addAnother = false;
+        this.kind.set(null);
+        this.error.set(null);
+        this.hits.set(null);
+        this.fill(s);
+      });
+    });
+  }
+
   ngOnInit() {
-    const s = this.state();
+    this.applied = this.state();
+    this.fill(this.applied);
+  }
+
+  /** The Add sheet's "Import a statement" tile (§3.1, J19, R21): writers only, since `/import` is write-guarded. */
+  readonly canImport = computed(() => this.auth.canWrite() && !this.isEdit());
+
+  /** "Import a statement": close the sheet, then open Import (CAS · Kite · EPF · LenDen). */
+  goImport() {
+    this.done.emit();
+    void this.router.navigate(['/import']);
+  }
+
+  /** "Due now" row: a dialog CTA refills this form in place; anything else (a route) closes it first. */
+  runDue(a: Action) {
+    if (a.cta?.type !== 'dialog') this.done.emit();
+    void this.runner.run(a);
+  }
+
+  private fill(s: TxnDialogState) {
     if (s.mode === 'edit' && s.txn) {
       const t = s.txn;
       const ac = t.asset_class;
@@ -119,6 +215,11 @@ export class TxnFormComponent implements OnInit {
     if (s.kind === 'dividend') this.f.type = 'DIVIDEND';
     if (s.kind === 'corporate_action' && !s.type) this.f.type = 'BONUS';
     if (s.kind === 'epf' && !this.f.instrument_id) this.prefillEpf();
+    // prefills from an action (an instalment due, a maturity to reinvest): shown for the user to confirm
+    if (s.amount !== null && s.amount !== undefined) this.f.amount = s.amount;
+    if (s.quantity !== null && s.quantity !== undefined) this.f.quantity = s.quantity;
+    if (s.date) this.f.date = s.date;
+    if (s.notes) this.f.notes = s.notes;
   }
 
   pick(k: AddKind) {
@@ -178,8 +279,17 @@ export class TxnFormComponent implements OnInit {
 
   private require(cond: boolean, msg: string) { if (!cond) throw new Error(msg); }
 
+  /** Ids of the transactions written by the save in progress. */
+  private savedIds: number[] = [];
+  private async record(req: Observable<Transaction>): Promise<Transaction> {
+    const t = await firstValueFrom(req);
+    if (t && typeof t.id === 'number') this.savedIds.push(t.id);
+    return t;
+  }
+
   async save() {
     this.error.set(null);
+    this.savedIds = [];
     const f = this.f, k = this.kind();
     try {
       this.require(!!f.date, 'Pick a date');
@@ -191,7 +301,7 @@ export class TxnFormComponent implements OnInit {
         if (t.type === 'REPAYMENT') { body.principal = +f.principal || 0; body.amount = this.repaymentTotal(); }
         if (t.type === 'FX_IN' || t.type === 'FX_OUT') body.type = f.direction;
         if (['BUY', 'SELL', 'CREDIT', 'BONUS', 'SPLIT'].includes(t.type)) body.type = f.type;
-        await firstValueFrom(this.api.updateTransaction(t.id, body));
+        await this.record(this.api.updateTransaction(t.id, body));
         msg = 'Transaction updated';
       } else if (k === 'equity' || k === 'mutual_fund' || k === 'commodity' || k === 'dividend') {
         this.require(!!f.name?.trim(), 'Enter the holding name');
@@ -204,7 +314,7 @@ export class TxnFormComponent implements OnInit {
         if (ex) body.instrument_id = ex.id;
         else body.instrument = { asset_class: this.assetClass(), name: f.name.trim(), market: f.market, sector: f.sector,
           market_cap: f.market_cap, category: f.category, sub_category: f.sub_category, symbol: f.symbol };
-        await firstValueFrom(this.api.addTransaction(body));
+        await this.record(this.api.addTransaction(body));
         msg = `${this.typeLabel(f.type)} of ${f.name.trim()} saved · ${inr(+f.amount)}`;
       } else if (k === 'epf') {
         this.require(!!f.name?.trim(), 'Enter the account name');
@@ -213,7 +323,7 @@ export class TxnFormComponent implements OnInit {
         const body: any = { type: f.type, date: f.date, amount: f.amount, notes: f.notes };
         if (ex) body.instrument_id = ex.id;
         else body.instrument = { asset_class: 'epf', name: f.name.trim(), rate: f.rate || 8.25, platform: 'EPFO' };
-        await firstValueFrom(this.api.addTransaction(body));
+        await this.record(this.api.addTransaction(body));
         msg = `EPF ${this.typeLabel(f.type).toLowerCase()} of ${inr(+f.amount)} saved`;
       } else if (k === 'nps') {
         this.require(!!f.name?.trim(), 'Enter the scheme');
@@ -223,13 +333,13 @@ export class TxnFormComponent implements OnInit {
         const body: any = { type: f.type, date: f.date, quantity: f.quantity, amount: f.amount, notes: f.notes };
         if (ex) body.instrument_id = ex.id;
         else body.instrument = { asset_class: 'nps', name: f.name.trim(), platform: f.platform === 'LenDen' ? '' : f.platform, category: f.tier };
-        await firstValueFrom(this.api.addTransaction(body));
+        await this.record(this.api.addTransaction(body));
         msg = `NPS ${this.typeLabel(f.type).toLowerCase()} saved · ${inr(+f.amount)}`;
       } else if (k === 'corporate_action') {
         const ex = this.existing();
         this.require(!!ex, 'Choose one of your stocks');
         this.require(+f.quantity > 0, f.type === 'BONUS' ? 'Enter the bonus shares received' : 'Enter the split ratio');
-        await firstValueFrom(this.api.addTransaction({ instrument_id: ex!.id, type: f.type, date: f.date, quantity: f.quantity, amount: 0, notes: f.notes }));
+        await this.record(this.api.addTransaction({ instrument_id: ex!.id, type: f.type, date: f.date, quantity: f.quantity, amount: 0, notes: f.notes }));
         msg = f.type === 'BONUS' ? `${f.quantity} bonus shares of ${ex!.name} added` : `${ex!.name} split 1:${f.quantity} recorded`;
       } else if (k === 'p2p_loan') {
         this.require(+f.amount > 0, 'Enter the loan amount');
@@ -240,7 +350,7 @@ export class TxnFormComponent implements OnInit {
       } else if (k === 'p2p_repayment') {
         this.require(!!f.instrument_id, 'Choose the loan');
         this.require(this.repaymentTotal() > 0, 'Enter principal and/or interest');
-        await firstValueFrom(this.api.addTransaction({ instrument_id: f.instrument_id, type: 'REPAYMENT', date: f.date,
+        await this.record(this.api.addTransaction({ instrument_id: f.instrument_id, type: 'REPAYMENT', date: f.date,
           amount: this.repaymentTotal(), principal: +f.principal || 0, fees: f.fees, notes: f.notes }));
         msg = `Repayment of ${inr(this.repaymentTotal())} saved`;
       } else if (k === 'fixed_deposit') {
@@ -251,10 +361,11 @@ export class TxnFormComponent implements OnInit {
         msg = `FD at ${f.name} added`;
       } else if (k === 'forex') {
         this.require(+f.amount > 0 && +f.amount_fc > 0, 'Enter both the rupee and dollar amounts');
-        await firstValueFrom(this.api.addForex({ type: f.direction, date: f.date, amount: f.amount, amount_fc: f.amount_fc, notes: f.notes }));
+        await this.record(this.api.addForex({ type: f.direction, date: f.date, amount: f.amount, amount_fc: f.amount_fc, notes: f.notes }));
         msg = 'USD transfer saved';
       }
       this.toast.ok(msg);
+      this.saved.emit([...this.savedIds]);
       await this.store.changed();
       if (this.addAnother && !this.isEdit()) {
         const keep = { kind: this.kind(), date: f.date, type: f.type, market: f.market, platform: f.platform };

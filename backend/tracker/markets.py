@@ -1,10 +1,13 @@
 """Markets: the Nifty 200 universe, 1-week / 1-month price signals, movers, holding alerts and rebalance hints.
 
-Signals look only at price movement over the last week and month (as asked), read two ways:
-  momentum  — rising over both windows: consider buying; falling over both: consider exiting
-  dip       — fell hard over the month but turning up this week: possible entry;
-              ran up hard over the month but slipping this week: consider booking profit
-They are price signals, not research or advice, and the app says so wherever they appear.
+Signals look only at price movement over the last week and month (as asked). The vocabulary (RULES,
+SIGNAL_TEXT, `signals_for`, `describe` and the week/month windows) lives in `analytics.signals`, the one
+signal model `quant.holding_outlook` also reads (SPEC P2.12, AMENDMENTS K16); this module re-exports it.
+They are price patterns, not forecasts or advice, and every described signal carries that label.
+
+`market_state` and `context_line` (SPEC P1.12, AMENDMENTS G12) read the Nifty's stored closes and say whether
+the market is in a correction or a crash, how your own fall compares with a stress scenario, and what to do
+(nothing hasty). They are pure: no price calls and no database access.
 """
 from __future__ import annotations
 
@@ -18,31 +21,18 @@ from datetime import date, datetime, timedelta, timezone
 
 from . import domain as d
 from . import prices as px
+from .analytics import signals as sg
+# The one signal vocabulary (K16), re-exported so `markets.RULES`, `markets.signals_for` and friends keep working
+from .analytics.signals import MONTH, RULES, SIGNAL_TEXT, WEEK, describe, signals_for  # noqa: F401
 
 UNIVERSE_URL = "https://archives.nseindia.com/content/indices/ind_nifty200list.csv"
 UNIVERSE_FILE = os.path.join(os.path.dirname(__file__), "data", "nifty200.csv")
 UNIVERSE_TTL_DAYS = 7
 HISTORY_DAYS = 70          # enough trading days for a 1-month window plus a little slack
-WEEK, MONTH = 5, 21        # trading days
-
-# Thresholds in percent; a signal needs both windows to agree
-RULES = {
-    "momentum_buy": {"m1": 8.0, "w1": 3.0},
-    "momentum_sell": {"m1": -8.0, "w1": -3.0},
-    "dip_buy": {"m1": -8.0, "w1": 0.5},
-    "profit_book": {"m1": 15.0, "w1": -2.0},
-}
-SIGNAL_TEXT = {
-    "momentum_buy": ("Rising strongly", "Up {m1} this month and {w1} this week"),
-    "momentum_sell": ("Falling steadily", "Down {m1} this month and {w1} this week"),
-    "dip_buy": ("Bouncing after a fall", "Down {m1} this month, {w1} this week"),
-    "profit_book": ("Cooling after a run", "Up {m1} this month, {w1} this week"),
-}
 DEFAULT_ALERTS = {"enabled": True, "push": True, "day": 5.0, "week": 10.0}
 
 
-def _pct(v: float | None) -> str:
-    return "—" if v is None else f"{v:+.1f}%"
+_pct = sg.pct_text
 
 
 # ── universe ──
@@ -100,40 +90,17 @@ def metrics(closes: list[tuple[str, float]], live: dict | None = None) -> dict |
         return None
     last = series[-1]
 
-    def back(n):
-        return series[-1 - n] if len(series) > n else None
-
     def chg(ref):
         return round((last / ref - 1) * 100, 2) if ref else None
 
-    prev = live.get("prev_close") if live and live.get("prev_close") else back(1)
+    prev = live.get("prev_close") if live and live.get("prev_close") else series[-2]
     rets = [series[i] / series[i - 1] - 1 for i in range(max(1, len(series) - MONTH), len(series)) if series[i - 1]]
     window = series[-(MONTH + 1):]
-    return {"price": round(last, 2), "d1": chg(prev), "w1": chg(back(WEEK)), "m1": chg(back(MONTH)),
+    win = sg.windows(series)    # w1 and m1 by the one signal model's rule (K16)
+    return {"price": round(last, 2), "d1": chg(prev), "w1": win["w1"], "m1": win["m1"],
             "vol": round(statistics.pstdev(rets) * 100, 2) if len(rets) > 5 else None,
             "high_1m": round(max(window), 2), "low_1m": round(min(window), 2),
             "spark": [round(v, 2) for v in series[-(MONTH + 1):]]}
-
-
-def signals_for(m: dict | None) -> list[str]:
-    if not m or m.get("w1") is None or m.get("m1") is None:
-        return []
-    out = []
-    w1, m1 = m["w1"], m["m1"]
-    if m1 >= RULES["momentum_buy"]["m1"] and w1 >= RULES["momentum_buy"]["w1"]:
-        out.append("momentum_buy")
-    if m1 <= RULES["momentum_sell"]["m1"] and w1 <= RULES["momentum_sell"]["w1"]:
-        out.append("momentum_sell")
-    if m1 <= RULES["dip_buy"]["m1"] and w1 >= RULES["dip_buy"]["w1"]:
-        out.append("dip_buy")
-    if m1 >= RULES["profit_book"]["m1"] and w1 <= RULES["profit_book"]["w1"]:
-        out.append("profit_book")
-    return out
-
-
-def describe(sig: str, m: dict) -> dict:
-    title, note = SIGNAL_TEXT[sig]
-    return {"signal": sig, "title": title, "note": note.format(m1=_pct(m["m1"]), w1=_pct(m["w1"]))}
 
 
 def _score(sig: str, m: dict) -> float:
@@ -258,6 +225,195 @@ def rebalance_hints(port: dict, holdings: list[dict], ideas: dict, targets: dict
             for s in port["segments"] if s.get("target") is not None]
     fresh = [i for i in ideas["momentum_buy"] + ideas["dip_buy"] if not i["held"]][:6]
     return {"has_targets": bool(targets), "segments": segs, "trim": trim, "add": add, "new_ideas": fresh}
+
+
+# ── market state: crash and correction context (SPEC P1.12, AMENDMENTS G12) ──
+
+STATE_MIN_CLOSES = 200      # fewer closes than this and there is no market state (D6)
+STATE_MAX_AGE_DAYS = 5      # newest close older than this (calendar days before `today`): no state (W4 review)
+YEAR_CLOSES = 252           # the 52-week high is the highest of the last 252 closes
+CRASH_FROM_HIGH = -20.0     # percent below the 52-week high
+CRASH_W1 = -8.0             # or a fall this big in one week
+CORRECTION_FROM_HIGH = -10.0
+VOLATILE_D1 = 2.5           # |one-day move| in percent
+FALLBACK_SCENARIO = "correction"
+FALLBACK_LABEL = "Market correction"
+FALLBACK_IMPACT_PCT = -10.0  # the correction scenario's Indian-equity shock, used only when no stress test is at hand
+
+PLAYBOOK = [
+    "Keep your SIPs running. A fall buys more units for the same money.",
+    "Don't sell to stop the fall. A paper loss becomes a real one only when you sell.",
+    "Check that your emergency fund covers six months, so nothing has to be sold in a hurry.",
+    "If equity is now well under your target, top it up with new money. Don't try to time the bottom.",
+    "Look again next quarter, not every day.",
+]
+
+
+def _point(p) -> tuple[str, float] | None:
+    """A close as (ISO date, price) from a (date, close) pair or a {date, close|value|price} dict."""
+    if isinstance(p, dict):
+        day, close = p.get("date"), p.get("close", p.get("value", p.get("price")))
+    else:
+        try:
+            day, close = p[0], p[1]
+        except (TypeError, IndexError, KeyError):
+            return None
+    try:
+        close = float(close)
+    except (TypeError, ValueError):
+        return None
+    if not day or close <= 0:
+        return None
+    return (day.isoformat() if isinstance(day, date) else str(day)[:10], close)
+
+
+def _comparable(stress: dict | None, dd_pct: float) -> dict:
+    """The mildest falling scenario whose impact_pct is at or beyond your drawdown, else the correction one."""
+    scenarios = [s for s in ((stress or {}).get("scenarios") or []) if isinstance(s, dict)]
+    falls = [s for s in scenarios if s.get("impact_pct") is not None and float(s["impact_pct"]) < 0
+             and float(s["impact_pct"]) <= dd_pct]
+    pick = max(falls, key=lambda s: float(s["impact_pct"])) if falls else None   # max() keeps the first on a tie
+    if pick is None:
+        pick = next((s for s in scenarios if s.get("key") == FALLBACK_SCENARIO), None)
+    if pick is None:
+        # No stress test (or one without a correction row): a stand-in that names the routine correction
+        return {"key": FALLBACK_SCENARIO, "label": FALLBACK_LABEL, "impact": None, "impact_pct": None,
+                "smaller": dd_pct > FALLBACK_IMPACT_PCT}
+    impact_pct = float(pick["impact_pct"]) if pick.get("impact_pct") is not None else None
+    return {"key": pick.get("key"), "label": pick.get("label") or FALLBACK_LABEL, "impact": pick.get("impact"),
+            "impact_pct": impact_pct,
+            "smaller": dd_pct > (impact_pct if impact_pct is not None else FALLBACK_IMPACT_PCT)}
+
+
+def market_state(nifty_points, perf_metrics: dict | None, stress: dict | None, today: date | str | None = None) -> dict | None:
+    """Where the Nifty stands against its 52-week high, and how your own fall compares. Pure: no price calls.
+
+    nifty_points  stored ^NSEI daily closes, as (date, close) pairs or {date, close} dicts, in any order
+    perf_metrics  history metrics (`current_drawdown` in percent, TWR-based, and `end_value`), or None
+    stress        `forecast.stress_test` output {scenarios: [{key, label, impact, impact_pct}]}, or None
+    today         closes dated after it are ignored (defaults to the real today)
+
+    Returns None with fewer than 200 usable closes (D6), or when the newest close is more than
+    STATE_MAX_AGE_DAYS calendar days before `today`: the payload speaks in the present tense ("Nifty is X% below
+    its high"), and ^NSEI closes are stored only when performance, risk or Markets last ran (W4 review). Otherwise
+      {mode: 'crash'|'correction'|'volatile'|'normal',
+       nifty: {price, d1, w1, from_high_pct, high, high_date},       percentages, 2 dp
+       you: {from_peak_pct, from_peak_inr},                          both None without metrics
+       comparable: {key, label, impact, impact_pct, smaller} | None, None when your drawdown is unknown
+       playbook: [str],                                              fixed calm lines in correction/crash, else []
+       since,                                                        the 52-week high's date in correction/crash,
+                                                                     else the last close's date
+       as_of}                                                        the last close's date
+    Mode is checked in order: crash (from_high ≤ −20 or w1 ≤ −8), correction (from_high ≤ −10),
+    volatile (|d1| ≥ 2.5), normal. The thresholds apply to the rounded figures the payload shows.
+    """
+    cutoff = (today.isoformat() if isinstance(today, date) else str(today)[:10]) if today else date.today().isoformat()
+    by_day: dict[str, float] = {}
+    for p in nifty_points or []:
+        pt = _point(p)
+        if pt and pt[0] <= cutoff:
+            by_day[pt[0]] = pt[1]          # one close per day; a later duplicate wins
+    closes = sorted(by_day.items())
+    if len(closes) < STATE_MIN_CLOSES:
+        return None
+
+    last_day, last = closes[-1]
+    try:
+        age = (date.fromisoformat(cutoff) - date.fromisoformat(last_day)).days
+    except ValueError:
+        return None
+    if age > STATE_MAX_AGE_DAYS:
+        return None
+    prev = closes[-2][1]
+    week = closes[-1 - WEEK][1]
+    year = closes[-YEAR_CLOSES:]
+    high = max(c for _, c in year)
+    high_day = max(day for day, c in year if c == high)     # the latest day the high was set
+    d1 = round((last / prev - 1) * 100, 2)
+    w1 = round((last / week - 1) * 100, 2)
+    from_high = round((last / high - 1) * 100, 2)
+
+    if from_high <= CRASH_FROM_HIGH or w1 <= CRASH_W1:
+        mode = "crash"
+    elif from_high <= CORRECTION_FROM_HIGH:
+        mode = "correction"
+    elif abs(d1) >= VOLATILE_D1:
+        mode = "volatile"
+    else:
+        mode = "normal"
+    falling = mode in ("crash", "correction")
+
+    dd = (perf_metrics or {}).get("current_drawdown")
+    dd = float(dd) if dd is not None else None
+    end_value = (perf_metrics or {}).get("end_value")
+    inr = None
+    if dd is not None and end_value is not None and abs(dd) < 100:
+        frac = abs(dd) / 100
+        inr = round(-float(end_value) * frac / (1 - frac), 2) + 0.0     # + 0.0 turns −0.0 into 0.0
+    you = {"from_peak_pct": dd, "from_peak_inr": inr}
+
+    return {"mode": mode,
+            "nifty": {"price": round(last, 2), "d1": d1, "w1": w1, "from_high_pct": from_high,
+                      "high": round(high, 2), "high_date": high_day},
+            "you": you,
+            "comparable": _comparable(stress, dd) if dd is not None else None,
+            "playbook": list(PLAYBOOK) if falling else [],
+            "since": high_day if falling else last_day,
+            "as_of": last_day}
+
+
+def _inr_compact(v: float) -> str:
+    """Rupees for a sentence: ₹1.23 Cr, ₹3.4 L, else the full Indian grouping (₹45,000)."""
+    a = abs(v)
+    sign = "-" if v < 0 else ""
+    if a >= 1e7:
+        return f"{sign}₹{a / 1e7:.2f} Cr"
+    if a >= 1e5:
+        return f"{sign}₹{a / 1e5:.1f} L"
+    s = str(round(a))
+    if len(s) > 3:
+        head, tail = s[:-3], s[-3:]
+        groups = []
+        while len(head) > 2:
+            groups.insert(0, head[-2:])
+            head = head[:-2]
+        s = ",".join(([head] if head else []) + groups) + "," + tail
+    return f"{sign}₹{s}"
+
+
+def _scenario_phrase(comp: dict) -> str:
+    return "the routine-correction scenario" if comp.get("key") == FALLBACK_SCENARIO else f"the {comp.get('label')} scenario"
+
+
+def context_line(state: dict | None) -> dict | None:
+    """Home's crash/correction context line (SPEC §4.1, priority 1), or None outside correction and crash:
+    "Nifty is 12% below its high. You're down ₹3.4 L from your peak — smaller than the routine-correction
+    scenario. Your SIPs are the plan; nothing needs selling." The link opens the Markets banner and its playbook."""
+    if not state or state.get("mode") not in ("crash", "correction"):
+        return None
+    nifty = state.get("nifty") or {}
+    from_high = abs(float(nifty.get("from_high_pct") or 0))
+    w1 = nifty.get("w1")
+    parts = [f"Nifty is {from_high:.0f}% below its high"]
+    if state["mode"] == "crash" and w1 is not None and w1 <= CRASH_W1:
+        parts[0] += f", after a {abs(w1):.0f}% fall this week"
+    parts[0] += "."
+    you, comp = state.get("you") or {}, state.get("comparable")
+    dd, inr = you.get("from_peak_pct"), you.get("from_peak_inr")
+    if dd is not None and dd >= 0:
+        parts.append("Your portfolio is at its peak.")
+    elif inr is not None and comp:
+        if comp.get("smaller"):
+            how = "smaller than"
+        elif comp.get("impact_pct") is not None and abs(float(dd) - comp["impact_pct"]) < 1:
+            how = "about the size of"
+        else:
+            how = "deeper than"
+        parts.append(f"You're down {_inr_compact(abs(inr))} from your peak — {how} {_scenario_phrase(comp)}.")
+    elif dd is not None:
+        parts.append(f"You're {abs(dd):.0f}% below your peak.")
+    parts.append("Your SIPs are the plan; nothing needs selling.")
+    return {"kind": "market", "text": " ".join(parts), "link": "/markets"}
 
 
 # ── alerts ──
