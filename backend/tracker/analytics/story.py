@@ -6,7 +6,7 @@ from collections import defaultdict
 from datetime import date
 
 from .. import domain as d
-from .goals import ASSUMPTIONS
+from .assumptions import effective_book, mu_sigma, rated_book, typical, weights_from_positions
 from .insights import _inr
 
 MILESTONES = [1e5, 2.5e5, 5e5, 1e6, 2.5e6, 5e6, 1e7, 2.5e7, 5e7, 1e8]
@@ -101,11 +101,19 @@ def investing_rhythm(txns: list[dict], today: date | None = None, months: int = 
 
 # ── lakh / crore milestones ──
 def expected_return(port: dict) -> float:
-    segs = [s for s in port["segments"] if s["value"] > 0]
-    total = sum(s["value"] for s in segs)
-    if not total:
-        return 0.10
-    return sum(ASSUMPTIONS.get(s["segment"], (0.10, 0.12))[0] * s["value"] for s in segs) / total
+    """The typical (median) annual growth of the portfolio from the Assumption Book:
+    typical(mu_sigma(weights_from_positions(positions), rated_book(positions))). Falls back to segment
+    weights on the default Book when there are no valued positions, and to 10% for an empty portfolio."""
+    positions = port.get("positions") or []
+    w = weights_from_positions(positions)
+    book = rated_book(positions, effective_book(None))
+    if not w:
+        segs = [s for s in port.get("segments") or [] if float(s.get("value") or 0) > 0]
+        total = sum(float(s["value"]) for s in segs)
+        if not total:
+            return 0.10
+        w = {s["segment"]: float(s["value"]) / total for s in segs}
+    return typical(*mu_sigma(w, book))
 
 
 def _months_to(pv: float, pmt: float, target: float, annual: float, cap: int = 600) -> int | None:
@@ -153,7 +161,7 @@ def takeaways(port: dict, attr: dict, market: dict | None, rhythm: dict, miles: 
         out.append({"key": "market", "icon": "trend", "tone": "pos" if ahead else "neg", "label": f"You vs {b['label']}",
                     "value": (f"{_inr(b['diff_value'])} ahead" if ahead else f"{_inr(-b['diff_value'])} behind"),
                     "note": f"The same money, invested on the same dates in {b['label']}, would be worth {_inr(b['end_value'])} today.",
-                    "link": "/analytics"})
+                    "link": "/performance"})
     if attr["gainers"]:
         g = attr["gainers"][0]
         share = g["gain"] / attr["gross_gains"] * 100 if attr["gross_gains"] else 0
@@ -174,11 +182,11 @@ def takeaways(port: dict, attr: dict, market: dict | None, rhythm: dict, miles: 
     if miles["ahead"]:
         m = miles["ahead"][0]
         out.append({"key": "milestone", "icon": "target", "tone": "neutral", "label": "Next milestone", "value": m["label"],
-                    "note": ((f"In about {m['in']} adding {_inr(miles['monthly'])} a month at an assumed {miles['assumed_return']:g}% a year."
+                    "note": ((f"In about {m['in']} adding {_inr(miles['monthly'])} a month at a typical {miles['assumed_return']:g}% a year."
                               if miles["monthly"] >= 500 else
-                              f"In about {m['in']} from growth alone at an assumed {miles['assumed_return']:g}% a year; a monthly SIP gets there sooner.")
+                              f"In about {m['in']} from growth alone at a typical {miles['assumed_return']:g}% a year; a monthly SIP gets there sooner.")
                              if m["in"] else "Out of reach at today's pace — a monthly SIP would bring it closer."),
-                    "link": "/goals"})
+                    "link": "/plan?tab=goals"})
     return out
 
 

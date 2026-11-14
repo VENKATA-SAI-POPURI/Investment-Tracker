@@ -1,0 +1,172 @@
+<!-- Plan › Goals: the tab body only (AMENDMENTS J3). Plan renders the page, its h1, T0 and the strip. -->
+@if (showStrip() || (auth.canWrite() && goals().length)) {
+  <div class="g-bar">
+    @if (showStrip()) {
+      <p class="strip" aria-label="Funding">
+        @if (funding(); as fu) {
+          <span>Earmarked <b>{{ earmarkedTotal() | inrc }}</b> of {{ fu.total | inrc }}</span>
+          <span class="sep" aria-hidden="true">·</span>
+          <span>Free <b>{{ fu.free | inrc }}</b></span>
+        }
+        @if (sipGap() > 0) {
+          @if (funding()) { <span class="sep" aria-hidden="true">·</span> }
+          <span class="need">Goals need <b>{{ sipGap() | inr }}/month</b> more<app-est basis="The monthly SIP each goal needs for a 3-in-4 chance, less what you put in now" /></span>
+        }
+      </p>
+    } @else { <span class="spacer" style="flex:1"></span> }
+    @if (auth.canWrite() && goals().length) {
+      <button class="btn primary" (click)="startAdd()"><app-icon name="plus" [size]="16" /> New goal</button>
+    }
+  </div>
+}
+
+@if (loadError(); as err) {
+  <div class="notice bad" role="alert"><app-icon name="alert" [size]="16" />
+    <span>{{ plan() ? 'Couldn\'t refresh your goals: ' : 'Couldn\'t load your goals: ' }}{{ err }}</span>
+    <button class="btn sm" style="margin-left:auto" (click)="load()">Try again</button>
+  </div>
+}
+
+@for (g of goals(); track g.id) {
+  @let pr = g.projection;
+  @let st = statusOf(pr.status);
+  <section class="card goal" [id]="'goal-' + g.id" [attr.data-status]="st" [attr.aria-labelledby]="'goal-h-' + g.id">
+    <div class="g-head">
+      <div>
+        <h2 [id]="'goal-h-' + g.id">{{ g.name }}</h2>
+        <span class="hint">{{ g.target_amount | inr }} by {{ g.target_date | dt }}@if (pr.months_left > 0) { · {{ pr.months_left }} months left } @else { · target date reached }</span>
+      </div>
+      <div class="g-tools">
+        <app-status [status]="st" [word]="pr.status === 'achieved' ? 'Achieved' : null" />
+        @if (auth.canWrite()) {
+          <button class="btn ghost icon sm" (click)="startEdit(g)" [attr.aria-label]="'Edit ' + g.name"><app-icon name="edit" [size]="15" /></button>
+          <button class="btn ghost icon sm danger" (click)="remove(g)" [attr.aria-label]="'Delete ' + g.name"><app-icon name="trash" [size]="15" /></button>
+        }
+      </div>
+    </div>
+
+    <div class="g-body">
+      <div>
+        <span class="g-k">Chance of reaching it · {{ pr.probability === null ? 'not known' : round(pr.probability) + ' of 100 futures' }}</span>
+        <app-prob-bar [value]="pr.probability" [delta]="delta(g)" [status]="st" [label]="'Chance of reaching ' + g.name" />
+      </div>
+      <div>
+        <div class="row" style="justify-content:space-between"><span class="g-k">Saved so far</span><span class="small text-2">{{ pr.progress_pct | pct: 0 : false }}</span></div>
+        <div class="g-v">{{ pr.current | inr }}</div>
+        <div class="progress" style="margin-top:6px"><span [style.width.%]="pr.progress_pct > 100 ? 100 : pr.progress_pct"></span></div>
+      </div>
+    </div>
+
+    <div class="g-sip">
+      @if (pr.status === 'achieved') {
+        <span><app-icon name="checkCircle" [size]="14" /> Target reached: nothing more is needed. SIP now <b>{{ g.monthly_contribution | inr }}</b>/month.</span>
+      } @else if (pr.required_sip === null) {
+        <span>SIP now <b>{{ g.monthly_contribution | inr }}</b>/month · the target date has passed, so there is no monthly figure. Move the date to plan again.</span>
+      } @else {
+        <span>SIP now <b>{{ contribution(g) | inr }}</b>/month · needs <b [class.neg]="short(g)">{{ pr.required_sip | inr }}/month</b><app-est basis="The monthly SIP that reaches the target in 75 of 100 simulated futures" /></span>
+        @if (short(g) && auth.canWrite()) {
+          @if (linked(g)) { <a class="btn sm" routerLink="/recurring">Raise a linked SIP on Recurring →</a> }
+          @else { <button class="btn sm" (click)="startEdit(g, fixedSip(pr.required_sip))">Raise SIP to {{ fixedSip(pr.required_sip) | inr }}</button> }
+        }
+      }
+    </div>
+
+    <!-- P2 (K15, R15): the SIP plans that fund this goal -->
+    @if (linked(g)) {
+      <p class="linked"><app-icon name="link" [size]="14" /> <span>Funded by {{ linkedCount(g) }} SIP{{ linkedCount(g) === 1 ? '' : 's' }} · {{ contribution(g) | inr }}/mo</span>
+        @if (linkedNames(g); as n) { <span class="muted"> ({{ n }})</span> }</p>
+    } @else if (linkHint(g)) {
+      <p class="linked muted"><a routerLink="/recurring">Link a SIP on Recurring →</a>
+        <span> so the plan that pays for {{ g.name }} counts here</span></p>
+    }
+
+    <div class="g-foot">
+      <span class="funded">Funded by:
+        @for (s of segments; track s) { @if (g.allocation[s]) { <span class="badge">{{ g.allocation[s] }}% of {{ s }}</span> } }
+        @if (!hasAllocation(g)) { <span class="neg">nothing linked yet{{ auth.canWrite() ? ' · edit the goal' : '' }}</span> }
+      </span>
+      @if (pr.assumptions) { <app-assumption-chip [block]="pr.assumptions" /> }
+    </div>
+
+    <details class="more">
+      <summary>Details</summary>
+      <div class="t3">
+        @if (pr.required_sip_typical !== null && pr.required_sip_typical !== undefined && pr.status !== 'achieved') {
+          <span>At the typical return: <b>{{ pr.required_sip_typical | inr }}/month</b><app-est basis="The SIP that reaches the target if returns follow the typical (median) path: about a 1-in-2 chance" /></span>
+        }
+        <dl class="kv">
+          <dt>Typical outcome</dt><dd>{{ pr.p50 | inr }}<app-est basis="Half of 1,000 simulated futures end higher" /></dd>
+          <dt>1-in-10 bad · good</dt><dd>{{ pr.p10 | inrc }} · {{ pr.p90 | inrc }}<app-est basis="1-in-10 bad and good cases of 1,000 simulated futures" /></dd>
+          <dt>Assumed return</dt><dd>{{ pr.expected_return }}% ± {{ pr.volatility }}% a year</dd>
+        </dl>
+        @if (pr.path.length > 1) {
+          <app-line-chart [labels]="labels(g)" [series]="series(g)" [height]="220" [yFormat]="inrc" [tipFormat]="inrFull" [zeroBased]="true"
+            [ariaLabel]="'Projected path for ' + g.name + ', an estimate at the assumed return'" />
+        }
+        @if (pr.note) { <span class="muted small">{{ pr.note }}</span> }
+      </div>
+    </details>
+  </section>
+} @empty {
+  @if (!plan() && !loaded()) {
+    <div class="card skeleton-card" aria-busy="true"><div class="skeleton" style="height:100%"></div></div>
+  } @else if (!loadError() || plan()) {
+    <div class="card start">
+      <span class="lotus"><app-icon name="target" [size]="24" /></span>
+      <h2>Give your money a purpose</h2>
+      <p>Pick a goal to start with. Link part of your portfolio to it and see the monthly SIP it needs and your chance of getting there.</p>
+      <div class="presets">
+        @for (p of presets(); track p.key) {
+          <button type="button" class="preset" (click)="startAdd(p)" [disabled]="!auth.canWrite()">
+            <span class="chip sm"><app-icon [name]="p.icon" [size]="15" /></span>
+            <b>{{ p.name }}</b>
+            <span class="amt">{{ p.amount | inrc }} in {{ p.years }} year{{ p.years > 1 ? 's' : '' }}</span>
+            <small>{{ p.note }}</small>
+          </button>
+        }
+        <button type="button" class="preset ret" (click)="openRetirement()">
+          <span class="chip sm"><app-icon name="lotus" [size]="15" /></span>
+          <b>Retirement</b>
+          <span class="amt">Planned on its own tab</span>
+          <small>Corpus, monthly needed and your FIRE number <app-icon name="chevronRight" [size]="12" /></small>
+        </button>
+      </div>
+      @if (auth.canWrite()) { <button class="btn" style="margin-top:20px" (click)="startAdd()"><app-icon name="plus" [size]="15" /> Start from scratch</button> }
+      @else { <p class="small">You're viewing as a guest, so goals can't be added here.</p> }
+    </div>
+  }
+}
+
+@if (goals().length) {
+  <p class="small muted">Chances come from 1,000 simulated futures per goal at long-run return and volatility assumptions for its mix. They are estimates, not promises.</p>
+}
+
+@if (editing(); as e) {
+  <app-modal [title]="e.id ? 'Edit goal' : 'New goal'" [width]="560" (close)="closeModal()">
+    <form class="form" (ngSubmit)="save()">
+      <div class="field"><label for="g-name">Goal</label><input id="g-name" class="input" name="name" [(ngModel)]="f.name" placeholder="e.g. Home down payment" required /></div>
+      <div class="cols">
+        <div class="field"><label for="g-amt">Target amount (₹, today's money)</label><input id="g-amt" class="input num" type="number" min="0" name="target" [(ngModel)]="f.target_amount" /></div>
+        <div class="field"><label for="g-date">Target date</label><input id="g-date" class="input" type="date" name="date" [(ngModel)]="f.target_date" /></div>
+        <div class="field"><label for="g-sip">Monthly contribution (₹)</label><input id="g-sip" class="input num" type="number" min="0" step="100" name="sip" [(ngModel)]="f.monthly_contribution" />
+          @if (editedGoal(); as eg) { @if (eg.projection.required_sip !== null && eg.projection.status !== 'achieved') {
+            <span class="hint">needs {{ eg.projection.required_sip | inr }}/month<app-est basis="The monthly SIP that reaches the target in 75 of 100 simulated futures" /></span>
+          } }</div>
+        <div class="field"><label for="g-ret">Expected return (% a year)</label><input id="g-ret" class="input num" type="number" step="0.1" name="ret" [(ngModel)]="f.expected_return" placeholder="auto from mix" /></div>
+      </div>
+      <fieldset class="field" style="border:0;padding:0;margin:0">
+        <legend style="font-size:13px;font-weight:500;margin-bottom:6px">Which part of your portfolio is for this goal?</legend>
+        @for (s of segments; track s) {
+          <div class="alloc-row">
+            <span class="small">{{ s }} <span class="muted">· {{ segValue()[s] | inrc }}@if (others(s) > 0) { · already earmarked {{ others(s) }}% }</span>
+              @if (claimed(s) > 100 && (+f.allocation[s] || 0) > 0) { <span class="over"> · {{ claimed(s) }}% claimed</span> }</span>
+            <div class="input-group"><input class="input num" type="number" min="0" max="100" [name]="'a-' + s" [(ngModel)]="f.allocation[s]" [attr.aria-label]="s + ' percent for this goal'" /><span class="btn" style="pointer-events:none">%</span></div>
+          </div>
+        }
+        <span class="hint">Linked today: {{ linkedValue() | inr }}</span>
+      </fieldset>
+      @if (error()) { <div class="notice bad" role="alert">{{ error() }}</div> }
+      <div class="form-actions"><button type="button" class="btn" (click)="closeModal()">Cancel</button><button class="btn primary" type="submit" [disabled]="saving()">Save goal</button></div>
+    </form>
+  </app-modal>
+}

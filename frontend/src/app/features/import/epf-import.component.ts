@@ -8,6 +8,8 @@ import { errorMessage } from '../../core/http';
 import { EpfPreview } from '../../core/models';
 import { StoreService } from '../../core/store.service';
 import { ToastService } from '../../core/toast.service';
+import { ActionService } from '../../core/action.service';
+import { DropZoneComponent, completeImportDue } from '../../shared/drop-zone.component';
 import { IconComponent } from '../../shared/icon.component';
 
 const KIND_LABEL: Record<string, string> = {
@@ -15,11 +17,14 @@ const KIND_LABEL: Record<string, string> = {
   transfer_in: 'Transfer in', transfer_out: 'Transfer out',
 };
 
-/** EPFO passbooks: every year and member ID of a UAN into one EPF holding, checked against each closing balance. */
+/**
+ * EPFO passbooks: every year and member ID of a UAN into one EPF holding, checked against each closing balance.
+ * Files come through the shared drop zone (R21): PDFs only, several at once.
+ */
 @Component({
   selector: 'app-epf-import',
   standalone: true,
-  imports: [RouterLink, IconComponent, ...FORMAT_PIPES],
+  imports: [RouterLink, IconComponent, DropZoneComponent, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="card">
@@ -27,11 +32,9 @@ const KIND_LABEL: Record<string, string> = {
         <span class="hint">passbook.epfindia.gov.in → choose each member ID and financial year → Download. Upload them all at once; old and new employers' member IDs under the same UAN are combined.</span></div></div>
       @if (!auth.canWrite()) { <div class="notice"><app-icon name="info" [size]="16" /> Read-only access: imports are not available for guests.</div> }
       @else {
-        <label class="drop">
-          <input type="file" accept="application/pdf,.pdf" multiple (change)="onFiles($event)" [disabled]="busy()" aria-label="Choose EPF passbook PDFs" />
-          <app-icon name="upload" [size]="20" />
-          <span>{{ busy() && !preview() ? 'Reading…' : names() || 'Choose passbook PDFs' }}</span>
-        </label>
+        <app-drop-zone accept="application/pdf,.pdf" [multiple]="true" [disabled]="busy()"
+          [label]="busy() && !preview() ? 'Reading…' : names() || 'Choose passbook PDFs'"
+          hint="Every passbook PDF for your UAN, all at once: each year and each member ID." (files)="onFiles($event)" />
         <p class="small muted" style="margin-top:10px"><app-icon name="shield" [size]="13" /> Read on the server and not stored. Transfers between your own member IDs are left out so nothing is counted twice.</p>
       }
       @if (error()) { <div class="notice bad" style="margin-top:12px"><app-icon name="alert" [size]="16" /> {{ error() }}</div> }
@@ -95,10 +98,6 @@ const KIND_LABEL: Record<string, string> = {
   `,
   styles: [`
     :host { display: flex; flex-direction: column; gap: 22px; }
-    .drop { position: relative; display: flex; align-items: center; gap: 10px; height: 64px; padding: 0 16px; border-radius: 10px;
-      border: 1.5px dashed var(--border-strong); background: var(--surface-2); color: var(--text-2); cursor: pointer; font-size: 13.5px; }
-    .drop:hover { border-color: var(--primary); color: var(--text); }
-    .drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
   `],
 })
 export class EpfImportComponent {
@@ -106,6 +105,7 @@ export class EpfImportComponent {
   private api = inject(ApiService);
   private store = inject(StoreService);
   private toast = inject(ToastService);
+  private actions = inject(ActionService);
 
   label = KIND_LABEL;
   names = signal('');
@@ -128,10 +128,7 @@ export class EpfImportComponent {
     return Math.abs(c.employee.computed - (c.employee.statement ?? c.employee.computed)) + Math.abs(c.employer.computed - (c.employer.statement ?? c.employer.computed));
   }
 
-  async onFiles(ev: Event) {
-    const input = ev.target as HTMLInputElement;
-    const picked = [...(input.files ?? [])];
-    input.value = '';
+  async onFiles(picked: File[]) {
     if (!picked.length) return;
     this.names.set(picked.map(f => f.name).join(', '));
     this.busy.set(true); this.error.set(null); this.done.set(null); this.preview.set(null);
@@ -153,6 +150,7 @@ export class EpfImportComponent {
       const r = await firstValueFrom(this.api.epfCommit(this.files));
       this.done.set(r);
       this.toast.ok(`EPF: ${r.imported} entries imported`);
+      completeImportDue(this.actions);
       this.reset();
       await this.store.changed();
     } catch (e) {

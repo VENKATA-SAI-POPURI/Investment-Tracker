@@ -1,4 +1,5 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
@@ -172,6 +173,7 @@ export class ReportsComponent {
   catalog = signal<ReportMeta[]>([]);
   years = signal<string[]>([]);
   assetClasses = signal<string[]>([]);
+  /** The open report: `?r=`, else `summary` (D8). Follows the URL, so `/reports?r=…` works while Reports is open. */
   key = signal<string>(this.route.snapshot.queryParamMap.get('r') || 'summary');
   params = signal<Record<string, string>>({});
   report = signal<Report | null>(null);
@@ -199,6 +201,12 @@ export class ReportsComponent {
 
   constructor() {
     void this.loadCatalog();
+    // The router reuses this component for a query-only navigation (a link to /reports?r=… from Reports itself,
+    // Back/Forward), so follow ?r= instead of reading it once (D8).
+    this.route.queryParamMap.pipe(takeUntilDestroyed(inject(DestroyRef))).subscribe(q => {
+      const k = q.get('r') || 'summary';
+      if (k !== this.key()) this.show(k);
+    });
     effect(() => {
       const k = this.key(), p = this.params(), v = this.store.version();
       queueMicrotask(() => this.load(k, p, v));
@@ -227,10 +235,14 @@ export class ReportsComponent {
   }
 
   open(key: string) {
+    this.show(key);
+    void this.router.navigate([], { queryParams: { r: key }, replaceUrl: true });
+  }
+  /** Switch the viewer to `key` with fresh filters. */
+  private show(key: string) {
     this.report.set(null);
     this.params.set({});
     this.key.set(key);
-    this.router.navigate([], { queryParams: { r: key }, replaceUrl: true });
   }
   set(k: string, v: string) { this.params.update(p => ({ ...p, [k]: v })); }
   preset(which: 'fy' | 'lastfy' | 'all') {

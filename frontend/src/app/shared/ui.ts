@@ -1,8 +1,25 @@
-import { ChangeDetectionStrategy, Component, ElementRef, HostListener, Injectable, computed, effect, inject, input, output, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, HostListener, Injectable, OnDestroy, computed, effect, inject, input, output, signal, viewChild } from '@angular/core';
 import { IconComponent } from './icon.component';
 import { ToastService } from '../core/toast.service';
 
-/** Accessible dialog: focus trap-lite, Esc to close, scroll locked body. */
+/** What Tab can land on inside a dialog. Hidden and disabled controls are filtered out at run time. */
+const FOCUSABLE = 'a[href], area[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), '
+  + 'textarea:not([disabled]), iframe, [contenteditable="true"], [tabindex]:not([tabindex="-1"])';
+
+/** The open modals, oldest first: only the top one answers Esc and Tab, and the body unlocks when the last closes. */
+const OPEN_MODALS: ModalComponent[] = [];
+
+/** The tabbable elements inside `root`, in DOM order (visible ones only). */
+export function focusableIn(root: HTMLElement): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE))
+    .filter(el => el.tabIndex >= 0 && !el.hasAttribute('inert') && !el.closest('[inert]') && el.getClientRects().length > 0);
+}
+
+/**
+ * Accessible dialog (P2.9): focus moves in on open (the first field, else the dialog), Tab and Shift+Tab wrap
+ * inside it, Esc closes it, the body does not scroll behind it, and focus goes back to the element that was
+ * focused before it opened. Stacked dialogs (a confirm over a form) answer keys top-down.
+ */
 @Component({
   selector: 'app-modal',
   standalone: true,
@@ -26,21 +43,65 @@ import { ToastService } from '../core/toast.service';
     @media (max-width: 560px) { :host { padding: 0; align-items: flex-end; } .dialog { border-radius: 14px 14px 0 0; max-height: 92vh; overflow-y: auto; } }
   `],
 })
-export class ModalComponent {
+export class ModalComponent implements OnDestroy {
   title = input('');
   width = input(560);
   close = output<void>();
   private dialog = viewChild<ElementRef<HTMLElement>>('dialog');
+  /** The element focused before this dialog opened; focus returns there on close. */
+  private readonly opener: HTMLElement | null =
+    typeof document !== 'undefined' && document.activeElement instanceof HTMLElement && document.activeElement !== document.body
+      ? document.activeElement : null;
 
   constructor() {
+    OPEN_MODALS.push(this);
     document.body.style.overflow = 'hidden';
     effect(() => {
       const el = this.dialog()?.nativeElement;
-      if (el) setTimeout(() => (el.querySelector<HTMLElement>('input,select,textarea') ?? el).focus());
+      if (el) setTimeout(() => { if (!el.contains(document.activeElement)) (el.querySelector<HTMLElement>('input,select,textarea') ?? el).focus(); });
     });
   }
-  @HostListener('document:keydown.escape') onEsc() { this.close.emit(); }
-  ngOnDestroy() { document.body.style.overflow = ''; }
+
+  private get isTop(): boolean { return OPEN_MODALS[OPEN_MODALS.length - 1] === this; }
+
+  @HostListener('document:keydown.escape')
+  onEsc() {
+    if (this.isTop) this.close.emit();
+  }
+
+  /** The focus trap: Tab from the last control goes to the first, Shift+Tab from the first to the last. */
+  @HostListener('document:keydown', ['$event'])
+  onTab(e: KeyboardEvent) {
+    if (e.key !== 'Tab' || e.defaultPrevented) return;
+    const root = this.dialog()?.nativeElement;
+    if (!root || !this.isTop) return;
+    const items = focusableIn(root);
+    const active = document.activeElement as HTMLElement | null;
+    if (!items.length) { e.preventDefault(); root.focus(); return; }
+    const first = items[0], last = items[items.length - 1];
+    const inside = !!active && root.contains(active);
+    if (e.shiftKey) {
+      if (!inside || active === first || active === root) { e.preventDefault(); last.focus(); }
+    } else if (!inside || active === last) {
+      e.preventDefault(); first.focus();
+    }
+  }
+
+  ngOnDestroy() {
+    const i = OPEN_MODALS.indexOf(this);
+    if (i >= 0) OPEN_MODALS.splice(i, 1);
+    if (!OPEN_MODALS.length) document.body.style.overflow = '';
+    const back = this.opener;
+    // after the view is gone (a dialog that opened another dialog gets focus back once it is the top again)
+    if (back) setTimeout(() => { if (back.isConnected && !this.trapsElsewhere(back)) back.focus({ preventScroll: true }); });
+  }
+
+  /** Focus never returns to an element that sits outside a dialog still open above the page. */
+  private trapsElsewhere(el: HTMLElement): boolean {
+    const top = OPEN_MODALS[OPEN_MODALS.length - 1];
+    const root = top?.dialog()?.nativeElement;
+    return !!root && !root.contains(el);
+  }
 }
 
 @Component({
@@ -49,7 +110,7 @@ export class ModalComponent {
   imports: [IconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="stack" aria-live="polite">
+    <div class="toast-stack" aria-live="polite">
       @for (t of toast.toasts(); track t.id) {
         <div class="toast" [class]="t.kind">
           <app-icon [name]="t.kind === 'error' ? 'alert' : t.kind === 'ok' ? 'checkCircle' : 'info'" />
@@ -60,12 +121,13 @@ export class ModalComponent {
       }
     </div>`,
   styles: [`
-    .stack { position: fixed; right: 16px; bottom: 16px; z-index: 1100; display: flex; flex-direction: column; gap: 8px; max-width: min(420px, calc(100vw - 32px)); }
+    /* not ".stack": the global .stack meter (12 px, overflow hidden) would clip the toasts (R13) */
+    .toast-stack { position: fixed; right: 16px; bottom: 16px; z-index: 1100; display: flex; flex-direction: column; gap: 8px; max-width: min(420px, calc(100vw - 32px)); }
     .toast { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--border-strong); border-left: 4px solid var(--accent); border-radius: 10px; box-shadow: var(--shadow-pop); padding: 10px 8px 10px 12px; font-size: 13.5px; }
     .toast.ok { border-left-color: var(--status-good); }
     .toast.error { border-left-color: var(--status-critical); }
     .text { flex: 1; }
-    @media (max-width: 760px) { .stack { bottom: 80px; left: 16px; right: 16px; } }
+    @media (max-width: 760px) { .toast-stack { bottom: 80px; left: 16px; right: 16px; } }
   `],
 })
 export class ToastsComponent {
@@ -104,26 +166,6 @@ export class ConfirmHostComponent {
   c = inject(ConfirmService);
 }
 
-/** Small reusable stat tile: label · value · optional delta. */
-@Component({
-  selector: 'app-stat',
-  standalone: true,
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `
-    <div class="stat">
-      <span class="label">{{ label() }}</span>
-      <span class="value" [class]="tone()" [title]="value()">{{ value() }}</span>
-      @if (meta()) { <span class="meta" [class]="metaTone()">{{ meta() }}</span> }
-    </div>`,
-})
-export class StatComponent {
-  label = input('');
-  value = input<string>('—');
-  meta = input<string | null>(null);
-  tone = input('');
-  metaTone = input('');
-}
-
 /** Sort helper for tables: click a header to sort, click again to flip. */
 export class SortState<T> {
   key = signal<string>('');
@@ -134,6 +176,10 @@ export class SortState<T> {
     else { this.key.set(key); this.dir.set(-1); }
   }
   arrow(key: string) { return this.key() === key ? (this.dir() === 1 ? ' ↑' : ' ↓') : ''; }
+  /** The header's `aria-sort` (P2.9): bind `[attr.aria-sort]="sort.ariaSort('name')"` on the sortable `th`. */
+  ariaSort(key: string): 'ascending' | 'descending' | 'none' {
+    return this.key() === key ? (this.dir() === 1 ? 'ascending' : 'descending') : 'none';
+  }
   apply(rows: T[]): T[] {
     const k = this.key(), d = this.dir();
     return [...rows].sort((a: any, b: any) => {

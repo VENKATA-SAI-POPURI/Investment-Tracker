@@ -1,7 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
+import { ActionService } from '../../core/action.service';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { FORMAT_PIPES, fileToBase64 } from '../../core/format';
@@ -9,33 +10,42 @@ import { errorMessage } from '../../core/http';
 import { CasPreview } from '../../core/models';
 import { StoreService } from '../../core/store.service';
 import { ToastService } from '../../core/toast.service';
+import { DropZoneComponent, ImportRefusal, completeImportDue, refusedRows, showRefusal } from '../../shared/drop-zone.component';
 import { IconComponent } from '../../shared/icon.component';
 import { EpfImportComponent } from './epf-import.component';
 import { TradebookImportComponent } from './tradebook-import.component';
 
-/** One place to bring statements in: CAS PDFs, Kite tradebooks and EPF passbooks here, plus the door to the P2P importer. */
+export type ImportSource = 'cas' | 'kite' | 'epf';
+
+/**
+ * One place to bring statements in (§5.11, R21): source tiles CAS · Kite · EPF · LenDen. The first three open their
+ * flow on this page and scroll to it (kept in `?source=`, replaceUrl); LenDen links to `/p2p?import=lenden`, whose
+ * dialog belongs to the P2P page. Every flow picks files through the shared drop zone. A CAS commit is all-or-nothing
+ * (K5): a 400 lists every refused row in a table, and its one-line summary (L2) is the toast.
+ */
 @Component({
   selector: 'app-import',
   standalone: true,
-  imports: [FormsModule, RouterLink, IconComponent, TradebookImportComponent, EpfImportComponent, ...FORMAT_PIPES],
+  imports: [FormsModule, RouterLink, IconComponent, DropZoneComponent, TradebookImportComponent, EpfImportComponent, ...FORMAT_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page">
       <div class="page-head"><div><h1>Import statements</h1>
         <p class="sub">Bring in history from your statements instead of typing it · importing into {{ auth.portfolioLabel() === 'Family' ? 'your own portfolio' : auth.portfolioLabel() + "'s portfolio" }}</p></div></div>
 
-      <section class="sources">
-        <button class="src" [class.on]="source() === 'cas'" (click)="source.set('cas')"><span class="chip green"><app-icon name="file" [size]="18" /></span>
+      <nav class="sources" aria-label="Statement sources">
+        <button type="button" class="src" [class.on]="source() === 'cas'" [attr.aria-current]="source() === 'cas' ? 'true' : null" aria-controls="import-flow" (click)="pick('cas')"><span class="chip green"><app-icon name="file" [size]="18" /></span>
           <div><b>CAS statement (PDF)</b><small>Mutual funds from CAMS / KFintech; NPS and demat holdings from NSDL / CDSL</small></div></button>
-        <button class="src" [class.on]="source() === 'kite'" (click)="source.set('kite')"><span class="chip blue"><app-icon name="table" [size]="18" /></span>
+        <button type="button" class="src" [class.on]="source() === 'kite'" [attr.aria-current]="source() === 'kite' ? 'true' : null" aria-controls="import-flow" (click)="pick('kite')"><span class="chip blue"><app-icon name="table" [size]="18" /></span>
           <div><b>Kite tradebook</b><small>Zerodha equity and ETF trades (.xlsx or .csv), reconciled with what you have</small></div></button>
-        <button class="src" [class.on]="source() === 'epf'" (click)="source.set('epf')"><span class="chip amber"><app-icon name="shield" [size]="18" /></span>
+        <button type="button" class="src" [class.on]="source() === 'epf'" [attr.aria-current]="source() === 'epf' ? 'true' : null" aria-controls="import-flow" (click)="pick('epf')"><span class="chip amber"><app-icon name="shield" [size]="18" /></span>
           <div><b>EPF passbook</b><small>EPFO passbooks (PDF) for every year and employer under your UAN</small></div></button>
         <a class="src" routerLink="/p2p" [queryParams]="{ import: 'lenden' }"><span class="chip violet"><app-icon name="users" [size]="18" /></span>
-          <div><b>P2P lending reports</b><small>LenDenClub investment reports (Manual, Lumpsum) and order report</small></div><app-icon name="chevronRight" [size]="16" /></a>
-      </section>
+          <div><b>LenDen P2P reports</b><small>LenDenClub investment reports (Manual, Lumpsum) and order report · opens on P2P</small></div><app-icon name="chevronRight" [size]="16" /></a>
+      </nav>
       <p class="small muted" style="margin:-6px 0 0">Using the app's own CSV template? Import it on <a routerLink="/transactions" [queryParams]="{ import: 1 }">Transactions</a>.</p>
 
+      <div id="import-flow" class="flow" tabindex="-1">
       @if (source() === 'kite') { <app-tradebook-import /> } @else if (source() === 'epf') { <app-epf-import /> } @else {
       <section class="card">
         <div class="card-head"><div><h2>Upload a CAS</h2>
@@ -43,19 +53,31 @@ import { TradebookImportComponent } from './tradebook-import.component';
         @if (!auth.canWrite()) { <div class="notice"><app-icon name="info" [size]="16" /> Read-only access: imports are not available for guests.</div> }
         @else {
           <div class="up">
-            <label class="drop" [class.has]="!!fileName()">
-              <input type="file" accept="application/pdf,.pdf" (change)="onFile($event)" />
-              <app-icon name="upload" [size]="20" />
-              <span>{{ fileName() || 'Choose the CAS PDF' }}</span>
-            </label>
+            <app-drop-zone class="drop" accept="application/pdf,.pdf" [disabled]="busy()" [label]="fileName() || 'Choose the CAS PDF'"
+              hint="One CAS PDF. Add its password, then read it." (files)="onFile($event)" />
             <div class="field pw"><label for="cas-pw">PDF password</label>
               <input id="cas-pw" class="input" type="password" [(ngModel)]="password" placeholder="Usually your PAN in capitals" autocomplete="off" /></div>
             <button class="btn primary" (click)="read()" [disabled]="!file || busy()">{{ busy() ? 'Reading…' : 'Read statement' }}</button>
           </div>
           <p class="small muted" style="margin-top:10px"><app-icon name="shield" [size]="13" /> The file is read on the server to extract transactions and is not stored.</p>
         }
-        @if (error()) { <div class="notice bad" style="margin-top:12px"><app-icon name="alert" [size]="16" /> {{ error() }}</div> }
+        @if (error()) { <div class="notice bad" style="margin-top:12px" role="alert"><app-icon name="alert" [size]="16" /> {{ error() }}</div> }
       </section>
+
+      @if (refused(); as rf) {
+        <section class="card flush" id="cas-refused" role="alert">
+          <div class="card-head"><div><h2>{{ rf.error }}</h2><span class="hint">Untick these or fix them at the source, then import again. Everything else is still waiting below.</span></div></div>
+          @if (rf.rows.length) {
+            <div class="table-wrap"><table class="table">
+              <caption class="sr-only">Rows that need fixing</caption>
+              <thead><tr><th scope="col">Scheme or row</th><th scope="col">Date</th><th scope="col">What to fix</th></tr></thead>
+              <tbody>
+                @for (r of rf.rows; track $index) { <tr><td class="name-cell" style="white-space:normal">{{ r.name || '—' }}</td><td class="nowrap">{{ r.date ? (r.date | dt) : '—' }}</td><td class="neg" style="white-space:normal;min-width:160px">{{ r.error }}</td></tr> }
+              </tbody>
+            </table></div>
+          }
+        </section>
+      }
 
       @if (preview(); as p) {
         <section class="kpis" style="--kpi-cols:4">
@@ -145,6 +167,7 @@ import { TradebookImportComponent } from './tradebook-import.component';
         </section>
       }
       }
+      </div>
     </div>`,
   styles: [`
     .sources { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
@@ -152,18 +175,16 @@ import { TradebookImportComponent } from './tradebook-import.component';
       box-shadow: var(--shadow); color: var(--text); text-decoration: none; text-align: left; font: inherit; cursor: pointer; }
     .src:hover { text-decoration: none; border-color: var(--border-strong); box-shadow: var(--shadow-md); }
     .src.on { border-color: var(--primary); box-shadow: 0 0 0 3px var(--accent-soft); }
+    .flow { display: flex; flex-direction: column; gap: 22px; scroll-margin-top: 80px; outline: none; }
     .src > div { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
     .src b { font-size: 14px; }
     .src small { font-size: 12px; color: var(--muted); }
     .up { display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap; }
-    .drop { position: relative; flex: 1; min-width: 240px; display: flex; align-items: center; gap: 10px; height: 64px; padding: 0 16px; border-radius: 10px;
-      border: 1.5px dashed var(--border-strong); background: var(--surface-2); color: var(--text-2); cursor: pointer; font-size: 13.5px; }
-    .drop:hover, .drop.has { border-color: var(--primary); color: var(--text); }
-    .drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+    .drop { flex: 1; min-width: 240px; align-self: flex-start; }
     .pw { width: 240px; }
     .res { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
     .res span:nth-child(2) { flex: 1; }
-    @media (max-width: 900px) { .sources { grid-template-columns: minmax(0, 1fr); } .pw { width: 100%; } }
+    @media (max-width: 900px) { .sources { grid-template-columns: minmax(0, 1fr); } .pw { width: 100%; } .drop { min-width: 0; flex-basis: 100%; } }
   `],
 })
 export class ImportComponent {
@@ -171,6 +192,9 @@ export class ImportComponent {
   private api = inject(ApiService);
   private store = inject(StoreService);
   private toast = inject(ToastService);
+  private actions = inject(ActionService);
+  private router = inject(Router);
+  private route = inject(ActivatedRoute);
 
   file: File | null = null;
   password = '';
@@ -179,8 +203,10 @@ export class ImportComponent {
   error = signal<string | null>(null);
   preview = signal<CasPreview | null>(null);
   results = signal<{ imported: number; results: { name: string; ok: boolean; imported?: number; error?: string; updated?: string }[] } | null>(null);
+  /** The rows a refused CAS commit named (K5/K6), shown as a table. */
+  refused = signal<ImportRefusal | null>(null);
   tick = signal(0);  // checkbox edits mutate the preview in place; this re-runs the counts
-  source = signal<'cas' | 'kite' | 'epf'>((['kite', 'epf'] as const).find(s => s === inject(ActivatedRoute).snapshot.queryParamMap.get('source')) ?? 'cas');
+  source = signal<ImportSource>((['kite', 'epf'] as const).find(s => s === this.route.snapshot.queryParamMap.get('source')) ?? 'cas');
 
   newTxns = computed(() => (this.tick(), (this.preview()?.funds ?? []).reduce((a, f) => a + f.new_count, 0)));
   dupTxns = computed(() => (this.preview()?.funds ?? []).reduce((a, f) => a + f.duplicate_count, 0));
@@ -188,15 +214,27 @@ export class ImportComponent {
   selectedCount = computed(() => (this.tick(), (this.preview()?.funds ?? []).filter(f => f.selected && f.new_count).length
     + (this.preview()?.nps ?? []).filter(n => n.selected).length));
 
-  onFile(ev: Event) {
-    this.file = (ev.target as HTMLInputElement).files?.[0] ?? null;
+  /** A source tile: open its flow, keep it in the URL, and bring it into view (on phones it sits below the tiles). */
+  pick(s: ImportSource) {
+    this.source.set(s);
+    void this.router.navigate([], { relativeTo: this.route, queryParams: { source: s === 'cas' ? null : s }, queryParamsHandling: 'merge', replaceUrl: true });
+    setTimeout(() => {
+      const el = document.getElementById('import-flow');
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      el.focus({ preventScroll: true });
+    });
+  }
+
+  onFile(files: File[]) {
+    this.file = files[0] ?? null;
     this.fileName.set(this.file?.name ?? '');
     this.error.set(null);
   }
 
   async read() {
     if (!this.file) return;
-    this.busy.set(true); this.error.set(null); this.results.set(null);
+    this.busy.set(true); this.error.set(null); this.results.set(null); this.refused.set(null);
     try {
       const data = await fileToBase64(this.file);
       this.preview.set(await firstValueFrom(this.api.casPreview(data, this.password)));
@@ -216,12 +254,12 @@ export class ImportComponent {
 
   bump() { this.tick.update(v => v + 1); }
 
-  reset() { this.preview.set(null); this.file = null; this.fileName.set(''); this.password = ''; }
+  reset() { this.preview.set(null); this.refused.set(null); this.error.set(null); this.file = null; this.fileName.set(''); this.password = ''; }
 
   async commit() {
     const p = this.preview();
     if (!p) return;
-    this.busy.set(true);
+    this.busy.set(true); this.error.set(null); this.refused.set(null);
     try {
       const funds = p.funds.filter(f => f.selected && f.new_count)
         .map(f => ({ ...f, transactions: f.transactions.filter(t => !t.duplicate) }));
@@ -230,9 +268,13 @@ export class ImportComponent {
       this.results.set(r);
       this.preview.set(null);
       this.toast.ok(`${r.imported} transactions imported`);
+      completeImportDue(this.actions);
       await this.store.changed();
     } catch (e) {
-      this.error.set(errorMessage(e));
+      // all-or-nothing (K5): the preview stays, so the user can untick the refused schemes and try again
+      const rf = refusedRows(e);
+      if (rf) { this.refused.set(rf); this.toast.error(errorMessage(e)); showRefusal('cas-refused'); }
+      else this.error.set(errorMessage(e));
     } finally {
       this.busy.set(false);
     }

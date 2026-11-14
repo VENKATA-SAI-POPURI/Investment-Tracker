@@ -9,7 +9,8 @@ from .. import domain as d
 from .. import prices as px
 from ..analytics.portfolio import EPF_DEFAULT_RATE, run_fifo
 from ..importers import cas_import, csv_import, epf_passbook, lenden, tradebook
-from ..ledger import ValidationError
+from ..ledger import TXN_FIELDS, ValidationError, _clean, _num
+from ..migrations import now_iso
 from ..security import write_required
 
 bp = Blueprint("ledger", __name__)
@@ -73,28 +74,15 @@ def suggestions():
 
 @bp.get("/transactions")
 def list_transactions():
-    data = L().load(g.scope)
-    inst = {i["id"]: i for i in data["instruments"]}
+    """The transaction list. With ?page= it is one page (Ledger.transactions_page: rows, total, page, size, pages,
+    sums, months; also takes size, q and sort); without it, the unchanged full list, newest first. Both take the
+    asset_class, instrument_id, type, from and to filters. A bad page, size or sort is a 400."""
     a = request.args
-    out = []
-    for t in data["transactions"]:
-        i = inst.get(t["instrument_id"])
-        if not i:
-            continue
-        if a.get("asset_class") and i["asset_class"] != a["asset_class"]:
-            continue
-        if a.get("instrument_id") and str(t["instrument_id"]) != a["instrument_id"]:
-            continue
-        if a.get("type") and t["type"] != a["type"]:
-            continue
-        if a.get("from") and t["date"] < a["from"]:
-            continue
-        if a.get("to") and t["date"] > a["to"]:
-            continue
-        out.append({**t, "instrument_name": i["name"], "asset_class": i["asset_class"], "segment": d.segment_of(i),
-                    "currency": i.get("currency")})
-    out.sort(key=lambda t: (t["date"], t["id"]), reverse=True)
-    return jsonify(out)
+    filters = {k: a.get(k) for k in ("asset_class", "instrument_id", "type", "from", "to")}
+    if "page" in a:
+        return jsonify(L().transactions_page(g.scope, a.get("page") or None, a.get("size") or None, a.get("q"),
+                                             a.get("sort") or "-date", filters=filters))
+    return jsonify(L().transaction_rows(g.scope, filters))
 
 
 @bp.post("/transactions")
@@ -145,20 +133,98 @@ def import_preview():
     return jsonify(parsed)
 
 
+def _nothing_imported(results: list[dict]):
+    """The all-or-nothing refusal (K5): 400, nothing written, every row's outcome so the user can fix the file."""
+    bad = sum(1 for r in results if not r["ok"])
+    return jsonify({"error": f"Nothing was imported: {bad} row(s) need fixing", "results": results}), 400
+
+
+def _fifo_rows(txns: list[dict], start_id: int = 10**9) -> list[dict]:
+    """Planned transactions in the shape run_fifo reads, with ids after every stored one."""
+    return [{"id": start_id + n, "date": t["date"], "type": t["type"], "quantity": t.get("quantity"),
+             "amount": t.get("amount"), "amount_fc": t.get("amount_fc")} for n, t in enumerate(txns)]
+
+
+def _first_overdrawn_sale(iid: int, existing: list[dict], planned: list[dict]) -> int | None:
+    """Index (into `planned`) of the first new sale that leaves units sold without a matching buy, or None.
+    Existing data that is already short does not block an import that makes it no worse."""
+    base = run_fifo(iid, existing)[2]
+    fifo = _fifo_rows(planned)
+    if run_fifo(iid, existing + fifo)[2] <= base + 1e-6:
+        return None
+    order = sorted(range(len(planned)), key=lambda n: (planned[n]["date"], 0 if planned[n]["type"] == d.BUY else 1, n))
+    for k in range(1, len(order) + 1):
+        if run_fifo(iid, existing + [fifo[n] for n in order[:k]])[2] > base + 1e-6:
+            return order[k - 1]
+    return order[-1]
+
+
+CSV_INSTRUMENT_FIELDS = ("symbol", "market", "sector", "market_cap", "category")
+
+
 @bp.post("/transactions/import/commit")
 @write_required
 def import_commit():
+    """Commit reviewed CSV rows all-or-nothing (K5): resolve each row to a holding (existing, or one planned new
+    holding per class and name), validate every row, check each holding's end state with FIFO, then write
+    everything in one bulk_add. Any failure writes nothing: 400 {error, results}."""
+    rows = sorted(body().get("rows") or [], key=lambda r: (str(r.get("date") or ""), 0 if r.get("type") == d.BUY else 1))
+    data = L().load(g.scope)
+    existing = {(i["asset_class"], i["name"].strip().lower()): i for i in data["instruments"] if i["owner"] == g.owner}
+    stored = defaultdict(list)
+    for t in data["transactions"]:
+        stored[t["instrument_id"]].append(t)
+    groups: dict[tuple, dict] = {}  # (asset_class, lower name) -> {instrument | new_instrument, txns, rows}
     results = []
-    rows = sorted(body().get("rows") or [], key=lambda r: (r.get("date") or "", 0 if r.get("type") == d.BUY else 1))
-    for r in rows:
+    for n, r in enumerate(rows):
+        res = {"name": r.get("name"), "date": r.get("date"), "ok": True}
+        results.append(res)
         try:
-            spec = {k: r.get(k) for k in ("name", "symbol", "market", "sector", "market_cap", "category")}
-            inst = L().find_or_create_instrument(g.owner, r["asset_class"], r["name"], spec)
-            t = L().add_transaction(g.owner, g.scope, inst["id"], r, source="import:csv")
-            results.append({"name": r["name"], "date": r["date"], "ok": True, "id": t["id"]})
-        except (ValidationError, KeyError) as e:
-            results.append({"name": r.get("name"), "date": r.get("date"), "ok": False, "error": str(e)})
-    return jsonify({"results": results, "imported": sum(1 for x in results if x["ok"])})
+            ac, name = r.get("asset_class"), str(r.get("name") or "").strip()
+            if ac not in d.ASSET_CLASSES:
+                raise ValidationError("asset_class must be one of " + ", ".join(d.ASSET_CLASSES))
+            if not name:
+                raise ValidationError("name is required")
+            key = (ac, name.lower())
+            grp = groups.get(key)
+            if grp is None:
+                inst = existing.get(key)
+                spec = {k: r.get(k) for k in CSV_INSTRUMENT_FIELDS if r.get(k) not in (None, "")}
+                grp = groups[key] = {"instrument": inst, "new_instrument": None if inst else {**spec, "asset_class": ac, "name": name},
+                                     "txns": [], "rows": []}
+            inst = grp["instrument"] or {**grp["new_instrument"], "id": -1, "owner": g.owner}
+            t = _clean(r, TXN_FIELDS)
+            t["type"] = str(t.get("type") or "").upper()
+            if t["type"] == d.REPAYMENT and t.get("principal") is None and r.get("interest") not in (None, ""):
+                t["principal"] = (t.get("amount") or 0) - _num(r["interest"])
+            L()._validate_txn(inst, t, check_holdings=False)
+            grp["txns"].append(t)
+            grp["rows"].append(n)
+        except (ValidationError, KeyError, TypeError) as e:
+            res.update(ok=False, error=str(e))
+    for grp in groups.values():
+        if not grp["txns"]:
+            continue
+        iid = grp["instrument"]["id"] if grp["instrument"] else -1
+        bad = _first_overdrawn_sale(iid, stored.get(iid, []) if grp["instrument"] else [], grp["txns"])
+        if bad is not None:
+            t = grp["txns"][bad]
+            results[grp["rows"][bad]].update(ok=False, error=f"selling {t.get('quantity') or 0:g} units here leaves more units "
+                                                                  "sold than bought; add the missing buy first")
+    if any(not r["ok"] for r in results):
+        return _nothing_imported(results)
+    entries = [{**({"instrument": grp["instrument"]} if grp["instrument"] else {"new_instrument": grp["new_instrument"]}),
+                "txns": grp["txns"], "source": "import:csv"} for grp in groups.values() if grp["txns"]]
+    before = (L().db.one("SELECT MAX(id) AS m FROM transactions") or {}).get("m") or 0
+    L().bulk_add(g.owner, entries, check_holdings=False)
+    # Transaction ids come back in statement order (entries, then their txns); report them when that is unambiguous
+    order = [n for grp in groups.values() for n in grp["rows"]]
+    ids = [x["id"] for x in L().db.query("SELECT id FROM transactions WHERE id > ? AND owner = ? AND source = 'import:csv' "
+                                         "ORDER BY id", (before, g.owner))]
+    if len(ids) == len(order):
+        for n, tid in zip(order, ids):
+            results[n]["id"] = tid
+    return jsonify({"results": results, "imported": len(results)})
 
 
 # ── broker tradebook (Zerodha Kite / Console) ──
@@ -361,50 +427,96 @@ def cas_preview():
 @bp.post("/import/cas/commit")
 @write_required
 def cas_commit():
+    """Commit a reviewed CAS all-or-nothing (K5): every fund's new transactions, NPS NAV updates and new NPS
+    schemes (with their opening balance) are checked first and then written in one bulk_add. Any failure
+    writes nothing: 400 {error, results}. Success: {imported, results}."""
     data = body()
-    results = []
+    ledger = L().load(g.scope)
+    mine = {(i["asset_class"], i["name"].strip().lower()): i for i in ledger["instruments"] if i["owner"] == g.owner}
+    stored = defaultdict(list)
+    for t in ledger["transactions"]:
+        stored[t["instrument_id"]].append(t)
+    plans: dict[tuple, dict] = {}  # one per holding: {instrument | new_instrument, txns}
+    field_updates, results = [], []
     for f in data.get("funds") or []:
         try:
+            name = str(f.get("name") or "").strip()
+            if not name:
+                raise ValidationError("fund name is missing")
             if f.get("matched_id"):
                 inst = L().instrument(int(f["matched_id"]), g.scope)
             else:
+                inst = mine.get((d.MUTUAL_FUND, name.lower()))
+            key = ("id", inst["id"]) if inst else (d.MUTUAL_FUND, name.lower())
+            plan = plans.get(key)
+            if plan is None:
                 spec = {"symbol": f"AMFI:{f['amfi']}" if f.get("amfi") else None, "category": f.get("category"),
                         "platform": f.get("amc"), "notes": f"Folio {f.get('folio')}" if f.get("folio") else None}
-                inst = L().find_or_create_instrument(g.owner, d.MUTUAL_FUND, f["name"], {k: v for k, v in spec.items() if v})
-            existing = L().db.query("SELECT * FROM transactions WHERE instrument_id = ?", (inst["id"],))
-            have = {_cas_key(t) for t in existing}
-            new = [t for t in f.get("transactions") or [] if _cas_key(t) not in have]
-            if not new:
-                results.append({"name": f["name"], "ok": True, "imported": 0})
-                continue
-            # check units never go negative before writing anything for this fund
-            _, _, unmatched = run_fifo(inst["id"], existing + [{**t, "id": 10**9 + n} for n, t in enumerate(new)])
-            if unmatched > 1e-6:
-                raise ValidationError(f"redemptions exceed purchases by {unmatched:g} units; import the full-history (detailed) CAS")
-            entries = [{"instrument": inst, "txn": {k: t.get(k) for k in ("date", "type", "quantity", "amount", "notes")},
-                        "source": "import:cas"} for t in new]
-            L().bulk_add(inst["owner"], entries, check_holdings=False)
-            results.append({"name": f["name"], "ok": True, "imported": len(new)})
-        except (ValidationError, KeyError, LookupError) as e:
+                plan = {"instrument": inst, "txns": [],
+                        "new_instrument": None if inst else {**{k: v for k, v in spec.items() if v},
+                                                             "asset_class": d.MUTUAL_FUND, "name": name}}
+            existing = stored.get(inst["id"], []) if inst else []
+            have = {_cas_key(t) for t in existing + plan["txns"]}
+            new = []
+            for raw in f.get("transactions") or []:
+                if _cas_key(raw) in have:
+                    continue
+                t = _clean({k: raw.get(k) for k in ("date", "type", "quantity", "amount", "notes")}, TXN_FIELDS)
+                t["type"] = str(t.get("type") or "").upper()
+                L()._validate_txn(inst or {**plan["new_instrument"], "id": -1, "owner": g.owner}, t, check_holdings=False)
+                new.append(t)
+                have.add(_cas_key(t))
+            if new:
+                # units must never go negative, counting what this import already plans for the same holding
+                unmatched = run_fifo(inst["id"] if inst else -1, existing + _fifo_rows(plan["txns"] + new))[2]
+                if unmatched > 1e-6:
+                    raise ValidationError(f"redemptions exceed purchases by {unmatched:g} units; import the full-history (detailed) CAS")
+                plan["txns"] += new
+                plans[key] = plan
+            results.append({"name": name, "ok": True, "imported": len(new)})
+        except (ValidationError, KeyError, LookupError, TypeError, ValueError) as e:
             results.append({"name": f.get("name"), "ok": False, "error": str(e)})
+    new_nps = []
     for n in data.get("nps") or []:
         try:
+            name = str(n.get("name") or "").strip()
+            if not name:
+                raise ValidationError("scheme name is missing")
+            nav = _num(n.get("nav"))
             if n.get("matched_id"):
-                L().update_instrument(int(n["matched_id"]), g.scope, {"last_price": n.get("nav")})
-                results.append({"name": n["name"], "ok": True, "imported": 0, "updated": "NAV"})
+                inst = L().instrument(int(n["matched_id"]), g.scope)
+                if nav is None:
+                    results.append({"name": name, "ok": True, "imported": 0})
+                    continue
+                fields = {"last_price": nav}
+                if not inst.get("symbol"):  # a NAV typed in from the statement, as update_instrument stamps it
+                    fields.update(price_source="manual", last_price_at=now_iso())
+                field_updates.append((inst["id"], fields))
+                results.append({"name": name, "ok": True, "imported": 0, "updated": "NAV"})
                 continue
-            inst = L().create_instrument(g.owner, {"asset_class": d.NPS, "name": n["name"], "platform": n.get("fund_manager"),
-                                                   "ref": n.get("pran"), "category": n.get("tier")})
-            if n.get("nav"):
-                L().update_instrument(inst["id"], g.scope, {"last_price": n["nav"]})
+            spec = {"asset_class": d.NPS, "name": name, "platform": n.get("fund_manager"), "ref": n.get("pran"),
+                    "category": n.get("tier")}
+            if nav:
+                spec.update(last_price=nav, price_source="manual", last_price_at=now_iso())
+            txns = []
             if n.get("units"):
-                L().add_transaction(g.owner, g.scope, inst["id"], {
-                    "date": data.get("as_of") or date.today().isoformat(), "type": d.BUY, "quantity": n["units"], "amount": n.get("value") or 0,
-                    "notes": "Opening balance from NSDL CAS at market value; replace with your contributions for accurate returns"},
-                    source="import:cas")
-            results.append({"name": n["name"], "ok": True, "imported": 1})
-        except (ValidationError, KeyError, LookupError) as e:
+                t = _clean({"date": data.get("as_of") or date.today().isoformat(), "type": d.BUY, "quantity": n["units"],
+                            "amount": n.get("value") or 0,
+                            "notes": "Opening balance from NSDL CAS at market value; replace with your contributions for accurate returns"},
+                           TXN_FIELDS)
+                L()._validate_txn({**spec, "id": -1, "owner": g.owner}, t, check_holdings=False)
+                txns.append(t)
+            new_nps.append({"new_instrument": spec, "txns": txns, "source": "import:cas"})
+            results.append({"name": name, "ok": True, "imported": 1})
+        except (ValidationError, KeyError, LookupError, TypeError, ValueError) as e:
             results.append({"name": n.get("name"), "ok": False, "error": str(e)})
+    if any(not r["ok"] for r in results):
+        return _nothing_imported(results)
+    entries = [{**({"instrument": p["instrument"]} if p["instrument"] else {"new_instrument": p["new_instrument"]}),
+                "txns": p["txns"], "source": "import:cas"} for p in plans.values()]
+    # Each new NPS scheme is inserted straight before its opening BUY, so a PRAN shared by Tier I and Tier II
+    # still resolves to the right scheme (bulk_add looks a ref up newest first)
+    L().bulk_add(g.owner, entries + new_nps, check_holdings=False, field_updates=field_updates)
     return jsonify({"results": results, "imported": sum(r.get("imported", 0) for r in results if r["ok"])})
 
 

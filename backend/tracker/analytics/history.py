@@ -7,10 +7,10 @@ from collections import defaultdict
 from datetime import date, timedelta
 
 from .. import domain as d
+from .assumptions import RISK_FREE  # ~ Indian 1-year T-bill; one source in the Assumption Book
 from .portfolio import EPS, epf_balance, fd_accrued, run_fifo, to_date, _f
 from .xirr import xirr
 
-RISK_FREE = 0.065  # ~ Indian 1-year T-bill
 RANGES = {"1M": 30, "3M": 91, "6M": 182, "1Y": 365, "3Y": 1095, "5Y": 1826}
 
 

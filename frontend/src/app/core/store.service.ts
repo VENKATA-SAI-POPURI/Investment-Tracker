@@ -79,7 +79,8 @@ export class StoreService {
       if (r.refreshed) {
         await this.reload();
         this.version.update(v => v + 1);
-        if (force) this.toast.ok(`Prices updated${r.failed?.length ? ` · ${r.failed.length} symbol(s) failed` : ''}`);
+        if (force && r.updated === 0 && r.failed?.length) this.toast.error('Prices could not be fetched right now · try again later');
+        else if (force) this.toast.ok(`Prices updated${r.failed?.length ? ` · ${r.failed.length} symbol(s) failed` : ''}`);
       } else if (force) {
         this.toast.ok('Prices are already up to date');
       }

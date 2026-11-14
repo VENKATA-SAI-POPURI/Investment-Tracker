@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "source": "Lunar-calendar festival dates for New Delhi, from published panchangs (Drik Panchang, cross-checked against Dekho Panchang). These move every year: extend this file each year (test_calendar.py fails when no date is more than 180 days ahead).",
+  "festivals": [
+    {"date": "2026-11-06", "key": "dhanteras", "name": "Dhanteras", "kind": "gold",
+     "source": "Drik Panchang, Dhanteras 2026 (New Delhi)"},
+    {"date": "2026-11-08", "key": "diwali", "name": "Diwali · Lakshmi Puja", "kind": "muhurat",
+     "source": "Drik Panchang, Diwali Puja calendar 2026 (New Delhi)"},
+    {"date": "2027-05-09", "key": "akshaya_tritiya", "name": "Akshaya Tritiya", "kind": "gold",
+     "source": "Drik Panchang, Akshaya Tritiya 2027 (New Delhi)"},
+    {"date": "2027-10-27", "key": "dhanteras", "name": "Dhanteras", "kind": "gold",
+     "source": "Drik Panchang, Diwali Puja calendar 2027 (New Delhi); Dekho Panchang, Dhanteras 2027"},
+    {"date": "2027-10-29", "key": "diwali", "name": "Diwali · Lakshmi Puja", "kind": "muhurat",
+     "source": "Drik Panchang, Diwali Puja calendar 2027 (New Delhi); Dekho Panchang, Diwali 2027"},
+    {"date": "2028-04-27", "key": "akshaya_tritiya", "name": "Akshaya Tritiya", "kind": "gold",
+     "source": "Drik Panchang, Akshaya Tritiya 2028 (New Delhi); Dekho Panchang, Akshaya Tritiya 2028"},
+    {"date": "2028-10-15", "key": "dhanteras", "name": "Dhanteras", "kind": "gold",
+     "source": "Drik Panchang, Dhanteras 2028 (New Delhi); Shreekundli, Diwali Puja calendar 2028"},
+    {"date": "2028-10-17", "key": "diwali", "name": "Diwali · Lakshmi Puja", "kind": "muhurat",
+     "source": "Drik Panchang, Diwali Puja calendar 2028 (New Delhi); Dekho Panchang, Diwali 2028"}
+  ]
+}

@@ -173,6 +173,18 @@ def ensure_history(db: Database, symbols: list[str], start: date, max_age_hours:
     return out
 
 
+def stored_history(db: Database, symbol: str, start: date) -> list[tuple[str, float]]:
+    """[(iso_date, close), ...] already stored in price_history for `symbol` from `start`, oldest first.
+
+    A read only (AMENDMENTS D6, H4): no network call and no price_meta write, so a fast endpoint such as /brief
+    can use the closes a slower one (/performance, /risk) fetched earlier without ever fetching them itself."""
+    if not symbol:
+        return []
+    rows = db.query("SELECT date, close FROM price_history WHERE symbol = ? AND date >= ? ORDER BY date",
+                    [symbol, start.isoformat()])
+    return [(r["date"], r["close"]) for r in rows if r.get("close") is not None]
+
+
 # ── Symbol search ──
 
 def search_symbols(query: str, asset_class: str | None = None) -> list[dict]:

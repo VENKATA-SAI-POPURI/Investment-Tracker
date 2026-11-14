@@ -1,107 +1,403 @@
+@if (view(); as v) {
 <div class="page" [style.--acc]="accent()">
-  <div>
-    <div class="page-head" style="margin-bottom:12px">
-      <h1>Holdings</h1>
-      <div class="row">
-        <button class="btn ghost sm" (click)="export()"><app-icon name="download" [size]="15" /> Export</button>
-        @if (auth.canWrite() && (assetClass() === 'equity' || assetClass() === 'commodity')) {
-          <a class="btn ghost sm" routerLink="/import" [queryParams]="{ source: 'kite' }"><app-icon name="upload" [size]="15" /> Import Kite tradebook</a>
-        }
-        @if (auth.canWrite()) { <button class="btn sm" (click)="add()"><app-icon name="plus" [size]="15" /> Add {{ title().toLowerCase() }}</button> }
-      </div>
+  <app-portfolio-tabs />
+
+  <!-- Page head: h1 is "Holdings" on all and the class name on a class page (A22); tools are T3 -->
+  <div class="page-head">
+    <div>
+      <h1>{{ title() }}</h1>
+      <p class="sub">{{ scopeLabel() }}@if (port(); as pf) { · {{ openCount() }} open holding{{ openCount() === 1 ? '' : 's' }}@if (pf.as_of) { · as of {{ pf.as_of | dt }} } }</p>
     </div>
-    <app-section-tabs group="holdings" [current]="'/holdings/' + assetClass()" />
+    <div class="row head-actions">
+      @if (positions().length) {
+        <button type="button" class="btn ghost sm" (click)="export()"><app-icon name="download" [size]="15" /> Export CSV</button>
+      }
+      @if (auth.canWrite()) {
+        @if (v === 'equity' || v === 'commodity') {
+          <a class="btn ghost sm" routerLink="/import" [queryParams]="{ source: 'kite' }"><app-icon name="upload" [size]="15" /> Import Kite tradebook</a>
+        } @else if (v === 'all' || v === 'mutual_fund') {
+          <a class="btn ghost sm" routerLink="/import"><app-icon name="upload" [size]="15" /> Import a statement</a>
+        }
+        <button type="button" class="btn sm" (click)="add()"><app-icon name="plus" [size]="15" /> Add{{ isAll() ? '' : ' ' + noun() }}</button>
+      }
+    </div>
   </div>
 
-  <section class="kpis">
-    <div class="kpi"><span class="chip blue sm"><app-icon name="wallet" [size]="15" /></span><span class="label">Value</span><span class="value">{{ totals().value | inr }}</span><span class="meta">{{ totals().weight | pct: 1 : false }} of portfolio</span></div>
-    <div class="kpi"><span class="chip green sm"><app-icon name="trend" [size]="15" /></span><span class="label">Unrealized</span><span class="value" [class]="totals().unrealized | sign">{{ totals().unrealized | inr: 0 : true }}</span><span class="meta">{{ totals().unrealizedPct | pct }} on {{ totals().cost | inrc }}</span></div>
-    <div class="kpi"><span class="chip amber sm"><app-icon name="calendar" [size]="15" /></span><span class="label">Today</span><span class="value" [class]="totals().day | sign">{{ totals().day ? (totals().day | inr: 0 : true) : '—' }}</span><span class="meta">price change</span></div>
-    <div class="kpi"><span class="chip violet sm"><app-icon name="checkCircle" [size]="15" /></span><span class="label">Realized + dividends</span><span class="value" [class]="totals().realized | sign">{{ totals().realized | inr: 0 : true }}</span><span class="meta">all time</span></div>
-  </section>
+  @if (loading()) {
+    <div class="skeleton hero-skel" aria-label="Loading your holdings"></div>
+    <div class="card"><div class="skeleton" style="height:18px;width:40%"></div><div class="skeleton" style="height:240px;margin-top:14px"></div></div>
+  } @else if (failed()) {
+    <div class="card"><div class="empty">
+      <app-icon name="alert" [size]="22" /><h3>Couldn't load your holdings</h3><p>{{ store.error() }}</p>
+      <button type="button" class="btn" (click)="store.reload()"><app-icon name="refresh" [size]="15" /> Try again</button>
+    </div></div>
+  } @else {
+    @if (store.error()) {
+      <div class="notice warn" role="status"><app-icon name="alert" [size]="16" /><span>Couldn't refresh, so these are the last numbers this device saw · {{ store.error() }}</span>
+        <button type="button" class="btn ghost sm" (click)="store.reload()">Try again</button></div>
+    }
 
-  <div class="main-aside">
-  <section class="card flush">
-    <div class="card-head" style="padding-bottom:14px">
-      <input class="input" style="max-width:260px" placeholder="Search" [ngModel]="q()" (ngModelChange)="q.set($event)" aria-label="Search holdings" />
-      <div class="row wrap">
-        @if (hasUsd()) {
-          <div class="seg">
-            <button [class.on]="market() === 'all'" (click)="market.set('all')">All</button>
-            <button [class.on]="market() === 'India'" (click)="market.set('India')">India</button>
-            <button [class.on]="market() === 'USA'" (click)="market.set('USA')">US</button>
-          </div>
-        }
-        <label class="check small muted"><input type="checkbox" [ngModel]="showClosed()" (ngModelChange)="showClosed.set($event)" /> Closed</label>
-      </div>
-    </div>
-    <div class="table-wrap">
-      <table class="table">
-        <thead><tr>
-          <th class="sortable" (click)="sort.toggle('name')">Name{{ sort.arrow('name') }}</th>
-          <th class="num sortable" (click)="sort.toggle('value')">Value{{ sort.arrow('value') }}</th>
-          <th class="num sortable" (click)="sort.toggle('unrealized_pct')">Return{{ sort.arrow('unrealized_pct') }}</th>
-          <th class="num sortable hide-sm" (click)="sort.toggle('day_change')">Today{{ sort.arrow('day_change') }}</th>
-          <th class="num sortable hide-sm" (click)="sort.toggle('weight')">Weight{{ sort.arrow('weight') }}</th>
-        </tr></thead>
-        <tbody>
-          @for (p of rows(); track p.id) {
-            <tr class="clickable" (click)="openRow(p)" [class.muted]="!p.is_open">
-              <td class="name-cell">
-                <div class="row" style="gap:12px">
-                  <span class="avatar-letter" [style.background]="tint(p.segment)" [style.color]="color(p.segment)">{{ p.name.slice(0, 1) }}</span>
-                  <div style="min-width:0">
-                    <div class="ellipsis" style="font-weight:500">{{ p.name }}</div>
-                    <div class="sub">{{ p.quantity | qty }} units · avg {{ p.avg_cost | inr: 2 }}@if (!p.has_price && p.is_open) { · <span style="color:var(--warn)">no price</span> }</div>
-                  </div>
-                </div>
-              </td>
-              <td class="num">{{ p.value | inr }}<div class="sub">@if (p.has_price) { {{ p.currency === 'USD' ? (p.price | usd) : (p.price | inr: 2) }} }</div></td>
-              <td class="num" [class]="p.unrealized | sign">{{ p.has_price ? (p.unrealized | inr: 0 : true) : '—' }}@if (p.has_price) { <div class="sub"><span class="chg" [class]="p.unrealized_pct | sign">{{ p.unrealized_pct | pct }}</span></div> }</td>
-              <td class="num hide-sm" [class]="p.day_change | sign">{{ p.day_change ? (p.day_change | inr: 0 : true) : '—' }}</td>
-              <td class="num hide-sm">{{ p.weight | pct: 1 : false }}<span class="wbar"><i [style.width.%]="p.weight / maxWeight() * 100"></i></span></td>
-            </tr>
-          } @empty {
-            <tr><td colspan="5"><div class="empty"><h3>Nothing here yet</h3>
-              @if (auth.canWrite()) { <button class="btn primary" (click)="add()"><app-icon name="plus" [size]="16" /> Add {{ title().toLowerCase() }}</button> }</div></td></tr>
+    @if (v === 'all') {
+      @if (isEmpty()) {
+        <div class="card"><div class="empty">
+          <app-icon name="layers" [size]="22" />
+          <h3>Nothing here yet</h3>
+          <p>Add your first investment, or import a statement, and everything you own shows here by asset class.</p>
+          @if (auth.canWrite()) {
+            <div class="row wrap" style="justify-content:center">
+              <button type="button" class="btn primary" (click)="add()"><app-icon name="plus" [size]="16" /> Add your first investment</button>
+              <a class="btn" routerLink="/import">Import a statement</a>
+            </div>
           }
-        </tbody>
-      </table>
-    </div>
-  </section>
-
-    <aside>
-      @if (groups().length > 1) {
-        <section class="card">
-          <div class="card-head" style="margin-bottom:12px"><h2>Breakdown</h2>
-            <span class="hint">{{ open().length }} holdings</span></div>
-          <div class="seg" style="margin-bottom:14px">@for (o of groupOptions(); track o[0]) { <button [class.on]="groupBy() === o[0]" (click)="groupBy.set(o[0])">{{ o[1] }}</button> }</div>
-          <div class="stack" style="margin-bottom:16px" role="img" [attr.aria-label]="'Breakdown by ' + groupLabel()">
-            @for (g of coloured(); track g.key) { <i [style.width.%]="g.pct" [style.background]="g.color" [title]="g.key + ' ' + (g.pct | pct: 1 : false)"></i> }
+        </div></div>
+      } @else {
+        <!-- T0: the answer -->
+        <section class="kpis h-kpis" aria-label="What you own">
+          <div class="kpi hero">
+            <span class="label">Value</span>
+            <span class="value">{{ hero().value | inr }}</span>
+            <span class="meta words">{{ words(hero().value) }}</span>
+            <div class="hero-row">
+              <span class="pill" [attr.aria-label]="'Today ' + (hero().day | inr: 0 : true)">{{ hero().day > 0 ? '▲' : hero().day < 0 ? '▼' : '' }} {{ hero().day ? (hero().day | inr: 0 : true) : '₹0' }}@if (hero().dayPct !== null) { ({{ hero().dayPct | pct: 2 }}) } today</span>
+            </div>
+            <div class="verdict-line" [attr.data-status]="priced().status">
+              <app-icon [name]="statusMeta[priced().status].icon" [size]="16" />
+              <span>{{ priced().text }}</span><span class="sr-only">· {{ statusMeta[priced().status].word }}</span>
+            </div>
+            <button type="button" class="more-stats" (click)="moreStats.set(!moreStats())" [attr.aria-expanded]="moreStats()">{{ moreStats() ? 'Less' : 'More' }}</button>
           </div>
-          <div class="bars">
-            @for (g of coloured().slice(0, 8); track g.key) {
-              <div class="bar-row" [title]="(g.value | inr) + ' · ' + g.count + ' holdings'">
-                <div class="bl"><span class="ellipsis"><i class="swatch" [style.background]="g.color"></i> {{ g.key }}</span><span class="num">{{ g.pct | pct: 1 : false }}</span></div>
-                <div class="track"><span [style.width.%]="(g.pct / maxGroup()) * 100" [style.background]="g.color"></span></div>
+          <div class="kpi">
+            <span class="chip blue sm"><app-icon name="wallet" [size]="15" /></span>
+            <span class="label">Invested</span>
+            <span class="value">{{ hero().invested | inr }}</span>
+            <span class="meta">money put in, all time</span>
+          </div>
+          <div class="kpi">
+            <span class="chip green sm"><app-icon name="trend" [size]="15" /></span>
+            <span class="label">Total gain</span>
+            <span class="value" [class]="hero().gain | sign">{{ hero().gain | inr: 0 : true }}</span>
+            <span class="meta">unrealised {{ hero().unrealized | inrc: true }} · realised {{ hero().realized | inrc: true }} · income {{ hero().income | inrc }}</span>
+          </div>
+          <div class="kpi extra" [class.show]="moreStats()">
+            <span class="chip violet sm"><app-icon name="chart" [size]="15" /></span>
+            <span class="label">XIRR</span>
+            <span class="value" [class]="hero().xirr | sign">{{ hero().xirr | pct }}</span>
+            <span class="meta">a year, money-weighted, since you started</span>
+          </div>
+        </section>
+
+        <!-- T1: needs attention here (A7, G14) -->
+        <app-needs-attention [prefixes]="attention()" />
+
+        <!-- T2: the asset-class summary moved from Home -->
+        <section class="card flush">
+          <div class="card-head">
+            <div><h2>Asset class summary</h2>
+              <span class="hint explains">Explains: Value · {{ statusMeta[priced().status].word }} · tap a class for its top holdings</span></div>
+            <a routerLink="/reports" [queryParams]="{ r: 'summary' }" class="small">Portfolio summary report →</a>
+          </div>
+          <div class="table-wrap summary-table">
+            <table class="table summary">
+              <thead><tr>
+                <th scope="col">Asset class</th>
+                <th scope="col" class="num" title="Money put in, all time">Invested</th>
+                <th scope="col" class="num">Current value</th>
+                <th scope="col" class="num">Today</th>
+                <th scope="col" class="num">Unrealised</th>
+                <th scope="col" class="num">Realised + income</th>
+                <th scope="col" class="num">XIRR</th>
+                <th scope="col" class="num">Share</th>
+              </tr></thead>
+              <tbody>
+                @for (a of classRows(); track a.segment) {
+                  <tr class="clickable" [class.open]="expanded() === a.segment" (click)="toggle(a.segment)">
+                    <td>
+                      <button type="button" class="ac" (click)="$event.stopPropagation(); toggle(a.segment)" [attr.aria-expanded]="expanded() === a.segment"
+                              [attr.aria-label]="a.label + ', show top holdings'">
+                        <span class="ac-ic" [style.background]="a.color"><app-icon [name]="a.icon" [size]="14" /></span>
+                        <span><b>{{ a.label }}</b><small>{{ a.open }} holding{{ a.open === 1 ? '' : 's' }}</small></span>
+                        <app-icon class="caret" name="chevronDown" [size]="14" />
+                      </button>
+                    </td>
+                    <td class="num">{{ a.invested | inr }}</td>
+                    <td class="num"><b>{{ a.value | inr }}</b></td>
+                    <td class="num" [class]="a.day | sign">{{ a.day ? (a.day | inr: 0 : true) : '—' }}</td>
+                    <td class="num" [class]="a.unrealized | sign">{{ a.unrealized | inr: 0 : true }}@if (a.unrealizedPct !== null) { <div class="sub"><span class="chg" [class]="a.unrealizedPct | sign">{{ a.unrealizedPct | pct }}</span></div> }</td>
+                    <td class="num" [class]="a.realizedIncome | sign">{{ a.realizedIncome | inr: 0 : true }}</td>
+                    <td class="num" [class]="a.xirr | sign">{{ a.xirr | pct }}</td>
+                    <td class="num"><span class="share" aria-hidden="true"><i [style.width.%]="a.share" [style.background]="a.color"></i></span>{{ a.share | pct: 1 : false }}</td>
+                  </tr>
+                  @if (expanded() === a.segment) {
+                    <tr class="drill"><td colspan="8">
+                      <ng-container *ngTemplateOutlet="drill; context: { $implicit: a }" />
+                    </td></tr>
+                  }
+                }
+              </tbody>
+              <tfoot><tr>
+                <td>Total · {{ hero().open }} holding{{ hero().open === 1 ? '' : 's' }}</td>
+                <td class="num">{{ hero().invested | inr }}</td>
+                <td class="num">{{ hero().value | inr }}</td>
+                <td class="num" [class]="hero().day | sign">{{ hero().day | inr: 0 : true }}</td>
+                <td class="num" [class]="hero().unrealized | sign">{{ hero().unrealized | inr: 0 : true }}</td>
+                <td class="num" [class]="hero().realized + hero().income | sign">{{ hero().realized + hero().income | inr: 0 : true }}</td>
+                <td class="num" [class]="hero().xirr | sign">{{ hero().xirr | pct }}</td>
+                <td class="num">100%</td>
+              </tr></tfoot>
+            </table>
+          </div>
+
+          <!-- phones: each class is a card (class, value, today, share, XIRR) -->
+          <div class="ac-cards">
+            @for (a of classRows(); track a.segment) {
+              <div class="acc" [class.open]="expanded() === a.segment">
+                <button type="button" class="acc-head" (click)="toggle(a.segment)" [attr.aria-expanded]="expanded() === a.segment">
+                  <span class="ac">
+                    <span class="ac-ic" [style.background]="a.color"><app-icon [name]="a.icon" [size]="14" /></span>
+                    <span><b>{{ a.label }}</b><small>{{ a.open }} holding{{ a.open === 1 ? '' : 's' }}</small></span>
+                  </span>
+                  <span class="acc-val">{{ a.value | inr }}</span>
+                  <span class="acc-meta">
+                    <span>Today <b [class]="a.day | sign">{{ a.day ? (a.day | inr: 0 : true) : '—' }}</b></span>
+                    <span>Share <b>{{ a.share | pct: 1 : false }}</b></span>
+                    <span>XIRR <b [class]="a.xirr | sign">{{ a.xirr | pct }}</b></span>
+                    <app-icon class="caret" name="chevronDown" [size]="14" />
+                  </span>
+                </button>
+                @if (expanded() === a.segment) {
+                  <ng-container *ngTemplateOutlet="drill; context: { $implicit: a }" />
+                }
               </div>
             }
-            @if (groups().length > 8) { <p class="small muted">+ {{ groups().length - 8 }} more</p> }
+            <div class="acc-total"><span>Total · {{ hero().open }} holding{{ hero().open === 1 ? '' : 's' }}</span><span class="num">{{ hero().value | inr }}</span></div>
           </div>
         </section>
+
+        <ng-template #drill let-a>
+          <div class="drill-list">
+            @for (h of topOf(a.segment); track h.id) {
+              <a class="dh" [routerLink]="['/holding', h.id]">
+                <span class="ellipsis">{{ h.name }}@if (showMember()) { <small> · {{ memberName(h.owner) }}</small> }</span>
+                <span class="num">{{ h.value | inr }}</span>
+                <span class="num" [class]="h.unrealized | sign">{{ h.has_price === false ? 'at cost' : (h.unrealized | inr: 0 : true) }}</span>
+                <span class="chg" [class]="h.unrealized_pct | sign">{{ h.unrealized_pct | pct }}</span>
+              </a>
+            } @empty {
+              <p class="small muted" style="padding:8px 0">No open holdings: this class shows money you have already taken out.</p>
+            }
+            <a class="dh more" [routerLink]="a.route">@if (countOf(a.segment) > 8) { All {{ countOf(a.segment) }} in {{ a.label }} → } @else { Open {{ a.label }} → }</a>
+          </div>
+        </ng-template>
+
+        <!-- T2: breakdown donut (By class | By member in family view) -->
+        @if (breakdown().rows.length) {
+          <section class="card">
+            <div class="card-head">
+              <div><h2>Breakdown</h2>
+                <span class="hint explains">Explains: Value · {{ statusMeta[priced().status].word }} · {{ byMember() ? 'open holdings by family member' : 'current value by asset class' }}</span></div>
+              @if (showMember()) {
+                <div class="seg" role="group" aria-label="Group the breakdown">
+                  <button type="button" [class.on]="breakdownBy() === 'class'" [attr.aria-pressed]="breakdownBy() === 'class'" (click)="breakdownBy.set('class')">By class</button>
+                  <button type="button" [class.on]="breakdownBy() === 'member'" [attr.aria-pressed]="breakdownBy() === 'member'" (click)="breakdownBy.set('member')">By member</button>
+                </div>
+              }
+            </div>
+            <div class="bd">
+              <app-donut-chart [slices]="slices()" [size]="170" [centerTop]="inrc(breakdown().total)"
+                [centerBottom]="breakdown().rows.length + (byMember() ? ' member' : ' class') + (breakdown().rows.length === 1 ? '' : (byMember() ? 's' : 'es'))"
+                [valueFormat]="inrc" [ariaLabel]="byMember() ? 'Value by family member' : 'Value by asset class'" (pick)="pickSlice($event)" />
+              <div class="bd-list">
+                @for (r of breakdown().rows; track r.key) {
+                  @if (r.route) {
+                    <a class="bd-row" [routerLink]="r.route">
+                      <span class="nm"><i class="swatch" [style.background]="r.color"></i><span class="ellipsis">{{ r.label }} <small>· {{ r.note }}</small></span></span>
+                      <span class="num">{{ r.value | inrc }}</span><span class="num">{{ r.share | pct: 1 : false }}</span>
+                    </a>
+                  } @else {
+                    <div class="bd-row">
+                      <span class="nm"><i class="swatch" [style.background]="r.color"></i><span class="ellipsis">{{ r.label }} <small>· {{ r.note }}</small></span></span>
+                      <span class="num">{{ r.value | inrc }}</span><span class="num">{{ r.share | pct: 1 : false }}</span>
+                    </div>
+                  }
+                }
+              </div>
+            </div>
+          </section>
+        }
       }
-      @if (movers().length) {
-        <section class="card">
-          <div class="card-head" style="margin-bottom:8px"><h2>Today's movers</h2><span class="hint">by price change</span></div>
-          @for (m of movers(); track m.id) {
-            <button class="mv" (click)="openRow(m)">
-              <span class="ellipsis">{{ m.name }}</span>
-              <span class="num" [class]="m.day_change | sign">{{ m.day_change | inr: 0 : true }}</span>
-              <span class="pill" [class.up]="m.dayPct > 0" [class.down]="m.dayPct < 0">{{ m.dayPct | pct }}</span>
-            </button>
+    } @else {
+      @if (!all().length) {
+        <!-- an empty class (greyed under "+ more" in the chips) -->
+        <div class="card"><div class="empty">
+          <app-icon name="plus" [size]="22" />
+          <h3>No {{ title().toLowerCase() }} yet</h3>
+          <p>Once you add one, its value, return and today's move show here.</p>
+          @if (auth.canWrite()) {
+            <div class="row wrap" style="justify-content:center">
+              <button type="button" class="btn primary" (click)="add()"><app-icon name="plus" [size]="16" /> Add your first {{ noun() }}</button>
+              @if (v === 'equity' || v === 'commodity') { <a class="btn" routerLink="/import" [queryParams]="{ source: 'kite' }">Import Kite tradebook</a> }
+              @else { <a class="btn" routerLink="/import">Import a statement</a> }
+            </div>
           }
+        </div></div>
+      } @else {
+        <!-- T0: the class's answer -->
+        <section class="kpis h-kpis" aria-label="This class at a glance">
+          <div class="kpi hero">
+            <span class="label">Value</span>
+            <span class="value">{{ totals().value | inr }}</span>
+            <span class="meta">{{ totals().weight | pct: 1 : false }} of portfolio</span>
+            <div class="verdict-line" [attr.data-status]="priced().status">
+              <app-icon [name]="statusMeta[priced().status].icon" [size]="16" />
+              <span>{{ priced().text }}</span><span class="sr-only">· {{ statusMeta[priced().status].word }}</span>
+            </div>
+            <button type="button" class="more-stats" (click)="moreStats.set(!moreStats())" [attr.aria-expanded]="moreStats()">{{ moreStats() ? 'Less' : 'More' }}</button>
+          </div>
+          <div class="kpi"><span class="chip green sm"><app-icon name="trend" [size]="15" /></span><span class="label">Unrealised</span><span class="value" [class]="totals().unrealized | sign">{{ totals().unrealized | inr: 0 : true }}</span><span class="meta">{{ totals().unrealizedPct | pct }} on {{ totals().cost | inrc }}</span></div>
+          <div class="kpi"><span class="chip amber sm"><app-icon name="calendar" [size]="15" /></span><span class="label">Today</span><span class="value" [class]="totals().day | sign">{{ totals().day ? (totals().day | inr: 0 : true) : '—' }}</span><span class="meta">price change</span></div>
+          <div class="kpi extra" [class.show]="moreStats()"><span class="chip violet sm"><app-icon name="checkCircle" [size]="15" /></span><span class="label">Realised + dividends</span><span class="value" [class]="totals().realized | sign">{{ totals().realized | inr: 0 : true }}</span><span class="meta">all time</span></div>
         </section>
+
+        <!-- T1: needs attention here (A7, G14) -->
+        <app-needs-attention [prefixes]="attention()" />
+
+        <!-- T2: holdings table + aside -->
+        <div class="main-aside">
+          <section class="card flush">
+            <div class="card-head tbl-tools">
+              <input class="input search" placeholder="Search" [ngModel]="q()" (ngModelChange)="q.set($event)" aria-label="Search holdings" />
+              <div class="row wrap">
+                @if (hasUsd()) {
+                  <div class="seg" role="group" aria-label="Market">
+                    <button type="button" [class.on]="market() === 'all'" [attr.aria-pressed]="market() === 'all'" (click)="market.set('all')">All</button>
+                    <button type="button" [class.on]="market() === 'India'" [attr.aria-pressed]="market() === 'India'" (click)="market.set('India')">India</button>
+                    <button type="button" [class.on]="market() === 'USA'" [attr.aria-pressed]="market() === 'USA'" (click)="market.set('USA')">US</button>
+                  </div>
+                }
+                <label class="check small muted"><input type="checkbox" [ngModel]="showClosed()" (ngModelChange)="showClosed.set($event)" /> Closed</label>
+                <details class="cols">
+                  <summary class="btn ghost sm" aria-label="Choose columns"><app-icon name="table" [size]="15" /> Columns</summary>
+                  <div class="cols-menu" role="group" aria-label="Columns">
+                    @for (c of offeredCols(); track c.key) {
+                      <label class="check"><input type="checkbox" [checked]="colOn(c.key)" (change)="toggleCol(c.key, $event)" /> {{ c.label }}</label>
+                    }
+                    <span class="hint">Phones show the first two.</span>
+                    <button type="button" class="btn ghost sm" (click)="resetCols()">Reset</button>
+                  </div>
+                </details>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="table holdings-table">
+                <thead><tr>
+                  <th scope="col" [attr.aria-sort]="ariaSort('name')"><button type="button" class="th-btn" (click)="sort.toggle('name')">Name{{ sort.arrow('name') }}</button></th>
+                  @for (c of cols(); track c.key) {
+                    <th scope="col" [class.num]="c.num" [class.hide-sm]="!c.phone" [attr.aria-sort]="ariaSort(c.sort)">
+                      <button type="button" class="th-btn" (click)="sort.toggle(c.sort)">{{ c.label }}{{ sort.arrow(c.sort) }}</button></th>
+                  }
+                </tr></thead>
+                <tbody>
+                  @for (p of rows(); track p.id) {
+                    <tr class="clickable" (click)="openRow(p, $event)" [class.muted]="!p.is_open">
+                      <td class="name-cell">
+                        <div class="row" style="gap:12px">
+                          <span class="avatar-letter" [style.background]="tint(p.segment)" [style.color]="color(p.segment)" aria-hidden="true">{{ (p.name || '?').slice(0, 1) }}</span>
+                          <div style="min-width:0">
+                            <a class="ellipsis name-link" style="display:block" [routerLink]="['/holding', p.id]">{{ p.name }}</a>
+                            <div class="sub">{{ p.quantity | qty }} units · avg {{ p.avg_cost | inr: 2 }}@if (!p.is_open) { · closed }@if (!p.has_price && p.is_open) { · <span style="color:var(--warn)">no price</span> }</div>
+                          </div>
+                        </div>
+                      </td>
+                      @for (c of cols(); track c.key) {
+                        @switch (c.key) {
+                          @case ('value') {
+                            <td class="num" [class.hide-sm]="!c.phone">{{ p.value | inr }}<div class="sub">@if (p.has_price) { {{ p.currency === 'USD' ? (p.price | usd) : (p.price | inr: 2) }} }</div></td>
+                          }
+                          @case ('return') {
+                            <td class="num" [class.hide-sm]="!c.phone" [class]="p.unrealized | sign">{{ p.has_price ? (p.unrealized | inr: 0 : true) : '—' }}@if (p.has_price) { <div class="sub"><span class="chg" [class]="p.unrealized_pct | sign">{{ p.unrealized_pct | pct }}</span></div> }</td>
+                          }
+                          @case ('today') {
+                            <td class="num" [class.hide-sm]="!c.phone" [class]="p.day_change | sign">{{ p.day_change ? (p.day_change | inr: 0 : true) : '—' }}</td>
+                          }
+                          @case ('weight') {
+                            <td class="num" [class.hide-sm]="!c.phone">{{ p.weight | pct: 1 : false }}<span class="wbar"><i [style.width.%]="p.weight / maxWeight() * 100"></i></span></td>
+                          }
+                          @case ('xirr') {
+                            <td class="num" [class.hide-sm]="!c.phone" [class]="p.xirr | sign">{{ p.xirr | pct }}@if (p.xirr !== null && young(p)) { <div class="sub" title="Annualised from under a year, so it swings a lot">under a year</div> }</td>
+                          }
+                          @case ('total_return') {
+                            <td class="num" [class.hide-sm]="!c.phone" [class]="p.total_return | sign">{{ p.total_return | inr: 0 : true }}</td>
+                          }
+                          @case ('realized') {
+                            <td class="num" [class.hide-sm]="!c.phone" [class]="p.realized | sign">{{ p.realized ? (p.realized | inr: 0 : true) : '—' }}@if (p.income) { <div class="sub">+ {{ p.income | inr }} income</div> }</td>
+                          }
+                          @case ('owner') {
+                            <td [class.hide-sm]="!c.phone">{{ memberName(p.owner) }}</td>
+                          }
+                        }
+                      }
+                    </tr>
+                  } @empty {
+                    <tr><td [attr.colspan]="cols().length + 1"><div class="empty">
+                      @if (filtered()) {
+                        <h3>No holdings match</h3>
+                        <button type="button" class="btn" (click)="clearFilters()">Clear the search</button>
+                      } @else {
+                        <h3>No open {{ title().toLowerCase() }}</h3>
+                        <p>Everything here has been sold. Tick Closed to see past holdings.</p>
+                      }
+                    </div></td></tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          @if (hasAside()) {
+            <aside>
+              <button type="button" class="btn aside-toggle" (click)="asideOpen.set(!asideOpen())" [attr.aria-expanded]="asideOpen()" aria-controls="holdings-aside">
+                <span>Breakdown</span><app-icon class="caret" name="chevronDown" [size]="15" />
+              </button>
+              <div class="aside-body" id="holdings-aside" [class.open]="asideOpen()">
+                @if (groups().length > 1) {
+                  <section class="card">
+                    <div class="card-head" style="margin-bottom:12px"><div><h2>Breakdown</h2>
+                      <span class="hint">{{ open().length }} holdings · Explains: Value · {{ statusMeta[priced().status].word }}</span></div></div>
+                    <div class="seg" style="margin-bottom:14px" role="group" aria-label="Group by">
+                      @for (o of groupOptions(); track o[0]) { <button type="button" [class.on]="groupBy() === o[0]" [attr.aria-pressed]="groupBy() === o[0]" (click)="groupBy.set(o[0])">{{ o[1] }}</button> }
+                    </div>
+                    <div class="stack" style="margin-bottom:16px" role="img" [attr.aria-label]="'Breakdown by ' + groupLabel()">
+                      @for (g of coloured(); track g.key) { <i [style.width.%]="g.pct" [style.background]="g.color" [title]="g.key + ' ' + (g.pct | pct: 1 : false)"></i> }
+                    </div>
+                    <div class="bars">
+                      @for (g of coloured().slice(0, 8); track g.key) {
+                        <div class="bar-row" [title]="(g.value | inr) + ' · ' + g.count + ' holdings'">
+                          <div class="bl"><span class="ellipsis"><i class="swatch" [style.background]="g.color"></i> {{ g.key }}</span><span class="num">{{ g.pct | pct: 1 : false }}</span></div>
+                          <div class="track"><span [style.width.%]="(g.pct / maxGroup()) * 100" [style.background]="g.color"></span></div>
+                        </div>
+                      }
+                      @if (groups().length > 8) { <p class="small muted">+ {{ groups().length - 8 }} more</p> }
+                    </div>
+                  </section>
+                }
+                @if (movers().length) {
+                  <section class="card">
+                    <div class="card-head" style="margin-bottom:8px"><h2>Today's movers</h2><span class="hint">by price change</span></div>
+                    @for (m of movers(); track m.id) {
+                      <button type="button" class="mv" (click)="openRow(m)">
+                        <span class="ellipsis">{{ m.name }}</span>
+                        <span class="num" [class]="m.day_change | sign">{{ m.day_change | inr: 0 : true }}</span>
+                        <span class="pill" [class.up]="m.dayPct > 0" [class.down]="m.dayPct < 0">{{ m.dayPct > 0 ? '▲' : m.dayPct < 0 ? '▼' : '' }} {{ m.dayPct | pct }}</span>
+                      </button>
+                    }
+                  </section>
+                }
+              </div>
+            </aside>
+          }
+        </div>
       }
-    </aside>
-  </div>
+    }
+  }
 </div>
+}

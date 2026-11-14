@@ -145,6 +145,155 @@ def test_notifications_endpoint(client):
     assert r.status_code == 200 and isinstance(r.json["items"], list)
 
 
+SHARED_READS = ("/api/insights", "/api/pulse", "/api/notifications", "/api/brief", "/api/portfolio", "/api/tax")
+
+
+def test_shared_context_builds_the_portfolio_once_per_write(client, offline_prices, monkeypatch):
+    import tracker.services as services
+    calls = []
+    real = services.compute_portfolio
+    monkeypatch.setattr(services, "compute_portfolio", lambda *a, **k: calls.append(1) or real(*a, **k))
+    h = auth(USER, "user")
+    assert buy(client, h, symbol="TCS.NS").status_code == 201
+    for path in SHARED_READS:
+        assert client.get(path, headers=h).status_code == 200, path
+    assert len(calls) == 1
+    assert buy(client, h, name="Infosys", symbol="INFY.NS").status_code == 201  # a write invalidates once
+    for path in SHARED_READS:
+        assert client.get(path, headers=h).status_code == 200, path
+    assert len(calls) == 2
+    assert client.get("/api/brief", headers=h).status_code == 200   # A5: a warm /brief builds nothing
+    assert len(calls) == 2
+
+
+def test_portfolio_response_is_a_copy_and_tax_keeps_realised_lots(client):
+    h = auth(USER, "user")
+    iid = buy(client, h, date="2026-05-04").json["instrument_id"]
+    sell = client.post("/api/transactions", headers=h, json={"instrument_id": iid, "type": "SELL", "date": "2026-06-01",
+                                                              "quantity": 4, "amount": 16000})
+    assert sell.status_code == 201
+    first = client.get("/api/tax", headers=h).json
+    port = client.get("/api/portfolio", headers=h).json
+    assert "realized_lots" not in port and port["positions"]
+    again = client.get("/api/tax", headers=h).json
+    assert again["realized"] and again["realized"] == first["realized"]
+    assert again["total_realized"] == 2000 and again["fy"] in again["years"]
+    assert client.get("/api/tax?fy=FY2025-26", headers=h).json["realized"] == []
+
+
+def test_peek_reads_the_memo_without_building_it(app, client, offline_prices):
+    h = auth(USER, "user")
+    buy(client, h, symbol="TCS.NS")
+    svc = app.extensions["services"]
+    assert svc._peek("performance", USER, "ALL", None) is None
+    assert client.get("/api/performance", headers=h).status_code == 200
+    assert svc._peek("performance", USER, "ALL", None) is not None
+    buy(client, h, name="Infosys", symbol="INFY.NS")  # a ledger write makes the entry stale
+    assert svc._peek("performance", USER, "ALL", None) is None
+
+
+def test_ipo_notification_links_to_the_watchlist(client):
+    from datetime import date, timedelta
+    h = auth(USER, "user")
+    soon = (date.today() + timedelta(days=2)).isoformat()
+    assert client.post("/api/ipos", headers=h, json={"name": "Acme Ltd", "open_date": soon}).status_code == 201
+    items = client.get("/api/notifications", headers=h).json["items"]
+    (ipo,) = [n for n in items if n["kind"] == "ipo"]
+    assert ipo["link"] == "/markets?tab=watchlist" and ipo["days"] == 2 and "in 2 days" in ipo["title"]
+
+
+def test_refresh_stores_the_nifty_quote_and_keeps_it_on_failure(app, client, monkeypatch):
+    import json
+    from tracker import prices as px
+    h = auth(USER, "user")
+    buy(client, h, symbol="TCS.NS")
+    seen = []
+
+    def quotes(syms, timeout=15):
+        seen.append(list(syms))
+        return {s: ({"price": 24100.0, "prev_close": 24000.0, "date": "2026-11-13"} if s == "^NSEI" else
+                    {"price": 3600.0, "prev_close": 3550.0} if s == "TCS.NS" else None) for s in syms}
+    monkeypatch.setattr(px, "fetch_quotes", quotes)
+    svc, ledger = app.extensions["services"], app.extensions["ledger"]
+    res = svc.refresh_prices(USER, force=True)
+    assert "^NSEI" in seen[0] and "TCS.NS" in seen[0] and len(seen) == 1   # one batch
+    assert res["failed"] == [] and res["updated"] == 1                     # the index is not a holding
+    assert json.loads(ledger.system_value("quote:^NSEI")) == {"price": 24100.0, "prev_close": 24000.0, "date": "2026-11-13"}
+    stamp = ledger.system_value("prices:last_refresh")
+    ledger.set_system_value("prices:last_refresh", "2026-01-01T00:00:00+00:00")
+    monkeypatch.setattr(px, "fetch_quotes", lambda syms, timeout=15: {s: None for s in syms})
+    res = svc.refresh_prices(USER, force=True)
+    assert json.loads(ledger.system_value("quote:^NSEI"))["price"] == 24100.0
+    # an outage (no holding quote came back) does not stamp prices as refreshed
+    assert stamp and ledger.system_value("prices:last_refresh") == "2026-01-01T00:00:00+00:00"
+    assert res["updated"] == 0 and res["failed"] == ["TCS.NS"] and res["last_refresh"] == "2026-01-01T00:00:00+00:00"
+
+
+def test_action_log_and_kpi_writes_never_bump_the_ledger(app, client):
+    h = auth(USER, "user")
+    buy(client, h)
+    ledger = app.extensions["ledger"]
+    loaded = ledger.load(USER)
+    version, rev = ledger._version, ledger.actions_rev
+
+    row = ledger.set_action_status(USER, "tax:ltcg-harvest:FY2026-27", "snoozed", snooze_until="2026-12-31", note="later")
+    assert row["status"] == "snoozed" and row["snooze_until"] == "2026-12-31" and row["first_seen"]
+    assert ledger.actions_rev == rev + 1 and ledger._version == version
+    assert ledger.load(USER) is loaded                                    # the cached load survived
+    done = ledger.set_action_status(USER, "tax:ltcg-harvest:FY2026-27", "done", evidence={"txn_ids": [1]})
+    assert done["evidence"] == {"txn_ids": [1]} and done["done_via"] == "manual" and done["done_at"]
+    undo = ledger.set_action_status(USER, "tax:ltcg-harvest:FY2026-27", "open")
+    assert (undo["status"], undo["done_at"], undo["done_via"], undo["evidence"], undo["snooze_until"]) == ("open", None, None, None, None)
+    assert undo["note"] == "later" and undo["first_seen"] == row["first_seen"]
+    assert ledger.actions_rev == rev + 3
+
+    ledger.upsert_action_seen(USER, [{"id": "cash:usd", "first_seen": "2026-11-01", "tier_first": "now", "title": "Idle dollars",
+                                      "impact": 42000.0, "due": "2026-12-01"},
+                                     {"id": "tax:ltcg-harvest:FY2026-27", "first_seen": "2020-01-01", "tier_first": "month"}])
+    ledger.upsert_action_seen(USER, [{"id": "cash:usd", "first_seen": "2026-11-10", "tier_first": "month", "title": "Idle USD",
+                                      "impact": 900.0, "due": "2027-01-01",
+                                      "status": "done", "done_via": "auto", "evidence": {"condition": "cleared"}}])
+    log = ledger.action_log([USER, OTHER])
+    usd = log[(USER, "cash:usd")]
+    # A6 / §8.4: only the status and done fields move; title, impact and due stay as first seen
+    assert (usd["first_seen"], usd["tier_first"], usd["title"], usd["impact"], usd["due"], usd["status"], usd["evidence"]) == \
+        ("2026-11-01", "now", "Idle dollars", 42000.0, "2026-12-01", "done", {"condition": "cleared"})
+    assert log[(USER, "tax:ltcg-harvest:FY2026-27")]["first_seen"] == row["first_seen"]  # never overwritten
+    # ...but a row created by a status POST before it was seen gets its blank tier_first filled (follow-through)
+    assert log[(USER, "tax:ltcg-harvest:FY2026-27")]["tier_first"] == "month"
+    ledger.upsert_action_seen(USER, [{"id": "tax:ltcg-harvest:FY2026-27", "tier_first": "now", "category": "tax"}])
+    filled = ledger.action_log([USER])[(USER, "tax:ltcg-harvest:FY2026-27")]
+    assert (filled["tier_first"], filled["category"]) == ("month", "tax")   # a value already there is kept
+    # A row the user closed is not reopened by the computed-on-read upsert
+    ledger.set_action_status(USER, "review:due:2026-Q4", "dismissed", reason="not relevant")
+    ledger.upsert_action_seen(USER, [{"id": "review:due:2026-Q4", "status": "expired"}])
+    assert ledger.action_log([USER])[(USER, "review:due:2026-Q4")]["status"] == "dismissed"
+    # A live snooze is the user's; a lapsed snooze and an expired row are computed states and can be closed
+    from datetime import date, timedelta
+    yesterday, tomorrow = (date.today() - timedelta(days=1)).isoformat(), (date.today() + timedelta(days=1)).isoformat()
+    ledger.set_action_status(USER, "data:missing-prices", "snoozed", snooze_until=yesterday)
+    ledger.set_action_status(USER, "cushion:low", "snoozed", snooze_until=tomorrow)
+    ledger.upsert_action_seen(USER, [{"id": "p2p:overdue", "tier_first": "month", "category": "p2p"}])
+    ledger.upsert_action_seen(USER, [{"id": "p2p:overdue", "status": "expired"}])
+    closing = {"status": "done", "done_via": "auto", "evidence": {"condition": "cleared"}, "done_at": date.today().isoformat()}
+    ledger.upsert_action_seen(USER, [{"id": aid, **closing} for aid in ("data:missing-prices", "cushion:low", "p2p:overdue")])
+    log = ledger.action_log([USER])
+    lapsed = log[(USER, "data:missing-prices")]
+    assert (lapsed["status"], lapsed["done_via"], lapsed["snooze_until"]) == ("done", "auto", None)
+    assert log[(USER, "p2p:overdue")]["status"] == "done"
+    assert (log[(USER, "cushion:low")]["status"], log[(USER, "cushion:low")]["snooze_until"]) == ("snoozed", tomorrow)
+
+    assert ledger.kpi_snapshot_write(USER, "2026-11-10", {"value": 100}) is True
+    assert ledger.kpi_snapshot_write(USER, "2026-11-10", {"value": 999}) is False   # once per day
+    ledger.kpi_snapshot_write(USER, "2026-11-12", {"value": 120})
+    assert ledger.kpi_snapshot_at(USER, "2026-11-11") == {"date": "2026-11-10", "data": {"value": 100}}
+    assert ledger.kpi_snapshot_at(USER, "2026-11-30")["data"] == {"value": 120}
+    assert ledger.kpi_snapshot_at(USER, "2026-11-01") is None and ledger.kpi_snapshot_at(OTHER, "2026-11-30") is None
+
+    assert ledger._version == version and ledger.load(USER) is loaded
+    assert set(ledger.action_log([OTHER])) == set()
+
+
 def _xlsx(blocks: list[list[tuple]]) -> str:
     """A workbook with one sheet per block, base64-encoded the way the frontend uploads it."""
     import base64
@@ -297,3 +446,300 @@ def test_kite_tradebook_csv_and_guards(client):
     # Tradebooks dropped into the template CSV importer are sent to the reconciling import instead
     bad = client.post("/api/transactions/import/preview", headers=h, json={"csv": csv})
     assert bad.status_code == 400 and "Kite tradebook" in bad.json["error"]
+
+
+# ── wave 2: /brief, /actions and the status POST (SPEC §7.2–§7.4, AMENDMENTS E3–E13) ──
+
+BRIEF_KEYS = {"status", "hero", "vitals", "actions", "on_track", "why", "allocation", "upcoming", "tax", "deploy",
+              "freshness", "pending", "empty", "context_line", "assumptions_check", "market_state",
+              "assumptions", "cushion", "risk_est"}   # H11: the P1 fields services adds to build_brief's A6 keys
+ACTIONS_KEYS = {"summary", "actions", "planned", "done", "snoozed", "follow_through", "notes"}
+
+
+def _review_id():
+    from datetime import date
+    from tracker.analytics.actions import action_id_for_insight
+    return action_id_for_insight("review:due", date.today())   # review:due:<YYYY-Qn> (A8)
+
+
+def _status(client, who, aid, **body):
+    from urllib.parse import quote
+    return client.post(f"/api/actions/{quote(aid, safe='')}/status", headers=who, json=body)
+
+
+def test_brief_and_actions_payloads(client, offline_prices):
+    h = auth(USER, "user")
+    buy(client, h, symbol="TCS.NS")
+    br = client.get("/api/brief", headers=h)
+    assert br.status_code == 200 and set(br.json) == BRIEF_KEYS and br.json["empty"] is False
+    assert not br.json["status"]["headline"].endswith("family plan")      # a user's own scope
+    acts = client.get("/api/actions", headers=h).json
+    assert set(acts) == ACTIONS_KEYS and acts["notes"] == []
+    assert {a["status"] for a in acts["actions"]} <= {"open"} and all(a["first_seen"] for a in acts["actions"])
+    assert _review_id() in {a["id"] for a in acts["actions"]}
+    review = client.get("/api/actions?category=review", headers=h).json
+    assert review["actions"] and {a["category"] for a in review["actions"]} == {"review"}
+    assert review["summary"]["consider"] == len([a for a in review["actions"] if a["tier"] == "consider"])
+    assert client.get("/api/actions?instrument_id=abc", headers=h).status_code == 400
+    assert client.get("/api/actions?status=closed", headers=h).status_code == 400
+    # an empty ledger is onboarding, and writes no snapshot
+    empty = client.get("/api/brief", headers=auth(OTHER, "user")).json
+    assert empty["empty"] is True and [a["id"] for a in empty["actions"]] == ["onboard:import", "onboard:add"]
+
+
+def test_brief_writes_one_snapshot_a_day_and_never_bumps(app, client, offline_prices, monkeypatch):
+    import json
+    from datetime import date
+    h = auth(USER, "user")
+    buy(client, h, symbol="TCS.NS")
+    ledger = app.extensions["ledger"]
+    writes = []
+    real = ledger.kpi_snapshot_write
+    monkeypatch.setattr(ledger, "kpi_snapshot_write", lambda *a, **k: writes.append(a) or real(*a, **k))
+    version = ledger._version
+    assert client.get("/api/brief", headers=h).status_code == 200
+    # a different `since` misses the memo, but the snapshot for today is already written (in-process set)
+    assert client.get(f"/api/brief?since={date.today().isoformat()}", headers=h).status_code == 200
+    assert client.get("/api/brief", headers=h).status_code == 200
+    rows = ledger.db.query("SELECT owner, date, data FROM kpi_snapshots")
+    assert len(rows) == 1 and len(writes) == 1 and ledger._version == version
+    snap = rows[0]
+    data = json.loads(snap["data"])
+    assert (snap["owner"], snap["date"]) == (USER, date.today().isoformat())
+    assert {"value", "invested", "total_gain", "xirr", "day_change", "goal_probs", "retirement_probability", "vitals",
+            "action_ids"} <= set(data)
+    assert _review_id() in data["action_ids"] and data["vitals"]["data"] in ("good", "watch", "act")
+    # the family view: the headline says so, and its snapshot belongs to '__family__'
+    fam = client.get("/api/brief", headers=auth(ADMIN, "admin")).json
+    assert fam["status"]["headline"].endswith(" · family plan")
+    assert ledger.kpi_snapshot_at("__family__", date.today().isoformat()) is not None
+
+
+def test_brief_since_is_validated(client):
+    from datetime import date, timedelta
+    h = auth(USER, "user")
+    buy(client, h)
+    today = date.today()
+    for bad in ("2026-13-01", "yesterday", "2026-1-5", (today + timedelta(days=2)).isoformat()):
+        assert client.get(f"/api/brief?since={bad}", headers=h).status_code == 400, bad
+    # the browser's IST date can run a day ahead of a UTC server: clamped to today
+    assert client.get(f"/api/brief?since={(today + timedelta(days=1)).isoformat()}", headers=h).status_code == 200
+    assert client.get(f"/api/brief?since={(today - timedelta(days=7)).isoformat()}", headers=h).status_code == 200
+
+
+def test_brief_since_counts_new_actions_against_that_snapshot(app, client, offline_prices):
+    from datetime import date, timedelta
+    h = auth(USER, "user")
+    buy(client, h, symbol="TCS.NS")
+    ledger = app.extensions["ledger"]
+    week_ago = (date.today() - timedelta(days=7)).isoformat()
+    ledger.kpi_snapshot_write(USER, week_ago, {"value": 30000, "action_ids": [_review_id()]})
+    br = client.get(f"/api/brief?since={week_ago}", headers=h).json
+    visible = [a["id"] for a in client.get("/api/actions", headers=h).json["actions"]]
+    since = br["hero"]["since_last"]
+    assert since["date"] == week_ago and since["actions_new"] == len([i for i in visible if i != _review_id()])
+    assert all(a["is_new"] == (a["id"] != _review_id()) for a in br["actions"])
+
+
+def test_status_post_bumps_actions_rev_only(app, client, offline_prices, monkeypatch):
+    import tracker.services as services
+    h = auth(USER, "user")
+    buy(client, h, symbol="TCS.NS")
+    counts = {"tax": 0, "port": 0}
+    real_tax, real_port = services.compute_tax, services.compute_portfolio
+    monkeypatch.setattr(services, "compute_tax", lambda *a, **k: counts.__setitem__("tax", counts["tax"] + 1) or real_tax(*a, **k))
+    monkeypatch.setattr(services, "compute_portfolio",
+                        lambda *a, **k: counts.__setitem__("port", counts["port"] + 1) or real_port(*a, **k))
+    ledger, svc = app.extensions["ledger"], app.extensions["services"]
+    assert client.get("/api/tax", headers=h).status_code == 200
+    assert client.get("/api/actions", headers=h).status_code == 200
+    ctx = svc.context(USER, ledger.get_settings(USER, "user"))
+    before, version, rev = dict(counts), ledger._version, ledger.actions_rev
+    r = _status(client, h, _review_id(), status="snoozed", until=None)
+    assert r.status_code == 200 and r.json["status"] == "snoozed" and r.json["snooze_until"]
+    assert ledger.actions_rev == rev + 1 and ledger._version == version
+    assert client.get("/api/tax", headers=h).status_code == 200
+    assert svc.context(USER, ledger.get_settings(USER, "user")) is ctx   # the context memo survived
+    assert counts == before
+    acts = client.get("/api/actions", headers=h).json                  # re-read: the overlay moved it
+    assert _review_id() not in {a["id"] for a in acts["actions"]}
+    assert _review_id() in {a["id"] for a in acts["snoozed"]}
+    assert counts == before
+
+
+def test_status_post_validation_and_guests(client):
+    h = auth(USER, "user")
+    buy(client, h)
+    rid = _review_id()
+    assert _status(client, auth(GUEST, "guest"), rid, status="done").status_code == 403
+    assert _status(client, h, "bogus:thing", status="done").status_code == 400
+    assert _status(client, h, "goal:" + "x" * 200, status="done").status_code == 400
+    assert _status(client, h, rid, status="closed").status_code == 400
+    assert _status(client, h, rid, status="expired").status_code == 400     # computed, never posted
+    assert _status(client, h, rid, status="snoozed", until="2020-01-01").status_code == 400
+    assert _status(client, h, rid, status="snoozed", until="2099-01-01").status_code == 400
+    assert _status(client, h, rid, status="planned", planned_for="not-a-date").status_code == 400
+    assert _status(client, h, rid, status="done", txn_ids="7").status_code == 400
+
+
+def test_manual_done_records_first_sight_and_evidence(app, client, offline_prices):
+    h = auth(USER, "user")
+    tid = buy(client, h, symbol="TCS.NS").json["id"]
+    rid = _review_id()
+    # never fetched: the POST itself builds the list, so the row gets the first-sight fields
+    r = _status(client, h, rid, status="done", txn_ids=[tid], evidence={"txn_ids": [tid]})
+    assert r.status_code == 200 and r.json["status"] == "done" and r.json["done_via"] == "manual"
+    assert r.json["evidence"] == {"txn_ids": [tid]}
+    row = app.extensions["ledger"].action_row(USER, rid)
+    assert (row["status"], row["done_via"], row["tier_first"], row["category"]) == ("done", "manual", "consider", "review")
+    assert row["title"] == "Time for a portfolio review" and row["first_seen"] and row["done_at"]
+    done = client.get("/api/actions", headers=h).json["done"]
+    assert [a["id"] for a in done] == [rid] and done[0]["tier"] == "consider" and done[0]["status"] == "done"
+    # Undo reopens it
+    assert _status(client, h, rid, status="open").json["status"] == "open"
+    assert rid in {a["id"] for a in client.get("/api/actions", headers=h).json["actions"]}
+
+
+def test_insight_dismiss_is_an_alias_for_a_snooze(app, client, offline_prices):
+    from datetime import date, timedelta
+    h = auth(USER, "user")
+    buy(client, h, symbol="TCS.NS")
+    rid = _review_id()
+    assert rid in {a["id"] for a in client.get("/api/actions", headers=h).json["actions"]}
+    r = client.post("/api/insights/review:due/dismiss", headers=h, json={"days": 7})
+    until = (date.today() + timedelta(days=7)).isoformat()
+    assert r.status_code == 200 and r.json["dismissed"] == "review:due" and r.json["until"] == until
+    row = app.extensions["ledger"].action_row(USER, rid)          # period-keyed, in the action log
+    assert (row["status"], row["snooze_until"]) == ("snoozed", until)
+    assert "dismissedInsights" not in client.get("/api/settings", headers=h).json
+    assert rid not in {a["id"] for a in client.get("/api/actions", headers=h).json["actions"]}
+    assert client.post("/api/insights/review:due/dismiss", headers=h, json={"days": 0}).status_code == 400
+    assert client.post("/api/insights/review:due/dismiss", headers=auth(GUEST, "guest"), json={}).status_code == 403
+
+
+def test_notifications_drop_insights_whose_action_is_hidden(app, client, offline_prices):
+    """R9: the bell lists tier-now actions as act:<id> notices (no ins:* items any more), so an action the user
+    hides leaves the bell with it."""
+    h = auth(USER, "user")
+    buy(client, h, symbol="TCS.NS")
+    # an unpriced holding (offline quotes all fail) is a tier-now data action while the Data vital is act
+    res = client.get("/api/notifications", headers=h).json
+    before = [n["id"] for n in res["items"]]
+    assert "act:data:missing-prices" in before and not any(i.startswith("ins:") for i in before)
+    assert _status(client, h, "data:missing-prices", status="snoozed").status_code == 200
+    after = [n["id"] for n in client.get("/api/notifications", headers=h).json["items"]]
+    assert "act:data:missing-prices" not in after
+
+
+def test_brief_risk_vital_is_the_optimizer_estimate(app, client, offline_prices):
+    h = auth(USER, "user")
+    buy(client, h, symbol="TCS.NS")
+    client.post("/api/fixed-deposits", headers=h, json={"name": "HDFC FD", "amount": 50000, "rate": 7.1,
+                                                        "date": "2025-06-01", "maturity_date": "2027-06-01"})
+    ledger, svc = app.extensions["ledger"], app.extensions["services"]
+    for profile in (None, "growth"):
+        if profile:
+            assert client.put("/api/settings/riskProfile", headers=h, json={"value": profile}).status_code == 200
+        risk = next(v for v in client.get("/api/brief", headers=h).json["vitals"] if v["key"] == "risk")
+        vol = svc.optimizer(USER, ledger.get_settings(USER, "user"), profile or "balanced")["current"]["vol_pct"]
+        assert f"Est. volatility {vol:.1f}%" in risk["value"], (profile, risk)
+
+
+def test_retirement_gap_only_with_a_saved_plan(client, offline_prices):
+    h = auth(USER, "user")
+    buy(client, h, symbol="TCS.NS")
+    ids = {a["id"] for a in client.get("/api/actions", headers=h).json["actions"]}
+    assert not any(i.startswith("retirement:") for i in ids)
+    rows = client.get("/api/brief", headers=h).json["on_track"]["plan"]["rows"]
+    assert not any(r["kind"] == "retirement" for r in rows)
+    # a saved plan that cannot work does raise it
+    plan = {"current_age": 40, "retire_age": 45, "monthly_expenses": 500000}
+    assert client.put("/api/settings/retirementPlan", headers=h, json={"value": plan}).status_code == 200
+    ids = {a["id"] for a in client.get("/api/actions", headers=h).json["actions"]}
+    assert "retirement:gap" in ids
+    rows = client.get("/api/brief", headers=h).json["on_track"]["plan"]["rows"]
+    assert [r["kind"] for r in rows if r["kind"] == "retirement"] == ["retirement"]
+
+
+def test_rebalance_net_deploy_subtracts_held_value(app, client, offline_prices):
+    from datetime import date, timedelta
+    h = auth(USER, "user")
+    buy(client, h, symbol="TCS.NS", date="2026-01-05")
+    today = date.today()
+    client.post("/api/fixed-deposits", headers=h, json={"name": "Short FD", "amount": 50000, "rate": 7.0,
+                                                        "date": (today - timedelta(days=340)).isoformat(),
+                                                        "maturity_date": (today + timedelta(days=20)).isoformat()})
+    client.put("/api/settings/targetAllocation", headers=h, json={"value": {"Equity (India)": 50, "Fixed Deposits": 50}})
+    plain = client.get("/api/rebalance?new_money=60000", headers=h).json
+    net = client.get("/api/rebalance?new_money=60000&net=deploy", headers=h).json
+    svc, ledger = app.extensions["services"], app.extensions["ledger"]
+    (fd_src,) = [s for s in svc.deploy(USER, ledger.get_settings(USER, "user"))["sources"] if s["kind"] == "fd"]
+    row = lambda plan, seg: next(r for r in plan["rows"] if r["segment"] == seg)  # noqa: E731
+    fd_plain, fd_net = row(plain, "Fixed Deposits")["current"], row(net, "Fixed Deposits")["current"]
+    assert fd_src["held_value"] > 50000 and fd_net == round(max(fd_plain - fd_src["held_value"], 0), 2)
+    assert net["netted"] == {"Fixed Deposits": fd_src["held_value"]} and net["net"] == "deploy"
+    assert row(net, "Equity (India)")["current"] == row(plain, "Equity (India)")["current"]
+    # the maturing FD no longer counts as already filling its target, so more new money goes to FDs
+    assert row(net, "Fixed Deposits")["amount"] > row(plain, "Fixed Deposits")["amount"]
+    assert client.get("/api/rebalance?net=other", headers=h).status_code == 400
+
+
+def test_brief_memo_picks_up_a_warm_performance(client, offline_prices):
+    h = auth(USER, "user")
+    buy(client, h, symbol="TCS.NS")
+    cold = client.get("/api/brief", headers=h).json
+    assert cold["pending"] == ["market"] and cold["on_track"]["market"]["status"] == "pending"
+    assert client.get("/api/performance", headers=h).status_code == 200   # ALL: the key /brief peeks (A16)
+    warm = client.get("/api/brief", headers=h).json
+    assert warm["pending"] == [] and warm["on_track"]["market"]["status"] != "pending"
+
+
+def test_brief_retirement_picks_up_a_warm_performance(app, client, offline_prices):
+    """The shared action inputs are keyed on perf_ready too: once /performance is warm, Home's retirement row (and
+    /actions' plan) use the record-blended estimate the Retirement tab shows, not the cold one built first."""
+    from datetime import date, timedelta
+    h = auth(USER, "user")
+    # more than two years of record, so blended_assumptions uses the user's own TWR and volatility (≥ 730 days)
+    buy(client, h, symbol="TCS.NS", date=(date.today() - timedelta(days=1000)).isoformat(), qty=100, amount=150000)
+    plan = {"current_age": 35, "retire_age": 55, "monthly_expenses": 40000, "monthly_sip": 60000}
+    assert client.put("/api/settings/retirementPlan", headers=h, json={"value": plan}).status_code == 200
+    svc, ledger = app.extensions["services"], app.extensions["ledger"]
+    settings = ledger.get_settings(USER, "user")
+
+    def ret_row(brief):
+        return next(r for r in brief["on_track"]["plan"]["rows"] if r["kind"] == "retirement")
+
+    cold_row = ret_row(client.get("/api/brief", headers=h).json)
+    cold = svc.retirement(USER, settings, {}, build_history=False)
+    assert cold_row["probability"] == cold["probability"]
+    assert client.get("/api/performance", headers=h).status_code == 200   # warms ALL (A16)
+    page = svc.retirement(USER, settings, {})                               # what the Retirement tab shows
+    assert page["probability"] != cold["probability"], "the record must change the estimate for this test to bite"
+    warm_row = ret_row(client.get("/api/brief", headers=h).json)
+    assert (warm_row["probability"], warm_row["status"]) == (page["probability"], brief_status(page["status"]))
+
+
+def brief_status(status):
+    from tracker.analytics.brief import GOAL_STATUS
+    return GOAL_STATUS.get(status, "unset")
+
+
+def test_actions_rank_data_actions_with_the_data_vital_like_the_brief(app, client, offline_prices):
+    """SPEC §1.7: a data:* action is 'now' while the Data vital is act, on /actions exactly as on Home. Prices a
+    week old make the vital act while data:stale-prices is only a warning, so only the vital can make it 'now'."""
+    from datetime import datetime, timedelta, timezone
+    h = auth(USER, "user")
+    buy(client, h, symbol="TCS.NS")
+    ledger = app.extensions["ledger"]
+    week_old = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    ledger.db.execute("UPDATE instruments SET last_price = 3600, prev_close = 3590, last_price_at = ?", (week_old,))
+    ledger._bump()
+    br = client.get("/api/brief", headers=h).json
+    assert next(v for v in br["vitals"] if v["key"] == "data")["status"] == "act"
+    acts = client.get("/api/actions", headers=h).json
+    tiers = {a["id"]: a["tier"] for a in acts["actions"] if a["id"].startswith("data:")}
+    stale = next(a for a in acts["actions"] if a["id"] == "data:stale-prices")
+    assert stale["severity"] == "warn" and tiers == {"data:stale-prices": "now"}, tiers
+    home = {a["id"]: a["tier"] for a in br["actions"] if a["id"].startswith("data:")}
+    assert home and all(tiers[i] == t for i, t in home.items())
+    assert (acts["summary"]["now"], acts["summary"]["month"]) == (br["status"]["count_now"], br["status"]["count_month"])

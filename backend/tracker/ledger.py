@@ -31,8 +31,28 @@ TXN_FIELDS = ("date", "type", "quantity", "amount", "amount_fc", "principal", "f
 CASH_FIELDS = ("account", "date", "direction", "amount", "category", "kind", "notes")
 GOAL_FIELDS = ("name", "target_amount", "target_date", "monthly_contribution", "expected_return", "allocation",
                "priority", "notes")
+SIP_FIELDS = ("instrument_id", "name", "segment", "amount", "frequency", "day_of_month", "step_up_pct", "start_date",
+              "end_date", "active", "notes", "goal_id")
+# What a bulk write may set on an instrument: the user fields plus the stamp of a hand-entered price (an NPS NAV)
+BULK_INSTRUMENT_FIELDS = INSTRUMENT_FIELDS + ("last_price_at",)
+# The Transactions page's money columns (transactions.component.ts): money put in vs money taken out or received
+TXN_OUT_TYPES = (d.BUY, d.FX_IN)
+TXN_IN_TYPES = (d.SELL, d.DIVIDEND, d.INTEREST, d.REPAYMENT, d.MATURITY, d.FX_OUT)
+TXN_SORTS = ("date", "-date", "amount", "-amount", "name", "-name")
+TXN_FILTERS = ("asset_class", "instrument_id", "type", "from", "to")
+PAGE_SIZE_MIN, PAGE_SIZE_MAX, QUERY_MAX = 10, 200, 100
+SIP_FREQUENCIES = ("monthly", "quarterly", "weekly", "yearly")
+GLOBAL_OWNER = "__global__"   # the settings owner shared by admins and guests (the family plan)
+ACTION_STATUSES = ("open", "planned", "snoozed", "done", "dismissed", "expired")
+# What a user decision may set, what the computed-on-read upsert may set, and what Undo (status 'open') clears
+ACTION_STATUS_FIELDS = ("snooze_until", "planned_for", "note", "reason", "evidence", "done_at", "done_via")
+ACTION_SEEN_FIELDS = ("first_seen", "tier_first", "category", "title", "impact", "impact_kind", "due", "status",
+                      "done_via", "evidence", "done_at")
+ACTION_TRANSITION_FIELDS = ("status", "done_via", "evidence", "done_at")  # what the computed upsert may change (A6)
+ACTION_CLEARED_ON_OPEN =("done_at", "done_via", "evidence", "snooze_until", "planned_for")
+ACTION_FILL_FIELDS = ("tier_first", "category", "title", "impact", "impact_kind", "due")  # filled when blank only
 NUMERIC = {"quantity", "amount", "amount_fc", "principal", "fees", "rate", "tenure_months", "last_price",
-           "target_amount", "monthly_contribution", "expected_return"}
+           "target_amount", "monthly_contribution", "expected_return", "step_up_pct"}
 
 
 def _num(v):
@@ -71,6 +91,7 @@ class Ledger:
         self.db = db
         self._cache: dict = {}
         self._version = 0
+        self._actions_rev = 0
         self._ttl = cache_ttl
         self._lock = threading.Lock()
 
@@ -79,6 +100,16 @@ class Ledger:
         with self._lock:
             self._version += 1
             self._cache.clear()
+
+    def bump_actions(self):
+        """An action status changed. Only memo entries whose key carries actions_rev go stale (by key);
+        the cache is NOT cleared, so the portfolio, tax and plan memos stay warm."""
+        with self._lock:
+            self._actions_rev += 1
+
+    @property
+    def actions_rev(self) -> int:
+        return self._actions_rev
 
     def _cached(self, key, fn):
         with self._lock:
@@ -89,6 +120,14 @@ class Ledger:
         with self._lock:
             self._cache[key] = (self._version, time.time(), val)
         return val
+
+    def _peek(self, key):
+        """The cached value for `key` without building it: None when missing, from an older version or expired."""
+        with self._lock:
+            hit = self._cache.get(key)
+            if hit and hit[0] == self._version and time.time() - hit[1] < self._ttl:
+                return hit[2]
+        return None
 
     # ── scoped reads ──
     @staticmethod
@@ -122,6 +161,97 @@ class Ledger:
         if not row:
             raise NotFound("Transaction not found")
         return row
+
+    def transaction_rows(self, scope: str | None, filters: dict | None = None) -> list[dict]:
+        """Today's GET /transactions items, newest first: each transaction plus instrument_name, asset_class,
+        segment and currency. `filters` keys (asset_class, instrument_id, type, from, to) filter as the route's
+        query parameters do; empty values are ignored. Built over the memoised load(scope)."""
+        data = self.load(scope)
+        inst = {i["id"]: i for i in data["instruments"]}
+        f = {k: v for k, v in (filters or {}).items() if k in TXN_FILTERS and v not in (None, "")}
+        out = []
+        for t in data["transactions"]:
+            i = inst.get(t["instrument_id"])
+            if not i:
+                continue
+            if f.get("asset_class") and i["asset_class"] != f["asset_class"]:
+                continue
+            if f.get("instrument_id") and str(t["instrument_id"]) != str(f["instrument_id"]):
+                continue
+            if f.get("type") and t["type"] != f["type"]:
+                continue
+            if f.get("from") and t["date"] < f["from"]:
+                continue
+            if f.get("to") and t["date"] > f["to"]:
+                continue
+            out.append({**t, "instrument_name": i["name"], "asset_class": i["asset_class"], "segment": d.segment_of(i),
+                        "currency": i.get("currency")})
+        out.sort(key=lambda t: (t["date"], t["id"]), reverse=True)
+        return out
+
+    @staticmethod
+    def _page_int(v, field: str, default: int) -> int:
+        if v in (None, ""):
+            return default
+        if isinstance(v, bool):
+            raise ValidationError(f"{field} must be a whole number")
+        try:
+            n = float(v)
+        except (TypeError, ValueError):
+            raise ValidationError(f"{field} must be a whole number")
+        if n != n or n in (float("inf"), float("-inf")) or not n.is_integer():
+            raise ValidationError(f"{field} must be a whole number")
+        return int(n)
+
+    def transactions_page(self, scope: str | None, page=1, size=50, q: str | None = None, sort: str = "-date", *,
+                          filters: dict | None = None) -> dict:
+        """One page of the transaction list (P2.11, K4).
+
+        Returns {rows, total, page, size, pages, sums: {count, out, in, net}, months: [{month, count, out, in}]}.
+        rows have today's GET /transactions item shape. `q` (trimmed, case-insensitive, at most 100 characters)
+        matches the instrument name, its symbol, the transaction type and the notes. `sort` is date, amount or name,
+        ascending or with a leading '-' descending, with id as the tie-break in the same direction. `size` is
+        clamped to 10-200 and `page` to >= 1; a page past the end has no rows but the true total. sums and months
+        (newest first) cover every filtered row, not just the page: out = BUY + FX_IN, in = SELL, DIVIDEND,
+        INTEREST, REPAYMENT, MATURITY, FX_OUT, net = out - in. A non-numeric page or size, or an unknown sort,
+        raises ValidationError."""
+        sort = (sort or "-date").strip()
+        if sort not in TXN_SORTS:
+            raise ValidationError("sort must be one of " + ", ".join(TXN_SORTS))
+        page = max(1, self._page_int(page, "page", 1))
+        size = min(PAGE_SIZE_MAX, max(PAGE_SIZE_MIN, self._page_int(size, "size", 50)))
+        rows = self.transaction_rows(scope, filters)
+        needle = (q or "").strip().lower()[:QUERY_MAX]
+        if needle:
+            symbols = {i["id"]: (i.get("symbol") or "") for i in self.load(scope)["instruments"]}
+            rows = [t for t in rows if needle in " ".join((t.get("instrument_name") or "", symbols.get(t["instrument_id"], ""),
+                                                           t.get("type") or "", t.get("notes") or "")).lower()]
+        key = sort.lstrip("-")
+        if key == "amount":
+            rows.sort(key=lambda t: (float(t.get("amount") or 0), t["id"]), reverse=sort.startswith("-"))
+        elif key == "name":
+            rows.sort(key=lambda t: ((t.get("instrument_name") or "").lower(), t["id"]), reverse=sort.startswith("-"))
+        elif sort == "date":
+            rows.reverse()  # transaction_rows is newest first with id as the tie-break
+        sums = {"count": 0, "out": 0.0, "in": 0.0}
+        months: dict[str, dict] = {}
+        for t in rows:
+            m = months.setdefault(str(t["date"])[:7], {"month": str(t["date"])[:7], "count": 0, "out": 0.0, "in": 0.0})
+            amt = float(t.get("amount") or 0)
+            side = "out" if t["type"] in TXN_OUT_TYPES else "in" if t["type"] in TXN_IN_TYPES else None
+            for bucket in (sums, m):
+                bucket["count"] += 1
+                if side:
+                    bucket[side] += amt
+        total = len(rows)
+        return {
+            "rows": rows[(page - 1) * size: page * size],
+            "total": total, "page": page, "size": size, "pages": max(1, -(-total // size)),
+            "sums": {"count": sums["count"], "out": round(sums["out"], 2), "in": round(sums["in"], 2),
+                     "net": round(sums["out"] - sums["in"], 2)},
+            "months": [{**m, "out": round(m["out"], 2), "in": round(m["in"], 2)}
+                       for m in sorted(months.values(), key=lambda m: m["month"], reverse=True)],
+        }
 
     # ── instruments ──
     def create_instrument(self, owner: str, data: dict) -> dict:
@@ -300,7 +430,10 @@ class Ledger:
         """Insert many transactions (optionally with new instruments) in ONE atomic batch.
         entry: {"instrument": dict (existing row) | None, "new_instrument": dict | None,
                 "txn": dict | "txns": [dict, ...], "source": str}
-        New instruments must carry a unique `ref` so later statements can find their id.
+        Later statements find a new instrument's id by (owner, asset_class, ref), newest first; one without a
+        `ref` is found by (owner, asset_class, LOWER(name)), newest first, the identity find_or_create_instrument
+        uses, so the caller must not plan two new instruments with the same class and name (or the same ref
+        unless each is followed directly by its own transactions). "txns": [] adds an instrument alone.
         field_updates: (instrument id, {field: value}); remove_txns: transaction ids deleted first, with their
         linked cash movements; txn_updates: (transaction id, {field: value}). Callers validate the end state
         (e.g. FIFO holdings) before calling, since rows removed here are still in the database meanwhile."""
@@ -318,20 +451,29 @@ class Ledger:
             if e.get("new_instrument"):
                 spec = {**e["new_instrument"]}
                 ac = spec.pop("asset_class")
-                f = _clean(spec, INSTRUMENT_FIELDS)
+                f = _clean(spec, BULK_INSTRUMENT_FIELDS)
+                if not f.get("name"):
+                    raise ValidationError("name is required")
                 f.setdefault("currency", d.currency_for(ac, f.get("market")))
                 f.setdefault("tax_class", d.default_tax_class(ac, f.get("market"), f.get("category"), f.get("name")))
+                if f.get("symbol") and not f.get("price_source"):
+                    f["price_source"] = "amfi" if f["symbol"].upper().startswith("AMFI:") else "yahoo"
                 f["status"] = (f.get("status") or "active").lower()
                 cols = ["owner", "asset_class", *f.keys(), "created_at", "updated_at"]
                 stmts.append((f"INSERT INTO instruments ({','.join(cols)}) VALUES ({','.join('?' * len(cols))})",
                               [owner, ac, *f.values(), ts, ts]))
                 inst = {"asset_class": ac, "name": f["name"], "owner": owner, **f}
-                inst_sql = "(SELECT id FROM instruments WHERE owner = ? AND asset_class = ? AND ref = ? ORDER BY id DESC LIMIT 1)"
-                inst_params = [owner, ac, f["ref"]]
+                if f.get("ref"):
+                    inst_sql = "(SELECT id FROM instruments WHERE owner = ? AND asset_class = ? AND ref = ? ORDER BY id DESC LIMIT 1)"
+                    inst_params = [owner, ac, f["ref"]]
+                else:
+                    inst_sql = ("(SELECT id FROM instruments WHERE owner = ? AND asset_class = ? AND LOWER(name) = LOWER(?) "
+                                "ORDER BY id DESC LIMIT 1)")
+                    inst_params = [owner, ac, f["name"]]
             else:
                 inst = e["instrument"]
                 inst_sql, inst_params = "?", [inst["id"]]
-            for raw in e.get("txns") or [e["txn"]]:
+            for raw in (e["txns"] if e.get("txns") is not None else [e["txn"]]):
                 t = _clean(raw, TXN_FIELDS)
                 t["type"] = (t.get("type") or "").upper()
                 t["source"] = e.get("source") or "manual"
@@ -346,7 +488,7 @@ class Ledger:
         for iid, status in status_updates:
             stmts.append(("UPDATE instruments SET status = ?, updated_at = ? WHERE id = ?", (status.lower(), ts, iid)))
         for iid, fields in field_updates:
-            f = _clean(fields, INSTRUMENT_FIELDS)
+            f = _clean(fields, BULK_INSTRUMENT_FIELDS)
             if f:
                 stmts.append((f"UPDATE instruments SET {', '.join(f'{k} = ?' for k in f)}, updated_at = ? WHERE id = ?",
                               [*f.values(), ts, iid]))
@@ -456,6 +598,12 @@ class Ledger:
             return out
         return self._cached(("settings", email, role), fetch)
 
+    def setting_keys(self, owner: str) -> set[str]:
+        """The setting keys that have a row of their own under this settings owner (an email or '__global__').
+        GET /settings reports the keys a member inherits from '__global__' with it (AMENDMENTS R8, R11). Uncached:
+        one small indexed read."""
+        return {r["key"] for r in self.db.query("SELECT key FROM user_settings WHERE owner = ?", (owner,))}
+
     def set_setting(self, email: str, role: str, key: str, value):
         owner = self.settings_owner(email, role)
         raw = json.dumps(value) if isinstance(value, (dict, list)) else (None if value is None else str(value))
@@ -511,11 +659,308 @@ class Ledger:
         return self.db.one("SELECT * FROM goals WHERE id = ?", (gid,))
 
     def delete_goal(self, gid: int, scope: str | None):
+        """Delete a goal. SIP plans that funded it are kept and lose the link (goal_id NULL), in the same batch."""
         w, p = self._where(scope)
         if not self.db.one(f"SELECT id FROM goals WHERE id = ? AND {w}", [gid] + p):
             raise NotFound("Goal not found")
-        self.db.execute("DELETE FROM goals WHERE id = ?", (gid,))
+        self.db.batch([("UPDATE sip_plans SET goal_id = NULL WHERE goal_id = ?", (gid,)),
+                       ("DELETE FROM goals WHERE id = ?", (gid,))])
         self._bump()
+
+    def _sip_goal_id(self, value, plan_owner: str) -> int | None:
+        """A SIP plan's goal link (K3): None or '' clears it; otherwise it must be the id of a goal that belongs to
+        the plan's owner."""
+        if value in (None, ""):
+            return None
+        refused = ValidationError("That goal isn't one of this portfolio's goals")
+        if isinstance(value, bool):
+            raise refused
+        if isinstance(value, int):
+            gid = value
+        elif isinstance(value, float) and value.is_integer():
+            gid = int(value)
+        elif isinstance(value, str) and value.strip().isdigit():
+            gid = int(value.strip())
+        else:
+            raise refused
+        row = self.db.one("SELECT owner FROM goals WHERE id = ?", (gid,))
+        if not row or row["owner"] != plan_owner:
+            raise refused
+        return gid
+
+    # ── SIP plans ──
+    def sips(self, scope: str | None) -> list[dict]:
+        w, p = self._where(scope, "s.")
+        return self.db.query(f"SELECT s.*, i.name AS instrument_name, i.asset_class FROM sip_plans s "
+                             f"LEFT JOIN instruments i ON i.id = s.instrument_id WHERE {w} ORDER BY s.active DESC, s.day_of_month, s.name", p)
+
+    def save_sip(self, owner: str, scope: str | None, data: dict, sid: int | None = None) -> dict:
+        """Create (sid None) or update a SIP plan. `goal_id` links it to a goal of the plan's owner (the `owner`
+        argument on create, the stored row's owner on update); None or '' unlinks it."""
+        s = _clean(data, SIP_FIELDS)
+        stored = None
+        if sid is not None:
+            w, p = self._where(scope)
+            stored = self.db.one(f"SELECT id, owner FROM sip_plans WHERE id = ? AND {w}", [sid] + p)
+            if not stored:
+                raise NotFound("SIP plan not found")
+        if "goal_id" in s:
+            s["goal_id"] = self._sip_goal_id(s["goal_id"], stored["owner"] if stored else owner)
+        if "instrument_id" in s and s["instrument_id"] not in (None, ""):
+            inst = self.instrument(int(s["instrument_id"]), scope)
+            s["instrument_id"] = inst["id"]
+            s.setdefault("name", inst["name"])
+            if not s.get("name"):
+                s["name"] = inst["name"]
+            s["segment"] = d.segment_of(inst)
+        elif "instrument_id" in s:
+            s["instrument_id"] = None
+        if sid is None:
+            if not s.get("name"):
+                raise ValidationError("name is required")
+            if s.get("amount") is None:
+                raise ValidationError("amount is required")
+        if s.get("amount") is not None and s["amount"] <= 0:
+            raise ValidationError("amount must be positive")
+        if "frequency" in s:
+            s["frequency"] = (s["frequency"] or "monthly").lower()
+            if s["frequency"] not in SIP_FREQUENCIES:
+                raise ValidationError("frequency must be one of " + ", ".join(SIP_FREQUENCIES))
+        if "day_of_month" in s:
+            try:
+                s["day_of_month"] = int(s["day_of_month"] or 1)
+            except (TypeError, ValueError):
+                raise ValidationError("day_of_month must be a number")
+            if not 1 <= s["day_of_month"] <= 28:
+                raise ValidationError("day_of_month must be between 1 and 28")
+        if "segment" in s and s["segment"] and s["segment"] not in d.SEGMENTS:
+            raise ValidationError("Unknown segment")
+        for k in ("start_date", "end_date"):
+            if s.get(k):
+                s[k] = _date(s[k], k.replace("_", " "))
+        if "active" in s:
+            s["active"] = 1 if s["active"] in (1, True, "1", "true", "True") else 0
+        ts = now_iso()
+        if sid is None:
+            s.setdefault("frequency", "monthly")
+            s.setdefault("day_of_month", 1)
+            s.setdefault("active", 1)
+            s.setdefault("start_date", ts[:10])
+            cols = ["owner", *s.keys(), "created_at", "updated_at"]
+            res = self.db.execute(f"INSERT INTO sip_plans ({','.join(cols)}) VALUES ({','.join('?' * len(cols))})",
+                                  [owner, *s.values(), ts, ts])
+            sid = res.lastrowid
+        else:
+            if s:
+                self.db.execute(f"UPDATE sip_plans SET {', '.join(f'{k} = ?' for k in s)}, updated_at = ? WHERE id = ?",
+                                [*s.values(), ts, sid])
+        self._bump()
+        return next(r for r in self.sips(None) if r["id"] == sid)
+
+    def delete_sip(self, sid: int, scope: str | None):
+        w, p = self._where(scope)
+        if not self.db.one(f"SELECT id FROM sip_plans WHERE id = ? AND {w}", [sid] + p):
+            raise NotFound("SIP plan not found")
+        self.db.execute("DELETE FROM sip_plans WHERE id = ?", (sid,))
+        self._bump()
+
+    # ── action log (follow-through) ──
+    # None of these call _bump: a status change bumps actions_rev only, and the seen / auto-done upserts and
+    # KPI snapshots change nothing a cached computation depends on.
+
+    @staticmethod
+    def _action_row(r: dict) -> dict:
+        row = dict(r)
+        raw = row.get("evidence")
+        try:
+            row["evidence"] = json.loads(raw) if raw else None
+        except (TypeError, json.JSONDecodeError):
+            row["evidence"] = None
+        return row
+
+    def action_log(self, owners: list[str]) -> dict[tuple[str, str], dict]:
+        """Every action_log row for these owners, keyed by (owner, id). `evidence` is decoded from JSON."""
+        owners = [o for o in dict.fromkeys(owners or []) if o]
+        if not owners:
+            return {}
+        rows = self.db.query(f"SELECT * FROM action_log WHERE owner IN ({','.join('?' * len(owners))})", owners)
+        return {(r["owner"], r["id"]): self._action_row(r) for r in rows}
+
+    def log_stamps(self, keys) -> dict[tuple[str, str], dict]:
+        """{(owner, id): {status, seen_at, pushed_at}} for the action_log rows among `keys` ((owner, id) pairs);
+        a pair with no row is absent. The bulk read behind the bell's seen/unread and the digest's pushed_at
+        check (AMENDMENTS R9, R10). Read live, outside any memo (K7)."""
+        keys = [k for k in dict.fromkeys(keys or []) if k and k[0] and k[1]]
+        out: dict[tuple[str, str], dict] = {}
+        by_owner: dict[str, list[str]] = {}
+        for owner, aid in keys:
+            by_owner.setdefault(owner, []).append(aid)
+        for owner, ids in by_owner.items():
+            for i in range(0, len(ids), 400):   # stay well under SQLite's bound-parameter limit
+                chunk = ids[i:i + 400]
+                rows = self.db.query("SELECT owner, id, status, seen_at, pushed_at FROM action_log WHERE owner = ? "
+                                     f"AND id IN ({','.join('?' * len(chunk))})", [owner, *chunk])
+                for r in rows:
+                    out[(r["owner"], r["id"])] = {"status": r["status"], "seen_at": r["seen_at"],
+                                                  "pushed_at": r["pushed_at"]}
+        return out
+
+    def action_row(self, owner: str, aid: str) -> dict | None:
+        r = self.db.one("SELECT * FROM action_log WHERE owner = ? AND id = ?", (owner, aid))
+        return self._action_row(r) if r else None
+
+    def set_action_status(self, owner: str, aid: str, status: str, **fields) -> dict:
+        """Upsert a user's decision on an action (the row is created when it has never been seen).
+        'open' clears the done, snooze and plan fields (Undo). Bumps actions_rev, never the ledger version."""
+        if status not in ACTION_STATUSES:
+            raise ValidationError("status must be one of " + ", ".join(ACTION_STATUSES))
+        if not owner or not aid:
+            raise ValidationError("owner and id are required")
+        unknown = set(fields) - set(ACTION_STATUS_FIELDS)
+        if unknown:
+            raise ValidationError("Unknown field(s): " + ", ".join(sorted(unknown)))
+        f = dict(fields)
+        for k in ("snooze_until", "planned_for"):
+            if f.get(k) not in (None, ""):
+                f[k] = _date(f[k], k.replace("_", " "))
+        if "evidence" in f:
+            f["evidence"] = json.dumps(f["evidence"]) if f["evidence"] is not None else None
+        if status == "open":
+            f.update({k: None for k in ACTION_CLEARED_ON_OPEN})
+        elif status == "done":
+            f.setdefault("done_at", date.today().isoformat())
+            f.setdefault("done_via", "manual")
+        ts = now_iso()
+        cols = ["owner", "id", "status", "first_seen", *f.keys(), "updated_at"]
+        vals = [owner, aid, status, date.today().isoformat(), *f.values(), ts]
+        sets = ", ".join(f"{k} = excluded.{k}" for k in ["status", *f.keys(), "updated_at"])
+        self.db.execute(f"INSERT INTO action_log ({','.join(cols)}) VALUES ({','.join('?' * len(cols))}) "
+                        f"ON CONFLICT(owner, id) DO UPDATE SET {sets}", vals)
+        self.bump_actions()
+        return self.action_row(owner, aid)
+
+    def upsert_action_seen(self, owner: str, rows: list[dict]):
+        """Record actions computed on read: first sighting (first_seen, tier_first, title...) and auto-done or
+        expired transitions (A6).
+
+        On conflict only the status and done fields (status, done_via, evidence, done_at) change; category, title,
+        impact, impact_kind and due are written at first sight and afterwards only fill blanks (§8.4: the impact is
+        the one first seen, which auto_done and follow_through rely on). first_seen and tier_first are never
+        overwritten. The transition applies to computed states only: open, planned, expired, and a snooze that has
+        lapsed (snooze_until < today). A live snooze, done and dismissed are the user's and are left alone.
+        Idempotent, and no bump: the computed result already reflects the change."""
+        today, ts = date.today().isoformat(), now_iso()
+        stmts = []
+        for r in rows or []:
+            aid = r.get("id")
+            if not aid:
+                continue
+            f = {k: r[k] for k in ACTION_SEEN_FIELDS if k in r}
+            if "evidence" in f:
+                f["evidence"] = json.dumps(f["evidence"]) if f["evidence"] is not None else None
+            if f.get("status") is None:
+                f.pop("status", None)
+            elif f["status"] not in ACTION_STATUSES:
+                raise ValidationError(f"Unknown action status '{f['status']}'")
+            f.setdefault("first_seen", today)
+            cols = ["owner", "id", *f.keys(), "updated_at"]
+            upd = [k for k in f if k in ACTION_TRANSITION_FIELDS]
+            sql = f"INSERT INTO action_log ({','.join(cols)}) VALUES ({','.join('?' * len(cols))}) ON CONFLICT(owner, id) "
+            params = [owner, aid, *f.values(), ts]
+            if upd:
+                sets = [f"{k} = excluded.{k}" for k in [*upd, "updated_at"]]
+                if "status" in upd:
+                    sets.append("snooze_until = CASE WHEN excluded.status = 'snoozed' THEN snooze_until END")
+                sql += ("DO UPDATE SET " + ", ".join(sets) + " WHERE action_log.status IN ('open','planned','expired')"
+                        " OR (action_log.status = 'snoozed' AND COALESCE(action_log.snooze_until, '') < ?)")
+                params.append(today)
+            else:
+                sql += "DO NOTHING"
+            stmts.append((sql, params))
+            # A row the user created before it was ever seen (a snooze or Skip posted from Home) has no tier_first,
+            # category or title. Fill the blanks whatever its status; a value already there is never overwritten.
+            fill = [k for k in ACTION_FILL_FIELDS if f.get(k) is not None]
+            if fill:
+                stmts.append((f"UPDATE action_log SET {', '.join(f'{k} = COALESCE({k}, ?)' for k in fill)} "
+                              "WHERE owner = ? AND id = ?", [*(f[k] for k in fill), owner, aid]))
+        if stmts:
+            self.db.batch(stmts)
+
+    def kpi_snapshot_write(self, owner: str, on: str, data: dict) -> bool:
+        """Store the day's KPI snapshot once; a second write for the same (owner, date) is ignored."""
+        res = self.db.execute("INSERT OR IGNORE INTO kpi_snapshots (owner, date, data, created_at) VALUES (?,?,?,?)",
+                              (owner, _date(on), json.dumps(data, default=str), now_iso()))
+        return res.rowcount > 0
+
+    def kpi_snapshot_at(self, owner: str, on_or_before: str) -> dict | None:
+        """The latest snapshot dated on or before `on_or_before`, as {date, data}, or None."""
+        r = self.db.one("SELECT date, data FROM kpi_snapshots WHERE owner = ? AND date <= ? ORDER BY date DESC LIMIT 1",
+                        (owner, _date(on_or_before)))
+        if not r:
+            return None
+        try:
+            return {"date": r["date"], "data": json.loads(r["data"])}
+        except (TypeError, json.JSONDecodeError):
+            return None
+
+    def kpi_snapshots(self, owner: str, since: str | None = None, until: str | None = None) -> list[dict]:
+        """Every KPI snapshot of `owner` dated within [since, until] (either end optional), ascending by date, as
+        [{date, data}] with data decoded. Rows whose data is not a JSON object are skipped. No bump."""
+        sql, params = "SELECT date, data FROM kpi_snapshots WHERE owner = ?", [owner]
+        if since not in (None, ""):
+            sql += " AND date >= ?"
+            params.append(_date(since, "since"))
+        if until not in (None, ""):
+            sql += " AND date <= ?"
+            params.append(_date(until, "until"))
+        out = []
+        for r in self.db.query(sql + " ORDER BY date", params):
+            try:
+                data = json.loads(r["data"])
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if isinstance(data, dict):
+                out.append({"date": r["date"], "data": data})
+        return out
+
+    def _mark(self, owner: str, ids, column: str, at: str | None) -> int:
+        """Stamp `column` (seen_at or pushed_at) on each (owner, id) row where it is still NULL, inserting a missing
+        row (K7). Returns how many rows were stamped. Bookkeeping only: no _bump, no bump_actions."""
+        if not owner:
+            raise ValidationError("owner is required")
+        ids = [i for i in dict.fromkeys(ids or []) if isinstance(i, str) and i]
+        if not ids:
+            return 0
+        at = at or now_iso()
+        today, ts = date.today().isoformat(), now_iso()
+        stmts = []
+        for aid in ids:
+            if column == "seen_at" and aid.startswith("notice:"):
+                # A notice that is not an action: seen means done, and with no tier_first it never counts toward
+                # follow-through (§8.5). A notice row a push created ('open') is closed the same way when seen.
+                stmts.append(("INSERT INTO action_log (owner, id, status, first_seen, tier_first, done_via, seen_at, updated_at) "
+                              "VALUES (?, ?, 'done', ?, NULL, 'seen', ?, ?) ON CONFLICT(owner, id) DO UPDATE SET "
+                              "seen_at = excluded.seen_at, "
+                              "done_via = CASE WHEN action_log.status = 'open' THEN 'seen' ELSE action_log.done_via END, "
+                              "status = CASE WHEN action_log.status = 'open' THEN 'done' ELSE action_log.status END "
+                              "WHERE action_log.seen_at IS NULL", (owner, aid, today, at, ts)))
+            else:
+                stmts.append((f"INSERT INTO action_log (owner, id, status, first_seen, {column}, updated_at) "
+                              f"VALUES (?, ?, 'open', ?, ?, ?) ON CONFLICT(owner, id) DO UPDATE SET {column} = excluded.{column} "
+                              f"WHERE action_log.{column} IS NULL", (owner, aid, today, at, ts)))
+        return sum(max(r.rowcount or 0, 0) for r in self.db.batch(stmts))
+
+    def mark_seen(self, owner: str, ids, at: str | None = None) -> int:
+        """Record that `owner` has seen these action / notice rows (D15: "seen" lives only in action_log.seen_at).
+        An existing row gets seen_at = at (default now) when it has none. A missing 'notice:<id>' row is inserted as
+        status 'done', tier_first NULL, done_via 'seen'; any other missing id is inserted as status 'open'.
+        Returns how many rows were stamped. Bumps neither the ledger version nor actions_rev."""
+        return self._mark(owner, ids, "seen_at", at)
+
+    def mark_pushed(self, owner: str, ids, at: str | None = None) -> int:
+        """The same as mark_seen, on pushed_at: a missing id (notice or action) is inserted as status 'open'.
+        Returns how many rows were stamped. Bumps neither the ledger version nor actions_rev."""
+        return self._mark(owner, ids, "pushed_at", at)
 
     # ── prices ──
     def store_quotes(self, quotes: dict[str, dict | None]):

@@ -1,27 +1,83 @@
 <div class="page">
+  <app-portfolio-tabs />
+
+  <!-- Page head: the class name is the page's one h1 (A22, H19); tools are T3 -->
   <div class="page-head">
-    <h1>Holdings</h1>
+    <div>
+      <h1>P2P lending</h1>
+      @if (port(); as pf) {
+        <p class="sub">{{ stats().activeCount }} active loan{{ stats().activeCount === 1 ? '' : 's' }} of {{ loans().length }}@if (pf.as_of) { · as of {{ pf.as_of | dt }} }</p>
+      }
+    </div>
     @if (auth.canWrite()) {
       <div class="row wrap">
-        <button class="btn ghost sm" (click)="startImport()"><app-icon name="upload" [size]="15" /> Import LenDen reports</button>
-        <button class="btn sm" (click)="dialog.add('p2p_repayment')">Repayment</button>
-        <button class="btn sm" (click)="dialog.add('p2p_loan')"><app-icon name="plus" [size]="15" /> Loan</button>
+        <button type="button" class="btn ghost sm" (click)="startImport()"><app-icon name="upload" [size]="15" /> Import LenDen reports</button>
+        <button type="button" class="btn sm" (click)="dialog.add('p2p_repayment')">Repayment</button>
+        <button type="button" class="btn sm" (click)="dialog.add('p2p_loan')"><app-icon name="plus" [size]="15" /> Loan</button>
       </div>
     }
   </div>
 
-  <app-section-tabs group="holdings" current="/p2p" style="margin-top:-12px" />
-  <section class="kpis">
-    <div class="kpi"><span class="chip blue sm"><app-icon name="wallet" [size]="15" /></span><span class="label">Outstanding principal</span><span class="value">{{ stats().outstanding | inr }}</span><span class="meta">of {{ stats().lent | inr }} lent</span></div>
-    <div class="kpi"><span class="chip green sm"><app-icon name="coins" [size]="15" /></span><span class="label">Interest earned</span><span class="value pos">{{ stats().interest | inr }}</span><span class="meta">after {{ stats().fees | inr }} platform fees</span></div>
-    <div class="kpi"><span class="chip violet sm"><app-icon name="chart" [size]="15" /></span><span class="label">Realised return (XIRR)</span><span class="value" [class]="seg()?.xirr | sign">{{ seg()?.xirr | pct }}</span>
-      <span class="meta">vs {{ stats().avgRate ? stats().avgRate!.toFixed(1) + '% stated' : 'stated rate' }}</span></div>
-    <div class="kpi"><span class="chip red sm"><app-icon name="alert" [size]="15" /></span><span class="label">At risk (defaulted)</span><span class="value" [class.neg]="stats().atRisk > 0">{{ stats().atRisk | inr }}</span>
-      <span class="meta">{{ stats().defaulted }} defaulted · {{ stats().overdue }} overdue</span></div>
+  @if (loading()) {
+    <div class="skeleton hero-skel" aria-label="Loading your P2P loans"></div>
+    <div class="card"><div class="skeleton" style="height:18px;width:40%"></div><div class="skeleton" style="height:200px;margin-top:14px"></div></div>
+  } @else if (failed()) {
+    <div class="card"><div class="empty">
+      <app-icon name="alert" [size]="22" /><h3>Couldn't load your P2P loans</h3><p>{{ store.error() }}</p>
+      <button type="button" class="btn" (click)="store.reload()"><app-icon name="refresh" [size]="15" /> Try again</button>
+    </div></div>
+  } @else {
+  @if (store.error()) {
+    <div class="notice warn" role="status"><app-icon name="alert" [size]="16" /><span>Couldn't refresh, so these are the last numbers this device saw · {{ store.error() }}</span>
+      <button type="button" class="btn ghost sm" (click)="store.reload()">Try again</button></div>
+  }
+
+  @if (!loans().length) {
+    <div class="card"><div class="empty">
+      <app-icon name="users" [size]="22" />
+      <h3>No P2P loans yet</h3>
+      <p>Once you add a loan or import your LenDenClub reports, what is still lent, what came back and what is at risk show here.</p>
+      @if (auth.canWrite()) {
+        <div class="row wrap" style="justify-content:center">
+          <button type="button" class="btn primary" (click)="dialog.add('p2p_loan')"><app-icon name="plus" [size]="16" /> Add your first P2P loan</button>
+          <button type="button" class="btn" (click)="startImport()"><app-icon name="upload" [size]="15" /> Import LenDen reports</button>
+        </div>
+      }
+    </div></div>
+  } @else {
+
+  <!-- T0: what is still lent, and how much of it is in trouble (H19) -->
+  <section class="kpis h-kpis" aria-label="P2P lending at a glance">
+    <div class="kpi hero">
+      <span class="label">Outstanding</span>
+      <span class="value">{{ stats().outstanding | inr }}</span>
+      <span class="meta">{{ stats().activeCount }} active loan{{ stats().activeCount === 1 ? '' : 's' }} · {{ stats().lent | inr }} lent in all</span>
+      <div class="verdict-line" [attr.data-status]="risk().status">
+        <app-icon [name]="statusMeta[risk().status].icon" [size]="16" />
+        <span>{{ risk().text }}</span><span class="sr-only">· {{ statusMeta[risk().status].word }}</span>
+      </div>
+      @if (risk().pct; as p) {
+        <span class="meta gap">{{ p >= 0.1 ? (p | pct: 1 : false) : 'Under 0.1%' }} of your portfolio@if (risk().lateAmount) { · {{ risk().lateAmount | inr }} still out on late loans }</span>
+      }
+      <button type="button" class="more-stats" (click)="moreStats.set(!moreStats())" [attr.aria-expanded]="moreStats()">{{ moreStats() ? 'Less' : 'More' }}</button>
+    </div>
+    <div class="kpi"><span class="chip green sm"><app-icon name="coins" [size]="15" /></span><span class="label">Interest after fees</span>
+      <span class="value" [class]="stats().interest | sign">{{ stats().interest | inr }}</span><span class="meta">{{ stats().fees | inr }} paid in platform fees</span></div>
+    <div class="kpi"><span class="chip violet sm"><app-icon name="chart" [size]="15" /></span><span class="label">Realised XIRR</span>
+      <span class="value" [class]="seg()?.xirr | sign">{{ seg()?.xirr | pct }}</span>
+      <span class="meta">@if (statedRate(); as r) { <span [title]="r.basis">vs {{ r.rate | pct: 1 : false }} stated</span> } @else { no stated rate recorded }@if (rateGap()) { · defaults and fees explain the gap }</span></div>
+    <div class="kpi extra" [class.show]="moreStats()"><span class="chip blue sm"><app-icon name="refresh" [size]="15" /></span><span class="label">Principal back</span>
+      <span class="value">{{ principalBack() | inr }}</span>
+      <span class="meta">@if (idlePrincipal(); as amt) { {{ amt | inr }} in 30 days, not reinvested } @else { {{ stats().lent ? (principalBack() / stats().lent * 100 | pct: 0 : false) : '—' }} of what you lent }</span></div>
   </section>
 
+  <!-- T1: P2P actions and repaid principal waiting for a plan (H19) -->
+  <app-needs-attention [prefixes]="attentionPrefixes" [ids]="attentionIds" [tiers]="attentionTiers" />
+
+  <!-- T2: where the lent money stands -->
   <section class="card">
-    <div class="card-head"><div><h2>Where your lending stands</h2><span class="hint">{{ stats().lent | inr }} lent across {{ loans().length }} loans · {{ stats().interest | inr }} interest earned after fees</span></div></div>
+    <div class="card-head"><div><h2>Where your lending stands</h2><span class="hint">{{ stats().lent | inr }} lent across {{ loans().length }} loans · {{ stats().interest | inr }} interest earned after fees</span>
+      <span class="hint explains">Explains: Outstanding · {{ statusMeta[risk().status].word }}</span></div></div>
     <div class="stack" role="img" aria-label="Lent money split into repaid, outstanding and at risk">
       @for (p of split(); track p.key) { @if (p.value > 0) { <i [style.width.%]="p.pct" [style.background]="p.color" [title]="p.label"></i> } }
     </div>
@@ -49,21 +105,22 @@
     }
   </section>
 
-  <section class="card flush">
+  <!-- T3: every loan, on the tab in ?tab= -->
+  <section class="card flush" aria-label="Loans">
     <div class="card-head" style="padding-bottom:0">
-      <div class="tabs" style="border:0">
-        @for (t of ['active', 'overdue', 'closed', 'defaulted', 'all']; track t) {
-          <button [class.on]="tab() === t" (click)="tab.set($any(t))">{{ t | titlecase }} <span class="muted">{{ $any(counts())[t] }}</span></button>
+      <div class="tabs" style="border:0" role="group" aria-label="Loan status">
+        @for (t of tabs; track t) {
+          <button type="button" [class.on]="tab() === t" [attr.aria-pressed]="tab() === t" (click)="setTab(t)">{{ t | titlecase }} <span class="muted">{{ counts()[t] }}</span></button>
         }
       </div>
-      <div class="row wrap">
+      <div class="row wrap loan-tools">
         @if (types().length > 1) {
           <div class="seg" role="group" aria-label="Lending type">
-            <button [class.on]="type() === 'all'" (click)="type.set('all')">All</button>
-            @for (t of types(); track t) { <button [class.on]="type() === t" (click)="type.set(t)">{{ t }}</button> }
+            <button type="button" [class.on]="type() === 'all'" [attr.aria-pressed]="type() === 'all'" (click)="type.set('all')">All</button>
+            @for (t of types(); track t) { <button type="button" [class.on]="type() === t" [attr.aria-pressed]="type() === t" (click)="type.set(t)">{{ t }}</button> }
           </div>
         }
-        <input class="input" style="max-width:220px;height:32px" placeholder="Search borrower, loan or order" [ngModel]="q()" (ngModelChange)="q.set($event)" />
+        <input class="input search" placeholder="Search borrower, loan or order" aria-label="Search loans" [ngModel]="q()" (ngModelChange)="q.set($event)" />
       </div>
     </div>
     <div class="table-wrap" style="max-height:560px">
@@ -122,10 +179,12 @@
     </div>
   </section>
   </details>
+  }
+  }
 </div>
 
 @if (importing()) {
-  <app-modal title="Import LenDenClub reports" [width]="980" (close)="importing.set(false)">
+  <app-modal title="Import LenDenClub reports" [width]="980" (close)="closeImport()">
     @if (!preview()) {
       <div class="form">
         <p class="text-2" style="margin:0">Download these from LenDenClub → Reports and upload one or several at once. The app works out which report each file is.</p>

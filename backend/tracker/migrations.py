@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import re
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from . import domain as d
 from .db import Database
@@ -474,10 +474,108 @@ def m003_markets(db: Database) -> list:
     return [(sql, None) for sql in MARKETS_SCHEMA]
 
 
+PLANNING_SCHEMA = [
+    # Recurring investment plans (SIPs): what you intend to invest, so forecasts and the cash-flow
+    # calendar know about money that has not been recorded yet, and missed instalments can be flagged
+    """CREATE TABLE IF NOT EXISTS sip_plans (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, owner TEXT NOT NULL,
+        instrument_id INTEGER REFERENCES instruments(id) ON DELETE SET NULL,
+        name TEXT NOT NULL, segment TEXT, amount REAL NOT NULL, frequency TEXT NOT NULL DEFAULT 'monthly',
+        day_of_month INTEGER NOT NULL DEFAULT 1, step_up_pct REAL, start_date TEXT, end_date TEXT,
+        active INTEGER NOT NULL DEFAULT 1, notes TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)""",
+    "CREATE INDEX IF NOT EXISTS idx_sip_owner ON sip_plans(owner, active)",
+]
+
+
+def m004_planning(db: Database) -> list:
+    return [(sql, None) for sql in PLANNING_SCHEMA]
+
+
+ACTIONS_SCHEMA = [
+    # The follow-through ledger for ranked actions. Written directly (INSERT OR IGNORE / upsert), never
+    # through Ledger._bump, so recording what the user did keeps every portfolio memo warm.
+    """CREATE TABLE IF NOT EXISTS action_log (
+        owner TEXT NOT NULL, id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'open',
+        first_seen TEXT, tier_first TEXT, category TEXT, title TEXT, impact REAL, impact_kind TEXT, due TEXT,
+        snooze_until TEXT, planned_for TEXT, done_at TEXT, done_via TEXT, evidence TEXT, reason TEXT, note TEXT,
+        seen_at TEXT, pushed_at TEXT, updated_at TEXT, PRIMARY KEY (owner, id))""",
+    # One KPI snapshot per owner and day, so "since you last looked" can compare against a fixed point
+    """CREATE TABLE IF NOT EXISTS kpi_snapshots (
+        owner TEXT NOT NULL, date TEXT NOT NULL, data TEXT NOT NULL, created_at TEXT,
+        PRIMARY KEY (owner, date))""",
+]
+
+# Insight ids that end in an instrument id. A snooze stored under '__global__' (admin or guest settings) for one
+# of these belongs to the instrument's owner, so the migrated row lands where the action will look for it.
+INSTRUMENT_ID_PREFIXES = ("concentration:", "loser:", "winner:", "fd:maturing:", "elss:unlocked:", "sip:gap:")
+_TAX_WAIT_RE = re.compile(r"^tax:wait-lt:(\d+):")
+
+
+def _instrument_id_of(insight_id: str) -> int | None:
+    m = _TAX_WAIT_RE.match(insight_id)
+    if m:
+        return int(m.group(1))
+    for prefix in INSTRUMENT_ID_PREFIXES:
+        if insight_id.startswith(prefix):
+            tail = insight_id[len(prefix):]
+            return int(tail) if tail.isdigit() else None
+    return None
+
+
+def dismissed_to_action_rows(settings_rows: list[dict], instrument_owner: dict[int, str]) -> list[tuple]:
+    """(owner, id, snooze_until) for each dismissedInsights entry. Global entries tied to an instrument move to
+    that instrument's owner; one whose instrument no longer exists is skipped. Malformed values are skipped."""
+    out = []
+    for r in settings_rows:
+        try:
+            entries = json.loads(r["value"]) if r["value"] else {}
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if not isinstance(entries, dict):
+            continue
+        for iid, until in entries.items():
+            if not isinstance(iid, str) or not iid or not until:
+                continue
+            owner = r["owner"]
+            if owner == "__global__":
+                inst_id = _instrument_id_of(iid)
+                if inst_id is not None:
+                    owner = instrument_owner.get(inst_id)
+                    if owner is None:
+                        continue
+            out.append((owner, iid, str(until)[:10]))
+    return out
+
+
+def m005_actions_snapshots(db: Database) -> list:
+    stmts = [(sql, None) for sql in ACTIONS_SCHEMA]
+    rows = db.query("SELECT owner, value FROM user_settings WHERE key = 'dismissedInsights'")
+    if not rows:
+        return stmts
+    owners = {int(r["id"]): r["owner"] for r in db.query("SELECT id, owner FROM instruments")}
+    ts, today = now_iso(), date.today().isoformat()
+    # The setting is left in place (read-only) so a rollback to the previous release still sees the snoozes
+    for owner, iid, until in dismissed_to_action_rows(rows, owners):
+        stmts.append(("INSERT OR IGNORE INTO action_log (owner, id, status, first_seen, snooze_until, updated_at) "
+                      "VALUES (?, ?, 'snoozed', ?, ?, ?)", (owner, iid, today, until, ts)))
+    return stmts
+
+
+def m006_sip_goal(db: Database) -> list:
+    """Link a SIP plan to the goal it funds (sip_plans.goal_id). Guarded by the live column list, so a database
+    that already has the column (re-run, or a hand-patched copy) gets no statement at all."""
+    if "goal_id" in db.columns("sip_plans"):
+        return []
+    return [("ALTER TABLE sip_plans ADD COLUMN goal_id INTEGER", None)]
+
+
 MIGRATIONS = [
     (1, "core_schema", m001_core_schema),
     (2, "legacy_import", m002_legacy_import),
     (3, "markets", m003_markets),
+    (4, "planning", m004_planning),
+    (5, "actions_snapshots", m005_actions_snapshots),
+    (6, "sip_goal", m006_sip_goal),
 ]
 
 

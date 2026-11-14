@@ -19,8 +19,8 @@ DEFAULT_ORIGINS = [
     "http://127.0.0.1:4200",
     "https://my-investment-tracker.netlify.app",
 ]
-# The market-scan job authenticates with its own token (X-Job-Token), not a user session
-PUBLIC_PATHS = {"/api/ping", "/api/auth/google-login", "/api/jobs/market-scan"}
+# The scheduled jobs (market scan, daily digest) authenticate with their own token (X-Job-Token), not a user session
+PUBLIC_PATHS = {"/api/ping", "/api/auth/google-login", "/api/jobs/market-scan", "/api/jobs/daily-digest"}
 
 
 def create_app(db: Database | None = None) -> Flask:
@@ -93,7 +93,7 @@ def create_app(db: Database | None = None) -> Flask:
         traceback.print_exc()
         return jsonify({"error": "Something went wrong on the server. Please try again."}), 500
 
-    from .api import analytics_api, auth_api, ledger_api, markets_api, reports_api
-    for bp in (auth_api.bp, ledger_api.bp, analytics_api.bp, reports_api.bp, markets_api.bp):
+    from .api import analytics_api, auth_api, forecast_api, ledger_api, markets_api, reports_api
+    for bp in (auth_api.bp, ledger_api.bp, analytics_api.bp, reports_api.bp, markets_api.bp, forecast_api.bp):
         app.register_blueprint(bp, url_prefix="/api")
     return app

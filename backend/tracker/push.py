@@ -50,6 +50,11 @@ def devices(db, owner: str) -> int:
     return db.one("SELECT COUNT(*) AS n FROM push_subscriptions WHERE owner = ?", (owner,))["n"]
 
 
+def owners(db) -> list[str]:
+    """Every distinct owner with at least one subscribed device, sorted (the daily digest's recipients, R10)."""
+    return sorted(r["owner"] for r in db.query("SELECT DISTINCT owner FROM push_subscriptions") if r["owner"])
+
+
 def message(payload: dict) -> dict:
     """{title, body, url, tag} in the shape Angular's service worker shows; a tap opens `url` in the app."""
     return {"notification": {"title": payload["title"], "body": payload.get("body") or "", "tag": payload.get("tag"),
