@@ -5,27 +5,27 @@
    "NIFTY500": 6.32,
    "SP500": 4.77
   },
-  "end_value": 704531.77,
-  "gain": 41937.68,
-  "max_drawdown": -3.44,
+  "end_value": 704814.06,
+  "gain": 36083.8,
+  "max_drawdown": -3.39,
   "net_flows": 5125.0,
-  "start_value": 657469.08,
-  "twr": 6.32,
-  "xirr": 6.34
+  "start_value": 663605.26,
+  "twr": 5.39,
+  "xirr": 5.41
  },
  "history_ALL": {
   "benchmarks": {
-   "GOLD": 10.6,
+   "GOLD": 10.61,
    "NIFTY500": 10.1,
-   "SP500": 11.49
+   "SP500": 11.5
   },
-  "end_value": 704531.77,
-  "gain": 105881.77,
-  "max_drawdown": -5.46,
-  "net_flows": 532650.0,
-  "start_value": 66000.0,
-  "twr": 33.28,
-  "xirr": 7.69
+  "end_value": 704814.06,
+  "gain": 102164.06,
+  "max_drawdown": -5.38,
+  "net_flows": 602650.0,
+  "start_value": 0.0,
+  "twr": 26.46,
+  "xirr": 7.36
  },
  "positions": {
   "Apple": {

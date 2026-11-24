@@ -33,6 +33,7 @@ from .ledger import Ledger
 
 PRICE_TTL_MIN = 15
 DEFAULT_SLAB = 0.30
+P2P_DEFAULT_RECOVERY = 0.0                    # % of a defaulted P2P loan counted (setting p2pDefaultRecovery)
 NIFTY = px.BENCHMARKS["NIFTY50"]["symbol"]  # ^NSEI
 NIFTY_KEY = f"quote:{NIFTY}"                 # system value: {price, prev_close, date}
 FAMILY_OWNER = "__family__"                  # kpi_snapshots owner for the family view (SPEC §7.4)
@@ -157,11 +158,28 @@ class Services:
         """(port, data), memoised on ('portfolio', scope, targetAllocation, today).
         RETURNED OBJECTS ARE SHARED AND READ-ONLY. Callers build new dicts (GET /portfolio sends a copy)."""
         targets = settings.get("targetAllocation") or {}
-        return self._memo("portfolio", scope, targets, date.today(), fn=lambda: self._portfolio(scope, targets))
+        rec = self.p2p_recovery(settings)
+        return self._memo("portfolio", scope, targets, rec, date.today(), fn=lambda: self._portfolio(scope, targets, rec))
 
-    def _portfolio(self, scope: str | None, targets: dict) -> tuple[dict, dict]:
+    @staticmethod
+    def p2p_recovery(settings: dict | None) -> float:
+        """% of a defaulted P2P loan's principal expected back (setting p2pDefaultRecovery). Default 0: a loan
+        the platform marks defaulted counts as nothing until money actually comes back."""
+        try:
+            v = (settings or {}).get("p2pDefaultRecovery")
+            return min(max(float(v), 0.0), 100.0) if v not in (None, "") else P2P_DEFAULT_RECOVERY
+        except (TypeError, ValueError):
+            return P2P_DEFAULT_RECOVERY
+
+    def _request_recovery(self) -> float:
+        try:
+            return self.p2p_recovery(self.settings())
+        except Exception:  # noqa: BLE001 — outside a request (jobs, tests) the default applies
+            return P2P_DEFAULT_RECOVERY
+
+    def _portfolio(self, scope: str | None, targets: dict, rec: float = 0.0) -> tuple[dict, dict]:
         data = self.ledger.load(scope)
-        port = compute_portfolio(data["instruments"], data["transactions"], self.usd_inr(), targets)
+        port = compute_portfolio(data["instruments"], data["transactions"], self.usd_inr(), targets, p2p_recovery=rec)
         port["contributions"] = self._contributions(data["cash_movements"])
         port["prices"] = self.prices_status()
         return port, data
@@ -215,9 +233,14 @@ class Services:
         return self.ledger._peek(self._key(*key))
 
     def performance(self, scope: str | None, rng: str = "ALL", segment: str | None = None) -> dict:
-        return self._memo("performance", scope, rng, segment, fn=lambda: self._performance(scope, rng, segment))
+        rec = self._request_recovery()
+        return self._memo("performance", scope, rng, segment, rec, fn=lambda: self._performance(scope, rng, segment, rec))
 
-    def _performance(self, scope: str | None, rng: str, segment: str | None) -> dict:
+    def peek_performance(self, scope: str | None, rng: str = "ALL") -> dict | None:
+        """The whole-portfolio history for `rng` if it is already built (never builds it)."""
+        return self._peek("performance", scope, rng, None, self._request_recovery())
+
+    def _performance(self, scope: str | None, rng: str, segment: str | None, rec: float = P2P_DEFAULT_RECOVERY) -> dict:
         data = self.ledger.load(scope)
         insts, txns = data["instruments"], data["transactions"]
         if segment:
@@ -238,7 +261,7 @@ class Services:
         hist = px.ensure_history(self.ledger.db, sorted(symbols | bench_syms | {px.USDINR}), start)
         bench_hist = {k: {**px.BENCHMARKS[k], "points": hist.get(px.BENCHMARKS[k]["symbol"], [])} for k in bench_keys}
         result = build_history(insts, txns, {s: hist.get(s, []) for s in symbols}, hist.get(px.USDINR, []), bench_hist,
-                               rng=rng)
+                               rng=rng, usd_inr=self.usd_inr(), p2p_recovery=rec)
         result["segment"] = segment
         return result
 
@@ -523,7 +546,7 @@ class Services:
         if build_history:
             metrics = self._perf_metrics(scope)
         else:
-            metrics = (self._peek("performance", scope, "ALL", None) or {}).get("metrics")
+            metrics = (self.peek_performance(scope) or {}).get("metrics")
         sips = self.ledger.sips(scope)
         ef = settings.get("emergencyFund") if isinstance(settings.get("emergencyFund"), dict) else None
 
@@ -737,11 +760,11 @@ class Services:
 
     def _perf_ready(self, scope: str | None) -> bool:
         """Whether the ALL-range performance /brief peeks (A16) is warm right now."""
-        return self._peek("performance", scope, "ALL", None) is not None
+        return self.peek_performance(scope) is not None
 
     def _peek_metrics(self, scope: str | None) -> dict | None:
         """The ALL-range history metrics when performance is already warm, else None (never builds history)."""
-        return (self._peek("performance", scope, "ALL", None) or {}).get("metrics")
+        return (self.peek_performance(scope) or {}).get("metrics")
 
     def _open_ids(self, scope: str | None, ctx: dict) -> list[str] | None:
         """H13: ids of the open or planned concentration:/sector: rows, for build_insights' hysteresis.
@@ -1015,7 +1038,7 @@ class Services:
         try/except (E7), and never for an empty ledger. Its projection_1y is computed only then (H12)."""
         owner = owner or self.owner()
         today = date.today()
-        perf = self._peek("performance", scope, "ALL", None)
+        perf = self.peek_performance(scope)
         res = self._memo("brief", scope, owner, settings, today, since, self.ledger.actions_rev, perf is not None,
                          self._hash(scope, settings),
                          fn=lambda: self._build_brief(scope, settings, since, owner, perf, today))
@@ -1360,7 +1383,7 @@ class Services:
         and the date join the memo key. RETURNED OBJECTS ARE SHARED AND READ-ONLY."""
         bk = self.book(scope, settings)
         mix_key = sorted((mix or {}).items()) or None
-        perf = self._peek("performance", scope, "ALL", None)
+        perf = self.peek_performance(scope)
         today = date.today()
 
         def build() -> dict:

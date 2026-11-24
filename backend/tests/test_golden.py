@@ -32,7 +32,7 @@ def numbers() -> dict:
     }
     for rng in ("ALL", "1Y"):
         insts, txns = book()
-        h = build_history(insts, txns, PRICE_HIST, FX_HIST, BENCH_HIST, today=TODAY, rng=rng)
+        h = build_history(insts, txns, PRICE_HIST, FX_HIST, BENCH_HIST, today=TODAY, rng=rng, usd_inr=USD_INR)
         m = h["metrics"]
         out[f"history_{rng}"] = {
             **{k: m[k] for k in ("start_value", "end_value", "net_flows", "gain", "twr", "xirr", "max_drawdown")},
@@ -53,3 +53,34 @@ def test_golden_numbers():
     with open(GOLDEN) as f:
         want = json.load(f)
     assert got == want
+
+
+def test_history_and_portfolio_agree_on_today_and_on_the_return():
+    """One number, one answer: the value history and the portfolio must give the same value today and the same
+    return since the start (they use the same valuation helpers and the same cash-flow rule)."""
+    from tracker.analytics.portfolio import compute_portfolio as cp
+    insts, txns = book()
+    port = cp(insts, txns, USD_INR, today=TODAY)
+    insts, txns = book()
+    h = build_history(insts, txns, PRICE_HIST, FX_HIST, BENCH_HIST, today=TODAY, rng="ALL", usd_inr=USD_INR)
+    assert h["metrics"]["end_value"] == pytest.approx(port["totals"]["value"], abs=0.05)
+    assert h["metrics"]["xirr"] == port["totals"]["xirr"]
+
+
+def test_contributors_add_up_since_the_start():
+    insts, txns = book()
+    h = build_history(insts, txns, PRICE_HIST, FX_HIST, BENCH_HIST, today=TODAY, rng="ALL", usd_inr=USD_INR)
+    # all but the USD wallet's currency move on its small balance
+    assert sum(c["gain"] for c in h["contributors"]) == pytest.approx(h["metrics"]["gain"], abs=600)
+
+
+def test_fd_payouts_are_not_counted_twice():
+    """A payout FD: its value never includes interest already paid out, so history and portfolio agree on it."""
+    from tracker.analytics.portfolio import compute_portfolio as cp
+    insts, txns = book()
+    port = cp(insts, txns, USD_INR, today=TODAY)
+    fd = next(p for p in port["positions"] if p["name"] == "HDFC payout FD")
+    insts, txns = book()
+    h = build_history(insts, txns, PRICE_HIST, FX_HIST, BENCH_HIST, today=TODAY, rng="ALL", usd_inr=USD_INR)
+    hist_fd = next(c for c in h["contributors"] if c["name"] == "HDFC payout FD")
+    assert hist_fd["end_value"] == pytest.approx(fd["value"], abs=0.05)

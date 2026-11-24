@@ -66,14 +66,20 @@ running record of what is built, so a new session can continue without re-derivi
 - Tests: `tests/demo_book.py` (sample book), `tests/test_golden.py` (frozen numbers; regenerate with
   `UPDATE_GOLDEN=1` only for intended changes), `tests/test_overview.py`.
 
-## Known calculation issues (Phase 5 will fix; golden file shows them)
+## Calculation fixes (phase 5)
 
-- Totals XIRR (7.36%) ≠ history ALL XIRR (7.69%) on the sample book: valuations differ between the two engines.
-- FD interest payouts double-counted in history; history keeps compounding past maturity.
-- P2P legacy repayments (no principal split) count as 0 principal in history; defaulted loans at full value.
-- Unpriced holdings (NPS) and EPF accrual jump onto the last day of history.
-- History `metrics.gain` on ALL uses the first day's closing value as the start, so a first-day loss on a buy
-  (bought above that day's close) is dropped; contributors (Returns tab) include it. Start from 0 + first-day flows.
+Done (golden numbers regenerated on purpose; history and portfolio now agree on value today and on XIRR):
+- FD: `portfolio.fd_value` shared by both engines; payouts no longer double-counted, no growth past maturity.
+- P2P: `portfolio.p2p_repaid` shared (legacy repayments estimated the same way); defaulted loans count at
+  `p2pDefaultRecovery` % (default 0, written down from the due date).
+- Unpriced holdings (NPS, missing history) move in a line from cost to today's price instead of jumping.
+- EPF history includes interest not yet credited.
+- History ALL: starts empty; the first day's money is a flow (first-day loss kept), so XIRR matches the totals.
+- Today in history uses the same last prices and USD/INR as the portfolio (`build_history(usd_inr=...)`).
+- `Services.peek_performance(scope)` reads the cached ALL history (key includes the recovery setting).
+
+Not changed (owner to decide): Kite imports still leave brokerage/STT/stamp duty out of cost (the tradebook has no
+charges); automatic cash rules unchanged but now shown on Activity › Rules with notes on the gaps.
 
 ## How to run checks
 

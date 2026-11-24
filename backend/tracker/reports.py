@@ -123,7 +123,7 @@ def r_summary(ctx: ReportContext) -> dict:
         for owner, insts in by_owner.items():
             ids = {i["id"] for i in insts}
             sub = compute_portfolio(insts, [t for t in data["transactions"] if t["instrument_id"] in ids],
-                                    port.get("usd_inr"))
+                                    port.get("usd_inr"), p2p_recovery=port.get("p2p_recovery"))
             t = sub["totals"]
             rows.append({"name": ctx.member(owner), "count": t["open_positions"], "cost": t["cost"], "value": t["value"],
                          "day_change": t["day_change"], "unrealized": t["unrealized"], "unrealized_pct": t["unrealized_pct"],

@@ -137,7 +137,7 @@ def latest_fx_from_txns(txns: list[dict]) -> float | None:
 
 
 def compute_portfolio(instruments: list[dict], txns: list[dict], usd_inr: float | None,
-                      targets: dict | None = None, today: date | None = None) -> dict:
+                      targets: dict | None = None, today: date | None = None, p2p_recovery: float | None = None) -> dict:
     today = today or date.today()
     today_s = today.isoformat()
     by_inst: dict[int, list[dict]] = defaultdict(list)
@@ -163,7 +163,7 @@ def compute_portfolio(instruments: list[dict], txns: list[dict], usd_inr: float 
                         fc = _f(t["amount_fc"]) or (_f(t["amount"]) / fx if fx else 0.0)
                         us_fc_by_owner[inst["owner"]] += fc if t["type"] == d.BUY else -fc
         elif ac == d.P2P:
-            pos = _p2p_position(inst, ts, today)
+            pos = _p2p_position(inst, ts, today, p2p_recovery)
         elif ac == d.FIXED_DEPOSIT:
             pos = _fd_position(inst, ts, today)
         elif ac == d.EPF:
@@ -187,6 +187,7 @@ def compute_portfolio(instruments: list[dict], txns: list[dict], usd_inr: float 
     return {
         "as_of": today_s,
         "usd_inr": round(fx, 4) if fx else None,
+        "p2p_recovery": p2p_recovery,
         "totals": totals,
         "segments": segments,
         "positions": positions,
@@ -265,13 +266,16 @@ def _tradable_position(inst: dict, ts: list[dict], fx: float, today: date) -> tu
     return pos, realized
 
 
-def _p2p_position(inst: dict, ts: list[dict], today: date) -> dict:
-    lent = sum(_f(t["amount"]) for t in ts if t["type"] == d.BUY)
+def p2p_repaid(inst: dict, ts: list[dict], until: str | None = None) -> dict:
+    """Lent, principal back, interest and fees of one P2P loan up to `until` (ISO date, inclusive). A repayment
+    saved without a principal split is taken as an equal-instalment share of the loan. The portfolio and the
+    value history both use this, so they agree."""
+    lent = sum(_f(t["amount"]) for t in ts if t["type"] == d.BUY and (until is None or str(t["date"])[:10] <= until))
     tenure = _f(inst.get("tenure_months"))
     principal_back = interest = fees = 0.0
     last_repayment = None
     for t in ts:
-        if t["type"] != d.REPAYMENT:
+        if t["type"] != d.REPAYMENT or (until is not None and str(t["date"])[:10] > until):
             continue
         amt = _f(t["amount"])
         if t.get("principal") is not None:
@@ -284,10 +288,26 @@ def _p2p_position(inst: dict, ts: list[dict], today: date) -> dict:
         fees += _f(t.get("fees"))
         last_repayment = t["date"]
     principal_back = min(principal_back, lent)
-    outstanding = max(lent - principal_back, 0.0)
+    return {"lent": lent, "principal_back": principal_back, "outstanding": max(lent - principal_back, 0.0),
+            "interest": interest, "fees": fees, "last_repayment": last_repayment}
+
+
+def p2p_write_down_from(inst: dict, today: date) -> date:
+    """A defaulted loan is written down from its due date (or today if it isn't due yet)."""
+    mat = inst.get("maturity_date")
+    return min(to_date(mat), today) if mat else today
+
+
+def _p2p_position(inst: dict, ts: list[dict], today: date, recovery: float | None = None) -> dict:
+    r = p2p_repaid(inst, ts)
+    lent, principal_back, outstanding = r["lent"], r["principal_back"], r["outstanding"]
+    interest, fees, last_repayment = r["interest"], r["fees"], r["last_repayment"]
     status = (inst.get("status") or "active").lower()
     loss = outstanding if status == "closed" else 0.0
     value = 0.0 if status == "closed" else outstanding
+    # a defaulted loan counts at the share expected back (setting p2pDefaultRecovery, default 0%)
+    written_down = outstanding * (1 - (100.0 if recovery is None else recovery) / 100) if status == "defaulted" else 0.0
+    value -= written_down
     mat = inst.get("maturity_date")
     overdue_days = (today - to_date(mat)).days if mat and status == "active" and outstanding > 1 else 0
 
@@ -299,8 +319,9 @@ def _p2p_position(inst: dict, ts: list[dict], today: date) -> dict:
         "quantity": None, "cost": r2(outstanding if status != "closed" else 0.0), "value": r2(value),
         "invested": r2(lent), "principal_repaid": r2(principal_back), "outstanding": r2(outstanding),
         "interest": r2(interest), "fees": r2(fees), "income": r2(interest), "realized": r2(-loss),
-        "principal_loss": r2(loss), "unrealized": 0.0, "unrealized_pct": None, "has_price": False,
-        "total_return": r2(interest - loss), "xirr": _pct(xirr(flows)), "day_change": 0.0,
+        "principal_loss": r2(loss), "unrealized": r2(-written_down), "unrealized_pct": None, "has_price": False,
+        "written_down": r2(written_down),
+        "total_return": r2(interest - loss - written_down), "xirr": _pct(xirr(flows)), "day_change": 0.0,
         "first_date": ts[0]["date"] if ts else None, "last_date": ts[-1]["date"] if ts else None,
         "last_repayment": last_repayment, "overdue_days": max(overdue_days, 0),
         "at_risk": r2(outstanding) if status == "defaulted" else 0.0,
@@ -315,6 +336,25 @@ def fd_accrued(principal: float, rate_pct: float, start: date, end: date) -> flo
     return principal * (1 + rate_pct / 400.0) ** (4 * years)
 
 
+def fd_value(inst: dict, ts: list[dict], on: date) -> dict:
+    """An FD's value at the end of `on`: deposits compounded quarterly from the first deposit up to the maturity
+    date (never past it), less interest already paid out; zero once a maturity entry exists. Shared by the
+    portfolio and the value history."""
+    iso = on.isoformat()
+    upto = [t for t in ts if str(t["date"])[:10] <= iso]
+    principal = sum(_f(t["amount"]) for t in upto if t["type"] == d.BUY)
+    payouts = sum(_f(t["amount"]) for t in upto if t["type"] == d.INTEREST)
+    matured = [t for t in upto if t["type"] == d.MATURITY]
+    rate = _f(inst.get("rate"))
+    mat = to_date(inst["maturity_date"]) if inst.get("maturity_date") else None
+    if matured or not principal:
+        return {"principal": principal, "payouts": payouts, "accrued": 0.0, "value": 0.0, "matured": bool(matured)}
+    start = to_date(ts[0]["date"])
+    end = min(on, mat) if mat else on
+    accrued = max(fd_accrued(principal, rate, start, end) - principal - payouts, 0.0) if rate else 0.0
+    return {"principal": principal, "payouts": payouts, "accrued": accrued, "value": principal + accrued, "matured": False}
+
+
 def _fd_position(inst: dict, ts: list[dict], today: date) -> dict:
     principal = sum(_f(t["amount"]) for t in ts if t["type"] == d.BUY)
     payouts = sum(_f(t["amount"]) for t in ts if t["type"] == d.INTEREST)
@@ -326,9 +366,8 @@ def _fd_position(inst: dict, ts: list[dict], today: date) -> dict:
         received = sum(_f(t["amount"]) for t in matured)
         value, accrued, realized = 0.0, 0.0, received - principal
     else:
-        end = min(today, mat) if mat else today
-        accrued = max(fd_accrued(principal, rate, start, end) - principal - payouts, 0.0) if rate else 0.0
-        value, realized = principal + accrued, 0.0
+        fv = fd_value(inst, ts, today)
+        accrued, value, realized = fv["accrued"], fv["value"], 0.0
     flows = [(to_date(t["date"]), -_f(t["amount"]) if t["type"] == d.BUY else _f(t["amount"])) for t in ts]
     if value > EPS:
         flows.append((today, value))
