@@ -63,7 +63,7 @@ export const routes: Routes = [
       // redesign: the four main pages (Portfolio, Analysis and Activity arrive in later phases)
       { path: 'portfolio', data: { title: 'Portfolio', shellTitle: true }, loadComponent: () => import('./features/portfolio/portfolio.component').then(m => m.PortfolioComponent) },
       { path: 'analysis', data: { title: 'Analysis', shellTitle: true }, loadComponent: () => import('./features/analysis/analysis.component').then(m => m.AnalysisComponent) },
-      { path: 'activity', pathMatch: 'full', redirectTo: () => tree('/transactions') },
+      { path: 'activity', data: { title: 'Activity', shellTitle: true }, loadComponent: () => import('./features/activity/activity.component').then(m => m.ActivityComponent) },
       { path: 'classic', data: { title: 'Classic home' }, loadComponent: () => import('./features/overview/overview.component').then(m => m.OverviewComponent) },
       { path: 'actions', data: { title: 'Actions' }, loadComponent: () => import('./features/actions/actions.component').then(m => m.ActionsComponent) },
       // Plan follows `?tab=` itself (the router reuses it on a query-only navigation)

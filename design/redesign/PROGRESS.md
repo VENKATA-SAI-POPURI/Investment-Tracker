@@ -27,7 +27,7 @@ running record of what is built, so a new session can continue without re-derivi
 | 1 | New design tokens + font, new shell (sidebar / floating tab bar), Home | done |
 | 2 | Portfolio (grouped list), holding bottom sheet, Add sheet | done |
 | 3 | Analysis: Mix (+rebalance), Returns (+contributors), vs Market, Improve | done |
-| 4 | Activity: Entries, Entry flow (trace), Checks, Rules | pending |
+| 4 | Activity: Entries, Entry flow (trace), Checks, Rules | done |
 | 5 | Calculation fixes (FD payouts, P2P split/defaults, unpriced/EPF history, one XIRR) + speed | pending |
 
 ## Frontend map (new)
@@ -44,6 +44,7 @@ running record of what is built, so a new session can continue without re-derivi
   phone, right panel on desktop. `core/holding-view.ts` describes each kind of holding in one line.
 - `features/analysis/analysis.component.ts`: `/analysis?tab=mix|returns|market|improve`. Mix edits `groupTargets`,
   `riskProfile` and `retirementPlan.current_age`; rebalance uses GET /overview/rebalance.
+- `features/activity/activity.component.ts`: `/activity?tab=entries|flow|checks|rules&txn=&instrument=`.
 - `shared/v2/add-sheet.component.ts`: the + sheet (pick a kind, then the existing transaction form opens on it).
 - Approved mockups: `design/redesign/mockups/*.png`.
 - Screens are checked with `backend/scripts/demo_seed.py` (fictional data, offline) + Playwright screenshots.
@@ -57,6 +58,9 @@ running record of what is built, so a new session can continue without re-derivi
 - `tracker/services.py`: `bench_history`, `overview`, `group_rebalance`.
 - `tracker/analytics/history.py`: `inst_value()` per holding; series rows carry `groups`; result has `contributors`.
 - `overview.market.series`: the same-money-in-the-market value at each month end.
+- `tracker/analytics/trace.py`: `trace_txn` (steps, each naming its code) and `data_checks`; `Ledger.cash_rules()` runs
+  `_auto_cash` on samples so the Rules table always matches the code. API: `/api/trace/txn/<id>`, `/api/checks`, `/api/rules`.
+- `RealizedLot.sell_txn_id` links a realized lot to its sale.
 - `tracker/api/overview_api.py`: `GET /api/overview`, `GET /api/overview/rebalance?new_money=&allow_sell=1&targets=mine|suggested`.
 - Settings keys added: `groupTargets`, `advancedFeatures`, `p2pDefaultRecovery`.
 - Tests: `tests/demo_book.py` (sample book), `tests/test_golden.py` (frozen numbers; regenerate with

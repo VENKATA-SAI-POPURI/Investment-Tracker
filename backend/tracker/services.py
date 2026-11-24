@@ -19,6 +19,7 @@ from .analytics import forecast, optimizer, plans, quant
 from .analytics import calibration as calibration_mod
 from .analytics import goals as goals_mod
 from .analytics import overview as overview_mod
+from .analytics import trace as trace_mod
 from .analytics import scenarios as scen_mod
 from .analytics import tax as tax_mod
 from .analytics.calendar import build_calendar
@@ -285,6 +286,23 @@ class Services:
         res = overview_mod.rebalance(view["groups"], targets, new_money, allow_sell, plan_sales=plan)
         res["target_set"] = "mine" if targets is t["mine"] else "suggested"
         return res
+
+    # ── Activity: how an entry flows, data checks, the cash rules ──
+    def trace(self, scope: str | None, settings: dict, tid: int) -> dict:
+        t = self.ledger.transaction(tid, scope)
+        ctx = self.context(scope, settings)
+        port, data = ctx["port"], ctx["data"]
+        inst = next(i for i in data["instruments"] if i["id"] == t["instrument_id"])
+        inst_txns = [x for x in data["transactions"] if x["instrument_id"] == inst["id"]]
+        linked = [c for c in data["cash_movements"] if c.get("transaction_id") == tid]
+        rule = next((r for r in self.ledger.cash_rules() if r["asset_class"] == inst["asset_class"] and r["type"] == t["type"]), None)
+        out = trace_mod.trace_txn(t, inst, inst_txns, port, linked, rule, self.ledger._auto_enabled(inst["owner"]), date.today())
+        out["rule"] = rule
+        return out
+
+    def checks(self, scope: str | None, settings: dict) -> list[dict]:
+        ctx = self.context(scope, settings)
+        return trace_mod.data_checks(ctx["port"], ctx["data"]["transactions"], ctx["data"]["instruments"], settings, date.today())
 
     def tax(self, scope: str | None, settings: dict, fy: str | None = None) -> dict:
         """Tax for `fy` (default: the current FY, which is the context's computation) plus the list of years."""

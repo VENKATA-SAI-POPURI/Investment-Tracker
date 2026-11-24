@@ -60,6 +60,7 @@ class RealizedLot:
     cost_fc: float
     proceeds_fc: float
     intraday: bool
+    sell_txn_id: int = 0
 
     @property
     def gain(self) -> float:
@@ -113,7 +114,7 @@ def run_fifo(instrument_id: int, txns: list[dict]) -> tuple[list[Lot], list[Real
                 frac_sell = take / sell_qty
                 realized.append(RealizedLot(instrument_id, lot.date, sdate, take, lot.cost * frac_lot,
                                             proceeds * frac_sell, lot.cost_fc * frac_lot, proceeds_fc * frac_sell,
-                                            intraday=lot.date == sdate))
+                                            intraday=lot.date == sdate, sell_txn_id=t.get("id") or 0))
                 lot.cost -= lot.cost * frac_lot
                 lot.cost_fc -= lot.cost_fc * frac_lot
                 lot.qty -= take
@@ -123,7 +124,7 @@ def run_fifo(instrument_id: int, txns: list[dict]) -> tuple[list[Lot], list[Real
                 unmatched += remaining
                 frac = remaining / sell_qty
                 realized.append(RealizedLot(instrument_id, sdate, sdate, remaining, 0.0, proceeds * frac, 0.0,
-                                            proceeds_fc * frac, intraday=False))
+                                            proceeds_fc * frac, intraday=False, sell_txn_id=t.get("id") or 0))
     return lots, realized, unmatched
 
 

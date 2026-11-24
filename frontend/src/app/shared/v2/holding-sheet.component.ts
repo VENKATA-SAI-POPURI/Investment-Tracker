@@ -126,7 +126,8 @@ export class HoldingSheetComponent {
   init = computed(() => initials(this.pos()?.name ?? '?'));
   line = computed(() => holdingLine(this.pos()!));
   unitised = computed(() => ['equity', 'mutual_fund', 'commodity', 'nps'].includes(this.pos()?.asset_class ?? ''));
-  ltDays = computed(() => this.pos()?.tax_class === 'equity' ? 365 : 730);
+  /** Days to long-term, as analytics/tax.py rule_for has it today: equity and listed ETFs 1 year, foreign 2 years. */
+  ltDays = computed(() => ({ equity: 365, listed_other: 365, foreign_equity: 730 } as Record<string, number>)[this.pos()?.tax_class ?? ''] ?? 100000);
   tabs = computed(() => [
     { key: 'overview' as Tab, label: 'Overview' },
     ...(this.unitised() ? [{ key: 'lots' as Tab, label: 'Lots' }] : []),
@@ -175,7 +176,7 @@ export class HoldingSheetComponent {
 
   note = computed<{ text: string; tone: 'good' | 'warn' } | null>(() => {
     const p = this.pos()!;
-    if (this.unitised() && p.open_lots?.length && p.asset_class !== 'nps') {
+    if (this.unitised() && p.open_lots?.length && p.asset_class !== 'nps' && this.ltDays() < 100000) {
       const lt = p.open_lots.filter(l => l.age_days >= this.ltDays());
       if (lt.length === p.open_lots.length) return { text: `All ${qty(p.quantity)} ${p.asset_class === 'equity' ? 'shares' : 'units'} are long-term (lower tax)`, tone: 'good' };
       const next = p.open_lots.filter(l => l.age_days < this.ltDays()).sort((a, b) => b.age_days - a.age_days)[0];

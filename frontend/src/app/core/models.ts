@@ -1142,3 +1142,18 @@ export interface GroupRebalance {
   rows: GroupRebalanceRow[]; total: number; new_money: number; allow_sell: boolean; sells_total: number;
   tax_total: number | null; tax_note: string | null; not_sold: number; shortfall: number; target_set: 'mine' | 'suggested';
 }
+
+/* ── Redesign: Activity (entry flow, checks, cash rules) ── */
+export interface TraceStep { key: string; title: string; text: string; tone: 'brand' | 'warn' | 'good' | 'bad' | 'info'; icon: string;
+  formula: string | null; code: string | null; items: string[]; }
+export interface CashRuleEntry { account: string; direction: 'in' | 'out'; category: string | null; kind: string; note: string; }
+export interface CashRule { id: string; asset_class: AssetClass; type: TxnType; entries: CashRuleEntry[]; import_entries: CashRuleEntry[] | null; note: string | null; }
+export interface Trace {
+  txn: { id: number; date: string; type: TxnType; type_label: string; quantity: number | null; amount: number; amount_fc: number | null;
+    principal: number | null; source: string; notes: string | null };
+  instrument: { id: number; name: string; asset_class: AssetClass; group: string };
+  steps: TraceStep[];
+  rule: CashRule | null;
+}
+export interface DataCheck { id: string; severity: 'bad' | 'warn' | 'info'; title: string; detail: string; count: number; fix: string; link: string | null;
+  items: { instrument_id: number; name: string; detail: string; txn_id?: number }[]; }
