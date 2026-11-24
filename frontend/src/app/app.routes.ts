@@ -61,7 +61,7 @@ export const routes: Routes = [
       // `data.title` names the page in the browser tab (the shell sets document.title; pages own their h1, A22)
       { path: '', data: { title: 'Home' }, loadComponent: () => import('./features/home/home.component').then(m => m.HomeComponent) },
       // redesign: the four main pages (Portfolio, Analysis and Activity arrive in later phases)
-      { path: 'portfolio', pathMatch: 'full', redirectTo: () => tree(PORTFOLIO_HOLDINGS_HOME) },
+      { path: 'portfolio', data: { title: 'Portfolio', shellTitle: true }, loadComponent: () => import('./features/portfolio/portfolio.component').then(m => m.PortfolioComponent) },
       { path: 'analysis', pathMatch: 'full', redirectTo: () => tree('/performance') },
       { path: 'activity', pathMatch: 'full', redirectTo: () => tree('/transactions') },
       { path: 'classic', data: { title: 'Classic home' }, loadComponent: () => import('./features/overview/overview.component').then(m => m.OverviewComponent) },

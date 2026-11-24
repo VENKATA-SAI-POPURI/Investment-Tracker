@@ -5,8 +5,8 @@ import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { ago, money, monthTicks, pctV } from '../../core/format';
 import { GROUP_HEX, groupMeta } from '../../core/groups';
-import { GroupRow, Overview, Performance, Suggestion } from '../../core/models';
-import { readSnapshot, snapshotKey, writeSnapshot } from '../../core/snapshot';
+import { GroupRow, Performance, Suggestion } from '../../core/models';
+import { OverviewService } from '../../core/overview.service';
 import { StoreService } from '../../core/store.service';
 import { TxnDialogService } from '../../core/txn-dialog.service';
 import { IconComponent } from '../../shared/icon.component';
@@ -169,7 +169,7 @@ export class HomeComponent {
   ranges: Range[] = ['6M', '1Y', 'ALL'];
 
   range = signal<Range>('1Y');
-  ov = signal<Overview | null>(null);
+  ov = inject(OverviewService).data;
   perf = signal<Performance | null>(null);
 
   empty = computed(() => {
@@ -189,29 +189,11 @@ export class HomeComponent {
   heroSpark = computed(() => this.growth().value.slice(-60));
 
   constructor() {
-    // load (and reload after any write or a family switch)
-    effect(() => {
-      this.store.version();
-      const scope = this.store.scopeKey();
-      untracked(() => {
-        const snap = readSnapshot<Overview>(snapshotKey('overview', scope));
-        if (snap && !this.ov()) this.ov.set(snap);
-        void this.loadOverview(scope);
-      });
-    });
     effect(() => {
       const r = this.range();
       this.store.version();
       untracked(() => void this.loadPerf(r));
     });
-  }
-
-  private async loadOverview(scope: string) {
-    try {
-      const o = await firstValueFrom(this.api.overview());
-      this.ov.set(o);
-      writeSnapshot(snapshotKey('overview', scope), o);
-    } catch { /* the snapshot (if any) stays on screen */ }
   }
 
   private async loadPerf(r: Range) {

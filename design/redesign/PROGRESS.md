@@ -25,7 +25,7 @@ running record of what is built, so a new session can continue without re-derivi
 |---|---|---|
 | 0 | Group model, overview engine + API, settings keys, golden-number tests, this file | done |
 | 1 | New design tokens + font, new shell (sidebar / floating tab bar), Home | done |
-| 2 | Portfolio (grouped list), holding bottom sheet, Add sheet | pending |
+| 2 | Portfolio (grouped list), holding bottom sheet, Add sheet | done |
 | 3 | Analysis: Mix (+rebalance), Returns (+contributors), vs Market, Improve | pending |
 | 4 | Activity: Entries, Entry flow (trace), Checks, Rules | pending |
 | 5 | Calculation fixes (FD payouts, P2P split/defaults, unpriced/EPF history, one XIRR) + speed | pending |
@@ -38,6 +38,11 @@ running record of what is built, so a new session can continue without re-derivi
 - `layout/shell.*`: sidebar (desktop), floating tab bar (phone), family switcher, bell, menu (Tax, Reports, Settings,
   classic tools when `advancedFeatures`). Route `data.shellTitle: true` makes the shell show the page title.
 - `features/home/home.component.ts`: Home. The old Home lives at `/classic`.
+- `core/overview.service.ts`: one shared copy of GET /overview (Home, Portfolio, Analysis).
+- `features/portfolio/portfolio.component.ts`: `/portfolio?group=&holding=`; Equity card joins India + Global.
+- `shared/v2/holding-sheet.component.ts`: one holding (Overview, Lots, Entries, Calculation); bottom sheet on the
+  phone, right panel on desktop. `core/holding-view.ts` describes each kind of holding in one line.
+- `shared/v2/add-sheet.component.ts`: the + sheet (pick a kind, then the existing transaction form opens on it).
 - Approved mockups: `design/redesign/mockups/*.png`.
 - Screens are checked with `backend/scripts/demo_seed.py` (fictional data, offline) + Playwright screenshots.
 

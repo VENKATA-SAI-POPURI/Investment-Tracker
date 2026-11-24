@@ -344,7 +344,7 @@ def suggestions(view: dict, port: dict, tax: dict | None, today: date, slab: flo
         out.append({"id": "p2p:overdue", "rank": 1, "tone": "warn", "icon": "alert",
                     "title": f"{len(overdue)} P2P loan{'s' if len(overdue) > 1 else ''} overdue",
                     "detail": "More than 30 days late. Follow up, or mark as defaulted.",
-                    "impact": f"{_money(amt)} at risk", "value": amt, "cta": "View", "link": "/portfolio/p2p"})
+                    "impact": f"{_money(amt)} at risk", "value": amt, "cta": "View", "link": "/portfolio?group=p2p"})
     for p in sorted((p for p in pos if p["asset_class"] == d.FIXED_DEPOSIT and p.get("days_to_maturity") is not None
                      and 0 <= p["days_to_maturity"] <= 45), key=lambda p: p["days_to_maturity"]):
         mv = _f(p.get("maturity_value")) or _f(p["value"])

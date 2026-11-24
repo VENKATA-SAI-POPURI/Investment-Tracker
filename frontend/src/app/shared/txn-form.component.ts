@@ -212,6 +212,7 @@ export class TxnFormComponent implements OnInit {
       if (p) { this.f.instrument_id = p.id; this.f.name = p.name; this.f.market = p.market || 'India'; }
     }
     if (s.type) this.f.type = s.type;
+    if (s.market && !s.instrumentId) this.f.market = s.market;
     if (s.kind === 'dividend') this.f.type = 'DIVIDEND';
     if (s.kind === 'corporate_action' && !s.type) this.f.type = 'BONUS';
     if (s.kind === 'epf' && !this.f.instrument_id) this.prefillEpf();

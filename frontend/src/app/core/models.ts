@@ -190,6 +190,8 @@ export interface Position {
   name: string;
   asset_class: AssetClass;
   segment: string;
+  /** Redesign group (backend domain.group_of). */
+  group?: string;
   market: string | null;
   currency: string;
   sector: string | null;

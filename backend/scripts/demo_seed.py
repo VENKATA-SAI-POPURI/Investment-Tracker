@@ -68,8 +68,8 @@ def main(db_path: str):
             raise SystemExit(f"{url} {r.status_code} {r.json}")
         return r.json
 
-    def buy(name, ac, day, qty, amount, **inst):
-        return post("transactions", {"type": "BUY", "date": day, "quantity": qty, "amount": amount,
+    def buy(name, ac, day, qty, amount, amount_fc=None, **inst):
+        return post("transactions", {"type": "BUY", "date": day, "quantity": qty, "amount": amount, "amount_fc": amount_fc,
                                      "instrument": {"asset_class": ac, "name": name, **inst}})
 
     ids = {}

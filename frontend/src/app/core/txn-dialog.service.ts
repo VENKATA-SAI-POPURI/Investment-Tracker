@@ -11,6 +11,8 @@ export interface TxnDialogState {
   assetClass?: AssetClass;
   txn?: Transaction;
   type?: string;
+  /** Stock market to start the form on ('India' or 'USA'). */
+  market?: string;
   /** Prefills for an add (e.g. a SIP instalment from an action); the user still confirms them. */
   amount?: number | null;
   quantity?: number | null;
@@ -35,7 +37,12 @@ export class TxnDialogService {
   readonly state = signal<TxnDialogState | null>(null);
   readonly fdMature = signal<FdMatureState | null>(null);
   readonly whatIf = signal<WhatIfState | null>(null);
-  add(kind?: AddKind, extra: Partial<TxnDialogState> = {}) { this.state.set({ mode: 'add', kind, ...extra }); }
+  /** The redesign's "what would you like to add?" sheet. */
+  readonly picker = signal(false);
+  add(kind?: AddKind, extra: Partial<TxnDialogState> = {}) { this.picker.set(false); this.state.set({ mode: 'add', kind, ...extra }); }
+  /** Opens the Add sheet (pick what to add first). */
+  openPicker() { this.picker.set(true); }
+  closePicker() { this.picker.set(false); }
   edit(txn: Transaction) { this.state.set({ mode: 'edit', txn }); }
   close() { this.state.set(null); }
   openFdMature(instrumentId: number, actionId?: string) { this.fdMature.set({ instrumentId, actionId }); }

@@ -21,6 +21,7 @@ import { linkUnder } from '../shared/priority/priority';
 import { STATUS_META, statusFromSeverity, vitalOf, worstStatus } from '../shared/priority/priority';
 import { TxnFormComponent } from '../shared/txn-form.component';
 import { WhatIfSaleComponent } from '../shared/what-if-sale.component';
+import { AddSheetComponent } from '../shared/v2/add-sheet.component';
 
 /* ── The Data vital, mirrored on the client (AMENDMENTS E20; brief.py `_freshness` and `_data_vital`) ── */
 
@@ -165,7 +166,7 @@ export const CLASSIC: ShellNav[] = [
 @Component({
   selector: 'app-shell',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, IconComponent, TxnFormComponent, FdMatureDialogComponent, WhatIfSaleComponent],
+  imports: [RouterOutlet, RouterLink, IconComponent, TxnFormComponent, FdMatureDialogComponent, WhatIfSaleComponent, AddSheetComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './shell.component.html',
   styleUrl: './shell.component.scss',

@@ -132,7 +132,7 @@
       </div>
 
       @if (auth.canWrite()) {
-        <button class="v-btn primary sm add-desk" (click)="dialog.add()"><app-icon name="plus" [size]="16" [stroke]="2.4" /> Add entry</button>
+        <button class="v-btn primary sm add-desk" (click)="dialog.openPicker()"><app-icon name="plus" [size]="16" [stroke]="2.4" /> Add entry</button>
       }
 
       <!-- Account and More (on the phone this is where Tax, Reports and Settings live) -->
@@ -182,13 +182,14 @@
     <a [routerLink]="it.path" [class.on]="isOn(it)" [attr.aria-current]="isOn(it) ? 'page' : null"><app-icon [name]="it.icon" [size]="22" [stroke]="isOn(it) ? 2.3 : 1.9" />{{ it.label }}</a>
   }
   @if (auth.canWrite()) {
-    <button class="fab" (click)="dialog.add()" aria-label="Add an entry"><app-icon name="plus" [size]="26" [stroke]="2.4" /></button>
+    <button class="fab" (click)="dialog.openPicker()" aria-label="Add an entry"><app-icon name="plus" [size]="26" [stroke]="2.4" /></button>
   } @else { <span></span> }
   @for (it of primary.slice(2); track it.path) {
     <a [routerLink]="it.path" [class.on]="isOn(it)" [attr.aria-current]="isOn(it) ? 'page' : null"><app-icon [name]="it.icon" [size]="22" [stroke]="isOn(it) ? 2.3 : 1.9" />{{ it.label }}</a>
   }
 </nav>
 
+@if (dialog.picker()) { <v-add-sheet /> }
 @if (dialog.state(); as s) {
   <app-txn-form [state]="s" (saved)="txnSaved(s, $event)" (done)="dialog.close()" />
 }
