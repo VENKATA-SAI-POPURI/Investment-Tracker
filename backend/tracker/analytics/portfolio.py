@@ -196,7 +196,7 @@ def compute_portfolio(instruments: list[dict], txns: list[dict], usd_inr: float 
 def _base(inst: dict) -> dict:
     return {
         "id": inst["id"], "owner": inst["owner"], "name": inst["name"], "asset_class": inst["asset_class"],
-        "segment": d.segment_of(inst), "market": inst.get("market"), "currency": inst.get("currency") or "INR",
+        "segment": d.segment_of(inst), "group": d.group_of(inst), "market": inst.get("market"), "currency": inst.get("currency") or "INR",
         "sector": inst.get("sector"), "market_cap": inst.get("market_cap"), "category": inst.get("category"),
         "sub_category": inst.get("sub_category"), "tax_class": inst.get("tax_class"), "symbol": inst.get("symbol"),
         "price_source": inst.get("price_source"), "platform": inst.get("platform"), "status": inst.get("status"),
@@ -443,9 +443,27 @@ def position_flows(pos: dict, ts: list[dict], today: date) -> list[tuple[date, f
     return flows
 
 
+def wallet_owners(positions: list[dict]) -> set[str]:
+    """Owners with a USD broker wallet: their US stock trades are internal to that account."""
+    return {p["owner"] for p in positions if p["asset_class"] == d.CASH}
+
+
+def external_flows(p: dict, ts: list[dict], owners_with_wallet: set[str], today: date) -> list[tuple[date, float]]:
+    """The cash that crossed the portfolio's edge for one position (negative = money put in). One rule for
+    segments, groups and benchmarks, so every return is measured on the same flows."""
+    if p["asset_class"] == d.CASH:
+        # bank <-> USD wallet transfers are the external flows of the US account
+        return [(to_date(t["date"]), -_f(t["amount"]) if t["type"] == d.FX_IN else _f(t["amount"]))
+                for t in ts if t["type"] in (d.FX_IN, d.FX_OUT)]
+    if p["segment"] == d.SEG_EQ_US and p["owner"] in owners_with_wallet:
+        # stock buys/sells are internal to the US account; dividends still leave it
+        return [(to_date(t["date"]), _f(t["amount"])) for t in ts if t["type"] in (d.DIVIDEND, d.INTEREST)]
+    return position_flows(p, ts, today)
+
+
 def _segments(positions: list[dict], by_inst: dict, instruments: list[dict], today: date, targets: dict) -> list[dict]:
     inst_map = {i["id"]: i for i in instruments}
-    owners_with_wallet = {p["owner"] for p in positions if p["asset_class"] == d.CASH}
+    owners_with_wallet = wallet_owners(positions)
     seg: dict[str, dict] = {}
     for p in positions:
         s = seg.setdefault(p["segment"], {"segment": p["segment"], "value": 0.0, "cost": 0.0, "invested": 0.0,
@@ -457,15 +475,7 @@ def _segments(positions: list[dict], by_inst: dict, instruments: list[dict], tod
             s[k] += _f(p.get(k))
         if p.get("is_open") and p["asset_class"] != d.CASH:
             s["open_count"] += 1
-        ts = by_inst.get(p["id"], [])
-        if p["asset_class"] == d.CASH:
-            # bank <-> USD wallet transfers are the external flows of the US account
-            s["flows"] += [(to_date(t["date"]), -_f(t["amount"]) if t["type"] == d.FX_IN else _f(t["amount"])) for t in ts]
-        elif p["segment"] == d.SEG_EQ_US and p["owner"] in owners_with_wallet:
-            # stock buys/sells are internal to the US account; dividends still leave it
-            s["flows"] += [(to_date(t["date"]), _f(t["amount"])) for t in ts if t["type"] in (d.DIVIDEND, d.INTEREST)]
-        else:
-            s["flows"] += position_flows(p, ts, today)
+        s["flows"] += external_flows(p, by_inst.get(p["id"], []), owners_with_wallet, today)
 
     total_value = sum(s["value"] for s in seg.values())
     # Targets describe the mix of the classes they name; classes without one (often EPF / NPS, money that

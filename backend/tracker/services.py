@@ -18,6 +18,7 @@ from .analytics import calendar as calendar_mod
 from .analytics import forecast, optimizer, plans, quant
 from .analytics import calibration as calibration_mod
 from .analytics import goals as goals_mod
+from .analytics import overview as overview_mod
 from .analytics import scenarios as scen_mod
 from .analytics import tax as tax_mod
 from .analytics.calendar import build_calendar
@@ -239,6 +240,51 @@ class Services:
                                rng=rng)
         result["segment"] = segment
         return result
+
+    # ── the redesigned app: groups, market comparison, rebalancing, suggestions ──
+    BENCH_KEYS = ("NIFTY500", "SP500", "GOLD")
+
+    def bench_history(self, txns: list[dict]) -> tuple[dict, list]:
+        """Benchmark closes (Nifty 500, S&P 500, gold) and USD/INR from the first transaction on. A failed fetch
+        returns what is stored; comparisons that need a missing series come back empty, never wrong."""
+        if not txns:
+            return {}, []
+        start = min(to_date(t["date"]) for t in txns)
+        syms = [px.BENCHMARKS[k]["symbol"] for k in self.BENCH_KEYS] + [px.USDINR]
+        try:
+            hist = px.ensure_history(self.ledger.db, syms, start)
+        except Exception as e:  # noqa: BLE001 — the overview still loads without market comparison
+            print(f"[overview] benchmark history unavailable: {e!r}")
+            hist = {}
+        bench = {k: {**px.BENCHMARKS[k], "points": hist.get(px.BENCHMARKS[k]["symbol"], [])} for k in self.BENCH_KEYS}
+        return bench, hist.get(px.USDINR, [])
+
+    def overview(self, scope: str | None, settings: dict) -> dict:
+        """Totals, the seven groups (targets, market comparison) and up to five suggestions. Memoised like the
+        portfolio. RETURNED OBJECTS ARE SHARED AND READ-ONLY."""
+        def build() -> dict:
+            ctx = self.context(scope, settings)
+            port, data = ctx["port"], ctx["data"]
+            bench, fx = self.bench_history(data["transactions"])
+            view = overview_mod.group_view(port, data["transactions"], settings, bench, fx)
+            view["suggestions"] = overview_mod.suggestions(view, port, ctx["tax"], date.today(), self._slab(settings))
+            return view
+        return self._memo("overview", scope, settings, date.today(), fn=build)
+
+    def group_rebalance(self, scope: str | None, settings: dict, new_money: float, allow_sell: bool,
+                        target_set: str = "mine") -> dict:
+        view = self.overview(scope, settings)
+        t = view["targets"]
+        targets = (t["mine"] if target_set == "mine" and t["mine"] else t["suggested"]["mix"])
+        ctx = self.context(scope, settings)
+        port, data = ctx["port"], ctx["data"]
+
+        def plan(legs):
+            return tax_mod.plan_sales(port, data["transactions"], data["instruments"], legs,
+                                      slab_rate=self._slab(settings), today=date.today())
+        res = overview_mod.rebalance(view["groups"], targets, new_money, allow_sell, plan_sales=plan)
+        res["target_set"] = "mine" if targets is t["mine"] else "suggested"
+        return res
 
     def tax(self, scope: str | None, settings: dict, fy: str | None = None) -> dict:
         """Tax for `fy` (default: the current FY, which is the context's computation) plus the list of years."""

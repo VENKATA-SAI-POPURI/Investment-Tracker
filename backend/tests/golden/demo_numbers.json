@@ -1,0 +1,188 @@
+{
+ "history_1Y": {
+  "benchmarks": {
+   "GOLD": 6.73,
+   "NIFTY500": 6.32,
+   "SP500": 4.77
+  },
+  "end_value": 704531.77,
+  "gain": 41937.68,
+  "max_drawdown": -3.44,
+  "net_flows": 5125.0,
+  "start_value": 657469.08,
+  "twr": 6.32,
+  "xirr": 6.34
+ },
+ "history_ALL": {
+  "benchmarks": {
+   "GOLD": 10.6,
+   "NIFTY500": 10.1,
+   "SP500": 11.49
+  },
+  "end_value": 704531.77,
+  "gain": 105881.77,
+  "max_drawdown": -5.46,
+  "net_flows": 532650.0,
+  "start_value": 66000.0,
+  "twr": 33.28,
+  "xirr": 7.69
+ },
+ "positions": {
+  "Apple": {
+   "cost": 76000.0,
+   "income": 0.0,
+   "realized": 0.0,
+   "unrealized": 26544.0,
+   "value": 102544.0,
+   "xirr": 12.84
+  },
+  "Borrower A": {
+   "cost": 3380.0,
+   "income": 280.0,
+   "realized": 0.0,
+   "unrealized": 0.0,
+   "value": 3380.0,
+   "xirr": 9.18
+  },
+  "Borrower B (legacy)": {
+   "cost": 3000.0,
+   "income": 100.0,
+   "realized": 0.0,
+   "unrealized": 0.0,
+   "value": 3000.0,
+   "xirr": 6.53
+  },
+  "EPF": {
+   "cost": 36000.0,
+   "income": 0.0,
+   "realized": 0.0,
+   "unrealized": 5882.29,
+   "value": 41882.29,
+   "xirr": 7.28
+  },
+  "Gold BeES": {
+   "cost": 48000.0,
+   "income": 0.0,
+   "realized": 0.0,
+   "unrealized": 16350.0,
+   "value": 64350.0,
+   "xirr": 10.99
+  },
+  "HDFC payout FD": {
+   "cost": 50000.0,
+   "income": 3500.0,
+   "realized": 0.0,
+   "unrealized": 3130.8,
+   "value": 53130.8,
+   "xirr": 7.51
+  },
+  "Infosys": {
+   "cost": 41250.0,
+   "income": 450.0,
+   "realized": 150.0,
+   "unrealized": 1550.0,
+   "value": 42800.0,
+   "xirr": 2.05
+  },
+  "Liquid Fund": {
+   "cost": 50000.0,
+   "income": 0.0,
+   "realized": 0.0,
+   "unrealized": 2700.0,
+   "value": 52700.0,
+   "xirr": 3.05
+  },
+  "NPS Tier I": {
+   "cost": 40000.0,
+   "income": 0.0,
+   "realized": 0.0,
+   "unrealized": 12000.0,
+   "value": 52000.0,
+   "xirr": 11.46
+  },
+  "Parag Parikh Flexi Cap": {
+   "cost": 100000.0,
+   "income": 0.0,
+   "realized": 0.0,
+   "unrealized": 33660.0,
+   "value": 133660.0,
+   "xirr": 9.98
+  },
+  "SBI FD": {
+   "cost": 100000.0,
+   "income": 0.0,
+   "realized": 0.0,
+   "unrealized": 11810.97,
+   "value": 111810.97,
+   "xirr": 7.29
+  },
+  "Tata Motors": {
+   "cost": 52000.0,
+   "income": 0.0,
+   "realized": 0.0,
+   "unrealized": -16400.0,
+   "value": 35600.0,
+   "xirr": -28.51
+  },
+  "USD wallet": {
+   "cost": 7515.0,
+   "income": 0.0,
+   "realized": 0.0,
+   "unrealized": 441.0,
+   "value": 7956.0,
+   "xirr": null
+  }
+ },
+ "segments": {
+  "Commodity": {
+   "total_return": 16350.0,
+   "value": 64350.0,
+   "xirr": 10.99
+  },
+  "EPF": {
+   "total_return": 5882.29,
+   "value": 41882.29,
+   "xirr": 7.28
+  },
+  "Equity (India)": {
+   "total_return": -14250.0,
+   "value": 78400.0,
+   "xirr": -9.22
+  },
+  "Equity (USA)": {
+   "total_return": 26985.0,
+   "value": 110500.0,
+   "xirr": 11.85
+  },
+  "Fixed Deposits": {
+   "total_return": 18441.77,
+   "value": 164941.77,
+   "xirr": 7.37
+  },
+  "Mutual Funds": {
+   "total_return": 36360.0,
+   "value": 186360.0,
+   "xirr": 8.6
+  },
+  "NPS": {
+   "total_return": 12000.0,
+   "value": 52000.0,
+   "xirr": 11.46
+  },
+  "P2P": {
+   "total_return": 380.0,
+   "value": 6380.0,
+   "xirr": 8.31
+  }
+ },
+ "totals": {
+  "cost": 607145.0,
+  "day_change": 2049.0,
+  "income": 4330.0,
+  "realized": 150.0,
+  "total_gain": 102149.06,
+  "unrealized": 97669.06,
+  "value": 704814.06,
+  "xirr": 7.36
+ }
+}

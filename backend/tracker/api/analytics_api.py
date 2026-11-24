@@ -18,7 +18,8 @@ bp = Blueprint("analytics", __name__)
 # action_log only)
 SETTING_KEYS = {"targetAllocation", "taxSlabRate", "lastReviewDate", "reviewSnapshot", "dismissedInsights",
                 "autoCapitalFlows", "baseCurrencyDisplay", "dashboardLayout", "riskProfile", "marketAlerts", "retirementPlan",
-                "emergencyFund", "assumptions", "planScenarios"}
+                "emergencyFund", "assumptions", "planScenarios", "groupTargets", "advancedFeatures",
+                "p2pDefaultRecovery"}
 RISK_PROFILES = ("conservative", "balanced", "growth", "aggressive")
 # §7.7 / H10: the emergencyFund bounds
 EF_MONTHS = (3, 24)
@@ -330,7 +331,7 @@ def get_settings():
     own = L().setting_keys(owner) if owner != GLOBAL_OWNER else set()
     inherited = sorted(k for k in L().setting_keys(GLOBAL_OWNER) & SETTING_KEYS if k not in own) \
         if owner != GLOBAL_OWNER else []
-    out = {k: v for k, v in s.items() if k in SETTING_KEYS} | {"segments": list(d.SEGMENTS),
+    out = {k: v for k, v in s.items() if k in SETTING_KEYS} | {"segments": list(d.SEGMENTS), "groups": list(d.GROUPS),
                                                                "settings_owner": owner, "inherited": inherited}
     try:
         out["emergencyFundSuggest"] = S().emergency_suggest(g.scope, s)
@@ -416,6 +417,24 @@ def put_setting(key):
         value = {k: float(v) for k, v in value.items() if k in d.SEGMENTS and v not in (None, "")}
         if abs(sum(value.values()) - 100) > 0.5:
             raise ValidationError(f"Targets add up to {sum(value.values()):g}%, they must total 100%")
+    if key == "groupTargets":
+        if not isinstance(value, dict):
+            raise ValidationError("groupTargets must be an object of group → percent")
+        clean = {}
+        for k, v in value.items():
+            if k not in d.GROUPS:
+                raise ValidationError(f"Unknown group '{k}'")
+            if v in (None, ""):
+                continue
+            clean[k] = _bounded(v, d.GROUP_LABELS[k], 0, 100)
+        if abs(sum(clean.values()) - 100) > 0.5:
+            raise ValidationError(f"Targets add up to {sum(clean.values()):g}%, they must total 100%")
+        value = clean
+    if key == "advancedFeatures":
+        if not isinstance(value, bool):
+            raise ValidationError("advancedFeatures must be true or false")
+    if key == "p2pDefaultRecovery":
+        value = _bounded(value, "Recovery on defaulted P2P loans", 0, 100)
     if key == "marketAlerts":
         value = _market_alerts(value)
     if key == "taxSlabRate":
