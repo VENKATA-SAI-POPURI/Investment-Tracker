@@ -814,11 +814,15 @@ export class SettingsComponent {
   // ── Other sections ──
   setPriceFilter(f: 'missing' | 'all') { this.priceChoice.set(f); }
 
-  private async put(key: string, value: unknown, msg: string) {
+  async put(key: string, value: unknown, msg: string) {
     this.saving.set(true);
     try { await this.store.saveSetting(key, value); this.toast.ok(msg); }
     catch (e) { this.toast.error(errorMessage(e)); }
     finally { this.saving.set(false); }
+  }
+  saveRecovery(v: string) {
+    const n = Math.round(+v);
+    if (Number.isFinite(n) && n >= 0 && n <= 100) void this.put('p2pDefaultRecovery', n, 'Saved: defaulted loans count at ' + n + '%');
   }
   /** The whole alerts object, `digest` included: the server stores false for a missing `digest` (R8). */
   saveAlerts() { return this.put('marketAlerts', { ...this.alerts, digest: this.alerts.digest === true }, 'Alert settings saved'); }

@@ -28,7 +28,7 @@ running record of what is built, so a new session can continue without re-derivi
 | 2 | Portfolio (grouped list), holding bottom sheet, Add sheet | done |
 | 3 | Analysis: Mix (+rebalance), Returns (+contributors), vs Market, Improve | done |
 | 4 | Activity: Entries, Entry flow (trace), Checks, Rules | done |
-| 5 | Calculation fixes (FD payouts, P2P split/defaults, unpriced/EPF history, one XIRR) + speed | pending |
+| 5 | Calculation fixes (FD payouts, P2P split/defaults, unpriced/EPF history, one XIRR) + speed | done |
 
 ## Frontend map (new)
 
@@ -80,6 +80,18 @@ Done (golden numbers regenerated on purpose; history and portfolio now agree on 
 
 Not changed (owner to decide): Kite imports still leave brokerage/STT/stamp duty out of cost (the tradebook has no
 charges); automatic cash rules unchanged but now shown on Activity › Rules with notes on the gaps.
+
+## Settings added to the Settings page (App & calculations)
+
+- "Show the classic tools in the menu" → `advancedFeatures`.
+- "Defaulted P2P loans count at N%" → `p2pDefaultRecovery` (default 0).
+
+## Possible next steps (not started; ask the owner)
+
+- Delete the switched-off pages for good once the owner confirms they are not missed.
+- Kite tradebook: let the owner enter or estimate charges so cost includes brokerage, STT and stamp duty.
+- Cash rules: decide whether stock and commodity trades, FD interest payouts and the interest part of P2P
+  repayments should create cash entries (Activity › Rules shows the current behaviour).
 
 ## How to run checks
 
