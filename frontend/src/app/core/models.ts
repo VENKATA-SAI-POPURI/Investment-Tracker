@@ -363,7 +363,7 @@ export interface CashMovement {
   source: string;
 }
 
-export interface PerfPoint { date: string; value: number; cost: number; net_invested: number; index: number; [bench: string]: number | string | null; }
+export interface PerfPoint { date: string; value: number; cost: number; net_invested: number; index: number; groups?: Record<string, number>; [bench: string]: number | string | null | Record<string, number> | undefined; }
 export interface Benchmark { key: string; label: string; symbol: string; end_value: number; xirr: number | null; index_return: number | null; excess_xirr: number | null; }
 export interface PerfMetrics {
   range: string; start: string; end: string; days: number; start_value: number; end_value: number; net_flows: number; gain: number;
@@ -493,6 +493,13 @@ export interface Settings {
   /** Read-only (P2.6): the keys a member reads from `__global__`. */
   inherited?: string[];
   segments: string[];
+  /** Redesign: the owner's own target mix by group (sums to 100). */
+  groupTargets?: Record<string, number>;
+  /** Redesign: show the switched-off pages (Plan, Markets, Actions…) in the navigation again. */
+  advancedFeatures?: boolean;
+  /** Redesign: % of a defaulted P2P loan's outstanding principal expected back (0–100). */
+  p2pDefaultRecovery?: number;
+  groups?: string[];
 }
 
 /** The `assumptions` setting (§7.7): return −5..25, vol 0..60, inflation 0..15; an unknown key is a 400. */
@@ -1097,3 +1104,37 @@ export interface SipsResponse {
 }
 /** One `/sips` history month: instalments due that month across plans, and what was recorded against them. */
 export interface SipHistoryMonth { month: string; planned: number; invested: number; }
+
+/* ── Redesign: the group overview (GET /overview) ── */
+export interface GroupBench {
+  key: string; label: string; xirr: number | null; end_value: number | null; diff: number | null;
+  verdict: 'ahead' | 'behind' | 'same' | null; estimate: boolean;
+}
+export interface GroupRow {
+  key: import('./groups').GroupKey; label: string; value: number; pct: number; put_in: number; gain: number;
+  unrealized: number; gain_pct: number | null; xirr: number | null; day_change: number; count: number;
+  target: number | null; suggested: number | null; gap: number | null; bench: GroupBench | null;
+}
+export interface Suggestion {
+  id: string; rank: number; tone: 'warn' | 'bad' | 'info' | 'good'; icon: string; title: string; detail: string;
+  impact: string; value: number; cta: string; link: string; group?: string; instrument_id?: number;
+}
+export interface Overview {
+  as_of: string;
+  totals: { value: number; put_in: number; gain: number; gain_pct: number | null; xirr: number | null; day_change: number;
+    day_change_pct: number | null; unrealized: number; realized: number; income: number; missing_prices: string[] };
+  market: { xirr: number | null; end_value: number | null; diff: number | null; groups_ahead: number; groups_compared: number; note: string };
+  targets: { mine: Record<string, number> | null; has_mine: boolean;
+    suggested: { profile: string; age: number | null; equity: number; mix: Record<string, number>; how: string } };
+  groups: GroupRow[];
+  suggestions: Suggestion[];
+}
+export interface GroupRebalanceRow {
+  key: import('./groups').GroupKey; label: string; current: number; target_pct: number; action: 'buy' | 'sell' | 'hold';
+  amount: number; current_pct: number; after_pct: number; let_mature?: number | null; locked?: boolean;
+  sells?: { instrument_id: number; name: string; qty: number; proceeds: number; gain: number; tax: number }[]; tax?: number | null;
+}
+export interface GroupRebalance {
+  rows: GroupRebalanceRow[]; total: number; new_money: number; allow_sell: boolean; sells_total: number;
+  tax_total: number | null; tax_note: string | null; not_sold: number; shortfall: number; target_set: 'mine' | 'suggested';
+}

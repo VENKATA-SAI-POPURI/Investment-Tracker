@@ -135,3 +135,48 @@ export class SignClassPipe implements PipeTransform {
 }
 
 export const FORMAT_PIPES = [InrPipe, InrCompactPipe, PctPipe, QtyPipe, UsdPipe, DatePipe, SignClassPipe] as const;
+
+/** ₹22.74 L / ₹1.25 Cr / ₹78.5K / ₹950 — the redesign's compact amounts (a thin space before L and Cr). */
+export function money(v: number | null | undefined, signed = false): string {
+  if (v === null || v === undefined || isNaN(v)) return '—';
+  const a = Math.abs(v);
+  const sign = v < 0 ? '−' : signed && v > 0 ? '+' : '';
+  let s: string;
+  if (a >= 1e7) s = (a / 1e7).toFixed(2) + ' Cr';
+  else if (a >= 1e5) s = (a / 1e5).toFixed(2) + ' L';
+  else if (a >= 1e4) s = (a / 1e3).toFixed(1) + 'K';
+  else s = Math.round(a).toLocaleString('en-IN');
+  return `${sign}₹${s}`;
+}
+
+/** 12.4% / +1.1% / −2.3% with a true minus sign. */
+export function pctV(v: number | null | undefined, decimals = 1, signed = false): string {
+  if (v === null || v === undefined || isNaN(v)) return '—';
+  const sign = v < 0 ? '−' : signed && v > 0 ? '+' : '';
+  return `${sign}${Math.abs(v).toFixed(decimals)}%`;
+}
+
+/** "12 min ago" style age of an ISO timestamp (UTC when it has no zone). */
+export function ago(iso: string | null | undefined, now = Date.now()): string {
+  if (!iso) return 'never';
+  const t = Date.parse(/[zZ]|[+-]\d\d:?\d\d$/.test(iso) ? iso : iso.replace(' ', 'T') + 'Z');
+  if (isNaN(t)) return 'never';
+  const m = Math.max((now - t) / 60000, 0);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${Math.floor(m)} min ago`;
+  if (m < 48 * 60) return `${Math.floor(m / 60)} h ago`;
+  return `${Math.floor(m / 1440)} days ago`;
+}
+
+/** Up to `n` evenly spaced month labels ("Dec", "Mar 25") for a series of ISO dates. */
+export function monthTicks(dates: string[], n = 5): string[] {
+  if (dates.length < 2) return [];
+  const span = (Date.parse(dates[dates.length - 1]) - Date.parse(dates[0])) / 86400000;
+  const out: string[] = [];
+  for (let i = 0; i < n; i++) {
+    const d = new Date(dates[Math.round((i / (n - 1)) * (dates.length - 1))] + 'T00:00:00');
+    const m = d.toLocaleString('en-IN', { month: 'short' });
+    out.push(span > 400 ? `${m} ${String(d.getFullYear()).slice(2)}` : m);
+  }
+  return out;
+}

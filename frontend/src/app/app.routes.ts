@@ -59,7 +59,12 @@ export const routes: Routes = [
     canActivate: [authGuard],
     children: [
       // `data.title` names the page in the browser tab (the shell sets document.title; pages own their h1, A22)
-      { path: '', data: { title: 'Home' }, loadComponent: () => import('./features/overview/overview.component').then(m => m.OverviewComponent) },
+      { path: '', data: { title: 'Home' }, loadComponent: () => import('./features/home/home.component').then(m => m.HomeComponent) },
+      // redesign: the four main pages (Portfolio, Analysis and Activity arrive in later phases)
+      { path: 'portfolio', pathMatch: 'full', redirectTo: () => tree(PORTFOLIO_HOLDINGS_HOME) },
+      { path: 'analysis', pathMatch: 'full', redirectTo: () => tree('/performance') },
+      { path: 'activity', pathMatch: 'full', redirectTo: () => tree('/transactions') },
+      { path: 'classic', data: { title: 'Classic home' }, loadComponent: () => import('./features/overview/overview.component').then(m => m.OverviewComponent) },
       { path: 'actions', data: { title: 'Actions' }, loadComponent: () => import('./features/actions/actions.component').then(m => m.ActionsComponent) },
       // Plan follows `?tab=` itself (the router reuses it on a query-only navigation)
       { path: 'plan', data: { title: 'Plan' }, loadComponent: () => import('./features/plan/plan.component').then(m => m.PlanComponent) },

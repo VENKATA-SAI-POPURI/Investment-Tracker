@@ -133,56 +133,70 @@ def build_history(instruments: list[dict], txns: list[dict], price_hist: dict[st
     def fx_at(iso):
         return fx.at(iso) or fallback_fx or 0.0
 
-    def value_on(iso: str, day: date) -> tuple[float, float]:
+    def inst_value(iid: int, iso: str, day: date) -> tuple[float, float]:
+        """(value, cost) of one instrument at the end of `iso` (wallets are valued separately)."""
+        ts = by_inst[iid]
+        inst = inst_map[iid]
+        ac = inst["asset_class"]
+        if ac in d.UNITISED:
+            q = qty_series[iid].at(iso) or 0.0
+            c = cost_series[iid].at(iso) or 0.0
+            if q <= EPS:
+                return 0.0, 0.0
+            px = price_series.get(inst.get("symbol") or "", Series([])).at(iso) if inst.get("symbol") else None
+            if not px and day == today and inst.get("last_price"):
+                px = _f(inst["last_price"])  # manually priced holdings (NPS) are known only for today
+            mult = fx_at(iso) if inst.get("currency") == "USD" else 1.0
+            return (q * px * mult if px and mult else c), c
+        if ac == d.P2P:
+            lent = sum(_f(t["amount"]) for t in ts if t["type"] == d.BUY and str(t["date"])[:10] <= iso)
+            back = sum(_f(t["principal"]) if t.get("principal") is not None else 0.0
+                       for t in ts if t["type"] == d.REPAYMENT and str(t["date"])[:10] <= iso)
+            out = max(lent - back, 0.0)
+            if (inst.get("status") or "") == "closed" and ts and iso >= str(ts[-1]["date"])[:10]:
+                out = 0.0
+            return out, out
+        if ac == d.EPF:
+            bal = epf_balance(ts, iso)
+            return (bal, bal) if bal > EPS else (0.0, 0.0)
+        if ac == d.FIXED_DEPOSIT:
+            if any(t["type"] == d.MATURITY and str(t["date"])[:10] <= iso for t in ts):
+                return 0.0, 0.0
+            principal = sum(_f(t["amount"]) for t in ts if t["type"] == d.BUY and str(t["date"])[:10] <= iso)
+            if principal:
+                start = to_date(ts[0]["date"])
+                v = fd_accrued(principal, _f(inst.get("rate")), start, day) if inst.get("rate") else principal
+                return v, principal
+        return 0.0, 0.0
+
+    group_of = {iid: d.group_of(inst_map[iid]) for iid in by_inst}
+
+    def value_on(iso: str, day: date, groups: dict | None = None) -> tuple[float, float]:
         value = cost = 0.0
-        for iid, ts in by_inst.items():
-            inst = inst_map[iid]
-            ac = inst["asset_class"]
-            if ac in d.UNITISED:
-                q = qty_series[iid].at(iso) or 0.0
-                c = cost_series[iid].at(iso) or 0.0
-                if q <= EPS:
-                    continue
-                px = price_series.get(inst.get("symbol") or "", Series([])).at(iso) if inst.get("symbol") else None
-                if not px and day == today and inst.get("last_price"):
-                    px = _f(inst["last_price"])  # manually priced holdings (NPS) are known only for today
-                mult = fx_at(iso) if inst.get("currency") == "USD" else 1.0
-                value += q * px * mult if px and mult else c
-                cost += c
-            elif ac == d.P2P:
-                lent = sum(_f(t["amount"]) for t in ts if t["type"] == d.BUY and str(t["date"])[:10] <= iso)
-                back = sum(_f(t["principal"]) if t.get("principal") is not None else 0.0
-                           for t in ts if t["type"] == d.REPAYMENT and str(t["date"])[:10] <= iso)
-                out = max(lent - back, 0.0)
-                if (inst.get("status") or "") == "closed" and ts and iso >= str(ts[-1]["date"])[:10]:
-                    out = 0.0
-                value += out
-                cost += out
-            elif ac == d.EPF:
-                bal = epf_balance(ts, iso)
-                if bal > EPS:
-                    value += bal
-                    cost += bal
-            elif ac == d.FIXED_DEPOSIT:
-                if any(t["type"] == d.MATURITY and str(t["date"])[:10] <= iso for t in ts):
-                    continue
-                principal = sum(_f(t["amount"]) for t in ts if t["type"] == d.BUY and str(t["date"])[:10] <= iso)
-                if principal:
-                    start = to_date(ts[0]["date"])
-                    value += fd_accrued(principal, _f(inst.get("rate")), start, day) if inst.get("rate") else principal
-                    cost += principal
+        for iid in by_inst:
+            if inst_map[iid]["asset_class"] == d.CASH:
+                continue
+            v, c = inst_value(iid, iso, day)
+            value += v
+            cost += c
+            if groups is not None and v:
+                groups[group_of[iid]] = groups.get(group_of[iid], 0.0) + v
         for inst, ws in wallets:
             bal = ws.at(iso) or 0.0
             value += bal * fx_at(iso)
             cost += bal * fx_at(iso)
+            if groups is not None and bal:
+                groups[d.group_of(inst)] = groups.get(d.group_of(inst), 0.0) + bal * fx_at(iso)
         return value, cost
 
     # ── daily walk ──
-    days, values, costs, flows = [], [], [], []
+    days, values, costs, flows, gvals = [], [], [], [], []
     cur = first
     while cur <= today:
         iso = cur.isoformat()
-        v, c = value_on(iso, cur)
+        gv: dict[str, float] = {}
+        v, c = value_on(iso, cur, gv)
+        gvals.append(gv)
         days.append(iso)
         values.append(v)
         costs.append(c)
@@ -279,7 +293,8 @@ def build_history(instruments: list[dict], txns: list[dict], price_hist: dict[st
     series = []
     for i in picks:
         row = {"date": days[i], "value": round(values[i], 2), "cost": round(costs[i], 2),
-               "net_invested": round(cum_flow[i], 2), "index": round(idx_map.get(days[i], 1.0), 6)}
+               "net_invested": round(cum_flow[i], 2), "index": round(idx_map.get(days[i], 1.0), 6),
+               "groups": {g: round(v, 2) for g, v in gvals[i].items()}}
         for b in benchmarks:
             v = b["values"][i - i0]
             row[b["key"]] = round(v, 2) if v is not None else None
