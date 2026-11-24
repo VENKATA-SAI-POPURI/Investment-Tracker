@@ -8,8 +8,8 @@ from datetime import date, timedelta
 
 from .. import domain as d
 from .assumptions import RISK_FREE  # ~ Indian 1-year T-bill; one source in the Assumption Book
-from .portfolio import (EPF_DEFAULT_RATE, EPS, epf_accrued, epf_balance, fd_value, p2p_repaid, p2p_write_down_from, run_fifo,
-                        to_date, _f)
+from .portfolio import (EPF_DEFAULT_RATE, EPS, epf_accrued, epf_balance, fd_accrued, fd_value, p2p_repaid, p2p_write_down_from,
+                        run_fifo, to_date, _f)
 from .xirr import xirr
 
 RANGES = {"1M": 30, "3M": 91, "6M": 182, "1Y": 365, "3Y": 1095, "5Y": 1826}
@@ -143,6 +143,25 @@ def build_history(instruments: list[dict], txns: list[dict], price_hist: dict[st
 
     first_day = {iid: to_date(min(str(t["date"])[:10] for t in ts)) for iid, ts in by_inst.items() if ts}
 
+    # Step series for deposits and loans: their state only changes on entry dates, so it is worked out once per
+    # date (with the same helpers compute_portfolio uses) and looked up per day.
+    steps: dict[int, Series] = {}
+    for iid, ts in by_inst.items():
+        inst = inst_map[iid]
+        ac = inst["asset_class"]
+        dates = sorted({str(t["date"])[:10] for t in ts})
+        if ac == d.P2P:
+            steps[iid] = Series([(dt, p2p_repaid(inst, ts, dt)["outstanding"]) for dt in dates])
+        elif ac == d.FIXED_DEPOSIT:
+            steps[iid] = Series([(dt, fd_value(inst, ts, to_date(dt))) for dt in dates])
+        elif ac == d.EPF:
+            rate = _f(inst.get("rate")) or EPF_DEFAULT_RATE
+            pts = []
+            for dt in dates:
+                upto = [t for t in ts if str(t["date"])[:10] <= dt]
+                pts.append((dt, (epf_balance(upto), epf_accrued(upto, rate, to_date(dt)), rate)))
+            steps[iid] = Series(pts)
+
     def inst_value(iid: int, iso: str, day: date) -> tuple[float, float]:
         """(value, cost) of one instrument at the end of `iso` (wallets are valued separately). The same rules
         as compute_portfolio, so history and today's portfolio agree."""
@@ -172,7 +191,7 @@ def build_history(instruments: list[dict], txns: list[dict], price_hist: dict[st
                 return q * (unit_cost + (today_unit - unit_cost) * frac), c
             return (q * px * mult if px and mult else c), c
         if ac == d.P2P:
-            out = p2p_repaid(inst, ts, iso)["outstanding"]
+            out = steps[iid].at(iso) or 0.0
             status = (inst.get("status") or "").lower()
             if status == "closed" and ts and iso >= str(ts[-1]["date"])[:10]:
                 return 0.0, 0.0
@@ -180,14 +199,25 @@ def build_history(instruments: list[dict], txns: list[dict], price_hist: dict[st
                 return out * (100.0 if p2p_recovery is None else p2p_recovery) / 100, out
             return out, out
         if ac == d.EPF:
-            upto = [t for t in ts if str(t["date"])[:10] <= iso]
-            bal = epf_balance(upto)
+            i = bisect_right(steps[iid].dates, iso) - 1
+            if i < 0:
+                return 0.0, 0.0
+            bal, acc, rate = steps[iid].vals[i]
             if bal <= EPS:
                 return 0.0, 0.0
-            return bal + epf_accrued(upto, _f(inst.get("rate")) or EPF_DEFAULT_RATE, day), bal
+            # between entries the interest due grows on the running balance (as epf_accrued does)
+            acc += bal * rate / 100 * (day - to_date(steps[iid].dates[i])).days / 365
+            return bal + max(acc, 0.0), bal
         if ac == d.FIXED_DEPOSIT:
-            fv = fd_value(inst, ts, day)
-            return fv["value"], (fv["principal"] if fv["value"] else 0.0)
+            fv = steps[iid].at(iso)
+            if not fv or fv["matured"] or not fv["principal"]:
+                return 0.0, 0.0
+            if fv["value"] and inst.get("rate"):
+                mat = to_date(inst["maturity_date"]) if inst.get("maturity_date") else None
+                end = min(day, mat) if mat else day
+                acc = max(fd_accrued(fv["principal"], _f(inst["rate"]), first_day[iid], end) - fv["principal"] - fv["payouts"], 0.0)
+                return fv["principal"] + acc, fv["principal"]
+            return fv["value"], fv["principal"]
         return 0.0, 0.0
 
     group_of = {iid: d.group_of(inst_map[iid]) for iid in by_inst}
