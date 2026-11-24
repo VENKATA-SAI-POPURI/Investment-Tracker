@@ -379,7 +379,8 @@ export function activeSeries(points: PerfPoint[], share = 0.05): PerfPoint[] {
   const first = points.findIndex(p => Math.max(p.value, p.net_invested) >= peak * share);
   return first > 1 ? points.slice(first - 1) : points;
 }
-export interface Performance { series: PerfPoint[]; metrics: PerfMetrics; benchmarks: Benchmark[]; monthly: { month: string; return: number | null }[]; segment?: string | null; }
+export interface Contributor2 { id: number; name: string; group: string; asset_class: AssetClass; start_value: number; end_value: number; gain: number; }
+export interface Performance { series: PerfPoint[]; metrics: PerfMetrics; benchmarks: Benchmark[]; monthly: { month: string; return: number | null }[]; segment?: string | null; contributors?: Contributor2[]; }
 
 export interface RealizedLotTax {
   instrument_id: number; name: string; asset_class: AssetClass; tax_class: string; buy_date: string; sell_date: string;
@@ -1125,7 +1126,8 @@ export interface Overview {
   as_of: string;
   totals: { value: number; put_in: number; gain: number; gain_pct: number | null; xirr: number | null; day_change: number;
     day_change_pct: number | null; unrealized: number; realized: number; income: number; missing_prices: string[] };
-  market: { xirr: number | null; end_value: number | null; diff: number | null; groups_ahead: number; groups_compared: number; note: string };
+  market: { xirr: number | null; end_value: number | null; diff: number | null; groups_ahead: number; groups_compared: number; note: string;
+    series: { date: string; market: number | null }[] };
   targets: { mine: Record<string, number> | null; has_mine: boolean;
     suggested: { profile: string; age: number | null; equity: number; mix: Record<string, number>; how: string } };
   groups: GroupRow[];

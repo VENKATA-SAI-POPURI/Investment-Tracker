@@ -181,3 +181,24 @@ def test_rebalance_api(client):
     assert r.status_code == 200
     assert sum(x["amount"] for x in r.json["rows"] if x["action"] == "buy") == pytest.approx(10000, abs=1)
     assert client.get("/api/overview/rebalance?new_money=abc", headers=h).status_code == 400
+
+
+def test_market_series_ends_at_the_market_end_value():
+    _, _, v = view()
+    s = v["market"]["series"]
+    assert s and s[-1]["date"] == TODAY.isoformat()
+    assert s[-1]["market"] == pytest.approx(v["market"]["end_value"], abs=1)
+    assert [x["date"] for x in s] == sorted(x["date"] for x in s)
+
+
+def test_contributors_add_up_to_the_window_gain_without_cash():
+    from tracker.analytics.history import build_history
+    from demo_book import PRICE_HIST
+    # ALL is checked in test_golden after the phase-5 fixes (the window gain there drops the first day's loss)
+    for rng in ("1Y", "6M"):
+        insts, txns = book()
+        h = build_history(insts, txns, PRICE_HIST, FX_HIST, BENCH_HIST, today=TODAY, rng=rng)
+        total = sum(c["gain"] for c in h["contributors"])
+        # the USD wallet (cash) is left out: its gain is the currency move on a small balance
+        assert total == pytest.approx(h["metrics"]["gain"], abs=200)
+        assert [c["gain"] for c in h["contributors"]] == sorted((c["gain"] for c in h["contributors"]), reverse=True)

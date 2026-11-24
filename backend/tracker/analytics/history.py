@@ -43,7 +43,7 @@ def build_history(instruments: list[dict], txns: list[dict], price_hist: dict[st
                   bench_hist: dict[str, dict], today: date | None = None, rng: str = "ALL") -> dict:
     today = today or date.today()
     if not txns:
-        return {"series": [], "metrics": {}, "benchmarks": [], "monthly": []}
+        return {"series": [], "metrics": {}, "benchmarks": [], "monthly": [], "contributors": []}
     inst_map = {i["id"]: i for i in instruments}
     by_inst = defaultdict(list)
     for t in txns:
@@ -273,6 +273,31 @@ def build_history(instruments: list[dict], txns: list[dict], price_hist: dict[st
             "values": bvals,
         })
 
+    # ── contributors: each holding's gain inside the window (value at the end − value at the start + money it
+    #    returned − money put in), so the list adds up to the window's gain apart from the USD wallet's cash ──
+    d0, d1 = days[i0], days[-1]
+    contributors = []
+    for iid, ts in by_inst.items():
+        inst = inst_map[iid]
+        if inst["asset_class"] == d.CASH:
+            continue
+        v0 = inst_value(iid, d0, to_date(d0))[0] if i0 > 0 else 0.0
+        v1 = inst_value(iid, d1, today)[0]
+        net = 0.0
+        for t in ts:
+            day = str(t["date"])[:10]
+            if day > d1 or (day <= d0 if i0 > 0 else day < d0):
+                continue
+            amt = _f(t["amount"])
+            if t["type"] == d.BUY:
+                net -= amt
+            elif t["type"] in (d.SELL, d.DIVIDEND, d.INTEREST, d.REPAYMENT, d.MATURITY):
+                net += amt
+        if v0 or v1 or net:
+            contributors.append({"id": iid, "name": inst["name"], "group": group_of[iid], "asset_class": inst["asset_class"],
+                                 "start_value": round(v0, 2), "end_value": round(v1, 2), "gain": round(v1 - v0 + net, 2)})
+    contributors.sort(key=lambda c: -c["gain"])
+
     # ── monthly returns (TWR chained within each month) ──
     monthly: dict[str, float] = {}
     for day, r in rets:
@@ -302,7 +327,7 @@ def build_history(instruments: list[dict], txns: list[dict], price_hist: dict[st
     for b in benchmarks:
         b.pop("values")
 
-    return {"series": series, "metrics": metrics, "benchmarks": benchmarks,
+    return {"series": series, "metrics": metrics, "benchmarks": benchmarks, "contributors": contributors,
             "monthly": [{"month": m, "return": _p(v)} for m, v in sorted(monthly.items())]}
 
 

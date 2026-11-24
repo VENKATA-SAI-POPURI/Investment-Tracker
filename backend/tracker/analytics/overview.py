@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from bisect import bisect_right
 from collections import defaultdict
-from datetime import date
+from datetime import date, timedelta
 
 from .. import domain as d
 from .portfolio import EPS, _f, external_flows, to_date, wallet_owners
@@ -111,6 +111,42 @@ def _pme(routed: list[tuple[date, float, str]], prices: Prices, today: date) -> 
             return None
         end += u * px
     return end
+
+
+def pme_series(routed: list[tuple[date, float, str]], prices: Prices, dates: list[date]) -> list[float | None]:
+    """The same-money-in-the-market value on each of `dates` (None where a price is missing)."""
+    routed = sorted(routed, key=lambda r: r[0])
+    units: dict[str, float] = defaultdict(float)
+    out, i = [], 0
+    for day in dates:
+        while i < len(routed) and routed[i][0] <= day:
+            dt, amt, key = routed[i]
+            for leg, w in LEGS[key]:
+                px = prices.price(leg, dt)
+                if not px:
+                    return [None] * len(dates)
+                units[leg] += -amt * w / px
+            i += 1
+        val = 0.0
+        for leg, u in units.items():
+            px = prices.price(leg, day)
+            if not px:
+                val = None
+                break
+            val += u * px
+        out.append(None if val is None else round(val, 2))
+    return out
+
+
+def month_ends(first: date, today: date) -> list[date]:
+    out, d = [], date(first.year, first.month, 1)
+    while d <= today:
+        nxt = date(d.year + (d.month == 12), d.month % 12 + 1, 1)
+        out.append(min(nxt - timedelta(days=1), today))
+        d = nxt
+    if not out or out[-1] != today:
+        out.append(today)
+    return out
 
 
 def _pct(v: float | None) -> float | None:
@@ -232,6 +268,10 @@ def group_view(port: dict, txns: list[dict], settings: dict, bench_hist: dict | 
     own = xirr(all_flows + ([(today, total)] if total > EPS else []))
     end = _pme(all_routed, prices, today) if all_routed else None
     bx = xirr(fl_bench(all_routed, end, today)) if end is not None else None
+    series = []
+    if all_routed:
+        dates = month_ends(min(r[0] for r in all_routed), today)
+        series = [{"date": dt.isoformat(), "market": v} for dt, v in zip(dates, pme_series(all_routed, prices, dates))]
     ahead = sum(1 for g in groups if g["bench"] and g["bench"]["verdict"] in ("ahead", "same"))
     compared = sum(1 for g in groups if g["bench"] and g["bench"]["verdict"])
     t = port["totals"]
@@ -244,7 +284,7 @@ def group_view(port: dict, txns: list[dict], settings: dict, bench_hist: dict | 
                    "missing_prices": t.get("missing_prices") or []},
         "market": {"xirr": _pct(bx), "end_value": _r(end),
                    "diff": _r((own - bx) * 100) if own is not None and bx is not None else None,
-                   "groups_ahead": ahead, "groups_compared": compared,
+                   "groups_ahead": ahead, "groups_compared": compared, "series": series,
                    "note": "Same money on the same dates, each part in its own market. Index returns include an "
                            "estimated dividend yield (Nifty 500 1.2%, S&P 500 1.4% a year)."},
         "targets": {"mine": mine, "suggested": suggested, "has_mine": mine is not None},

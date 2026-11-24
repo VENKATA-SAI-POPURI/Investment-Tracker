@@ -144,7 +144,7 @@ export function money(v: number | null | undefined, signed = false): string {
   let s: string;
   if (a >= 1e7) s = (a / 1e7).toFixed(2) + ' Cr';
   else if (a >= 1e5) s = (a / 1e5).toFixed(2) + ' L';
-  else if (a >= 1e4) s = (a / 1e3).toFixed(1) + 'K';
+  else if (a >= 1e4) s = (a / 1e3).toFixed(1).replace(/\.0$/, '') + 'K';
   else s = Math.round(a).toLocaleString('en-IN');
   return `${sign}₹${s}`;
 }

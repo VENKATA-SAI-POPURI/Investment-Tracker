@@ -26,7 +26,7 @@ running record of what is built, so a new session can continue without re-derivi
 | 0 | Group model, overview engine + API, settings keys, golden-number tests, this file | done |
 | 1 | New design tokens + font, new shell (sidebar / floating tab bar), Home | done |
 | 2 | Portfolio (grouped list), holding bottom sheet, Add sheet | done |
-| 3 | Analysis: Mix (+rebalance), Returns (+contributors), vs Market, Improve | pending |
+| 3 | Analysis: Mix (+rebalance), Returns (+contributors), vs Market, Improve | done |
 | 4 | Activity: Entries, Entry flow (trace), Checks, Rules | pending |
 | 5 | Calculation fixes (FD payouts, P2P split/defaults, unpriced/EPF history, one XIRR) + speed | pending |
 
@@ -42,6 +42,8 @@ running record of what is built, so a new session can continue without re-derivi
 - `features/portfolio/portfolio.component.ts`: `/portfolio?group=&holding=`; Equity card joins India + Global.
 - `shared/v2/holding-sheet.component.ts`: one holding (Overview, Lots, Entries, Calculation); bottom sheet on the
   phone, right panel on desktop. `core/holding-view.ts` describes each kind of holding in one line.
+- `features/analysis/analysis.component.ts`: `/analysis?tab=mix|returns|market|improve`. Mix edits `groupTargets`,
+  `riskProfile` and `retirementPlan.current_age`; rebalance uses GET /overview/rebalance.
 - `shared/v2/add-sheet.component.ts`: the + sheet (pick a kind, then the existing transaction form opens on it).
 - Approved mockups: `design/redesign/mockups/*.png`.
 - Screens are checked with `backend/scripts/demo_seed.py` (fictional data, offline) + Playwright screenshots.
@@ -53,6 +55,8 @@ running record of what is built, so a new session can continue without re-derivi
 - `tracker/analytics/overview.py`: `group_view` (totals, groups, targets, market comparison), `suggested_mix`,
   `rebalance`, `suggestions`.
 - `tracker/services.py`: `bench_history`, `overview`, `group_rebalance`.
+- `tracker/analytics/history.py`: `inst_value()` per holding; series rows carry `groups`; result has `contributors`.
+- `overview.market.series`: the same-money-in-the-market value at each month end.
 - `tracker/api/overview_api.py`: `GET /api/overview`, `GET /api/overview/rebalance?new_money=&allow_sell=1&targets=mine|suggested`.
 - Settings keys added: `groupTargets`, `advancedFeatures`, `p2pDefaultRecovery`.
 - Tests: `tests/demo_book.py` (sample book), `tests/test_golden.py` (frozen numbers; regenerate with
@@ -64,6 +68,8 @@ running record of what is built, so a new session can continue without re-derivi
 - FD interest payouts double-counted in history; history keeps compounding past maturity.
 - P2P legacy repayments (no principal split) count as 0 principal in history; defaulted loans at full value.
 - Unpriced holdings (NPS) and EPF accrual jump onto the last day of history.
+- History `metrics.gain` on ALL uses the first day's closing value as the start, so a first-day loss on a buy
+  (bought above that day's close) is dropped; contributors (Returns tab) include it. Start from 0 + first-day flows.
 
 ## How to run checks
 
