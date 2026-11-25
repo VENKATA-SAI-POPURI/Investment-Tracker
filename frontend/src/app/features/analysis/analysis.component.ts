@@ -1,14 +1,14 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { firstValueFrom, map } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { errorMessage } from '../../core/http';
 import { money, monthTicks, pctV } from '../../core/format';
 import { GROUP_HEX, GROUPS, GroupKey, groupMeta } from '../../core/groups';
-import { Contributor2, GroupRebalance, GroupRow, Performance, Suggestion } from '../../core/models';
+import { Contributor2, DragItem, GroupRebalance, GroupRow, Performance, Question } from '../../core/models';
 import { OverviewService } from '../../core/overview.service';
 import { readSnapshot, snapshotKey, writeSnapshot } from '../../core/snapshot';
 import { StoreService } from '../../core/store.service';
@@ -17,25 +17,47 @@ import { IconComponent } from '../../shared/icon.component';
 import { AreaChartComponent, DonutComponent } from '../../shared/v2/charts';
 import { HoldingSheetComponent } from '../../shared/v2/holding-sheet.component';
 import { GroupSheetComponent } from '../../shared/v2/group-sheet.component';
+import { GoalsViewComponent } from './goals-view.component';
+import { linkPath, linkQuery, toneClass } from '../../core/links';
 
-type Tab = 'mix' | 'returns' | 'market' | 'improve';
+type Tab = 'mix' | 'returns' | 'market' | 'dragging' | 'goals';
+const LEGACY: Record<string, Tab> = { mix: 'mix', returns: 'returns', market: 'market', improve: 'dragging' };
 type Range = '3M' | '1Y' | '3Y' | 'ALL';
 const PROFILES = [
   { key: 'conservative', label: 'Careful' }, { key: 'balanced', label: 'Balanced' },
   { key: 'growth', label: 'Growth' }, { key: 'aggressive', label: 'Bold' },
 ];
 
-/** Analysis: how the money is spread, how it has done, how that compares with the market, and what to do next. */
+/** Analysis as questions: a list of the owner's questions, each answered in one line (GET /answers); opening one shows
+ *  the answer first, then the details and what to do. `?q=mix|market|dragging|returns|goals` (old `?tab=` links still work). */
 @Component({
   selector: 'app-analysis',
   standalone: true,
-  imports: [FormsModule, IconComponent, AreaChartComponent, DonutComponent, HoldingSheetComponent, GroupSheetComponent],
+  imports: [FormsModule, RouterLink, IconComponent, AreaChartComponent, DonutComponent, HoldingSheetComponent, GroupSheetComponent, GoalsViewComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
   <div class="v2">
-    <nav class="v-seg" role="tablist" aria-label="Analysis">
-      @for (t of tabs; track t.key) { <button role="tab" [class.on]="tab() === t.key" [attr.aria-selected]="tab() === t.key" (click)="setTab(t.key)">{{ t.label }}</button> }
-    </nav>
+    @if (!tab()) {
+      <!-- ══ THE QUESTIONS ══ -->
+      <p class="lead-in">Pick a question. Each one gives the answer first, then the details.</p>
+      <div class="v-grid cols-2 hub">
+        @for (x of hub(); track x.id) {
+          <a class="v-card qc" [routerLink]="path(x.link)" [queryParams]="query(x.link)">
+            <span [class]="toneClass(x.tone)"><app-icon [name]="x.icon" [size]="20" /></span>
+            <div class="grow"><div class="qq">{{ x.q }}</div><div class="qa">{{ x.answer }}</div><div class="qd">{{ x.detail }}</div></div>
+            @if (x.badge) { <span class="v-pill" [class.ok]="x.tone === 'good'" [class.warn]="x.tone === 'warn'" [class.no]="x.tone === 'bad'" [class.brand]="x.tone === 'muted'">{{ x.badge }}</span> }
+            <app-icon class="chev" name="chevronRight" [size]="18" [stroke]="2.2" />
+          </a>
+        } @empty {
+          @for (i of [1, 2, 3, 4, 5, 6]; track i) { <div class="v-skel" style="height:104px"></div> }
+        }
+      </div>
+    } @else {
+    <a class="back" routerLink="/analysis"><app-icon name="chevronLeft" [size]="18" [stroke]="2.4" /> All questions</a>
+    <header class="ans">
+      <div class="qq">{{ current()?.q ?? titles[tab()!] }}</div>
+      @if (current(); as c) { <h1 class="qa">{{ c.answer }}</h1><p class="qd">{{ c.detail }}</p> }
+    </header>
 
     @switch (tab()) {
     <!-- ══ MIX ══ -->
@@ -101,6 +123,9 @@ const PROFILES = [
         <label class="toggle"><span><b>Also sell what's over target</b><small class="v-mut">Lowest tax first; shows the tax on each sale</small></span>
           <input type="checkbox" [ngModel]="allowSell()" (ngModelChange)="allowSell.set($event)" /><span class="sw" aria-hidden="true"></span></label>
         <p class="v-mut foot">EPF can't be topped up or sold; FDs and P2P loans are left to mature.</p>
+        @if (auth.canWrite() && newMoney() > 0 && !allowSell() && rbRows().length) {
+          <a class="v-btn primary go" routerLink="/flow/invest" [queryParams]="{ amount: newMoney() }">Record these buys <app-icon name="chevronRight" [size]="16" [stroke]="2.4" /></a>
+        }
       </section>
       </div>
     }
@@ -156,8 +181,8 @@ const PROFILES = [
               <div class="v-mut sub">Overall {{ pctV(o.totals.xirr) }} a year vs {{ pctV(o.market.xirr) }} for the same money in each part's own market</div></div>
           </div>
           @if (marketChart(); as mc) {
-            <div style="margin-top:14px"><v-area [a]="mc.you" [b]="mc.market" [labels]="mc.ticks" [h]="112" colorB="#d9b56f" [dashB]="true" label="Your value against the same money in the market" /></div>
-            <div class="v-legend"><span style="--c:var(--chart-a)">You</span><span style="--c:#d9b56f">Same money in the market</span></div>
+            <div style="margin-top:14px"><v-area [a]="mc.you" [b]="mc.market" [labels]="mc.ticks" [h]="112" colorB="#fbbf24" [dashB]="true" label="Your value against the same money in the market" /></div>
+            <div class="v-legend"><span style="--c:var(--chart-a)">You</span><span style="--c:#fbbf24">Same money in the market</span></div>
           }
         } @else { <div class="v-skel" style="height:180px"></div> }
       </section>
@@ -178,31 +203,58 @@ const PROFILES = [
       </div>
     }
 
-    <!-- ══ IMPROVE ══ -->
-    @case ('improve') {
-      @if (ov(); as o) {
-        <div class="v-mut lead">{{ o.suggestions.length ? o.suggestions.length + ' idea' + (o.suggestions.length > 1 ? 's' : '') + ' · most urgent and biggest first' : '' }}</div>
-        <div class="v-grid cols-2">
-        @for (s of o.suggestions; track s.id; let i = $index) {
-          <section class="v-card sug">
-            <span class="rk">#{{ i + 1 }}</span>
-            <div class="top"><span class="v-tone" [class]="s.tone"><app-icon [name]="s.icon" [size]="20" /></span>
-              <div><div class="t">{{ s.title }}</div><div class="s">{{ s.detail }}</div></div></div>
-            <div class="ft"><span class="imp" [class]="impactTone(s)">{{ s.impact }}</span><button class="v-btn dark sm" (click)="act(s)">{{ s.cta }}</button></div>
-          </section>
+    <!-- ══ WHAT'S DRAGGING ══ -->
+    @case ('dragging') {
+      <section class="v-card tight">
+        @for (d of dragging(); track d.kind + d.name) {
+          <div class="v-row drag" [style.--c]="hex(d.group)">
+            <span class="v-ic"><app-icon [name]="d.kind === 'group' ? meta(d.group).icon : d.kind === 'p2p' ? 'handshake' : 'arrowDownRight'" [size]="18" /></span>
+            <div class="grow"><div class="t">{{ d.name }}</div><div class="s">{{ d.text }}</div>
+              <div class="lost"><b class="v-loss">−{{ money(d.amount) }}</b> {{ d.why }}</div></div>
+            <button class="v-btn sm" (click)="open(d)">{{ d.cta }}</button>
+          </div>
         } @empty {
-          <section class="v-card v-empty"><span class="v-tone good"><app-icon name="circleCheck" [size]="22" /></span><b style="color:var(--text)">Nothing needs you right now</b>
-            <span>Your mix is close to target and nothing is due. Check back after your next entry.</span></section>
+          <div class="v-empty"><span class="v-tone good"><app-icon name="circleCheck" [size]="22" /></span><b style="color:var(--text)">Nothing stands out</b>
+            <span>No group is behind its market and no holding is down 10% or more.</span></div>
         }
-        </div>
-      } @else { <div class="v-skel" style="height:240px"></div> }
+      </section>
+      <p class="v-mut foot">Groups: how much less they're worth than the same money in their market. Holdings: how far below what you paid.
+        Late P2P loans: what's still owed. They overlap, so they aren't added up.</p>
     }
+
+    <!-- ══ GOALS ══ -->
+    @case ('goals') { <v-goals /> }
+    }
+
+    <div class="related">
+      <span class="v-mut">Related</span>
+      @for (x of related(); track x.id) { <a class="v-btn sm" [routerLink]="path(x.link)" [queryParams]="query(x.link)">{{ x.q }}</a> }
+    </div>
     }
   </div>
   @if (holding(); as id) { <v-holding-sheet [id]="id" (closed)="holding.set(null)" /> }
   @if (explain(); as k) { <v-group-sheet [key]="k" (closed)="explain.set(null)" /> }
   `,
   styles: [`
+    .lead-in { margin: 0 4px; color: var(--text-2); font-size: var(--fs-small); }
+    .hub .qc { display: flex; flex-direction: row; align-items: center; gap: 14px; text-decoration: none; color: inherit; transition: border-color .2s ease, transform .2s ease; }
+    .hub .qc:hover { border-color: var(--border-strong); transform: translateY(-1px); text-decoration: none; }
+    .hub .grow { flex: 1; min-width: 0; }
+    .qq { font-size: var(--fs-small); color: var(--muted); font-weight: 600; }
+    .qa { font-size: 17px; font-weight: 750; color: var(--text); letter-spacing: -.01em; margin: 2px 0; }
+    .qd { font-size: var(--fs-small); color: var(--text-2); margin: 0; }
+    .chev { color: var(--muted); flex: none; }
+    .back { display: inline-flex; align-items: center; gap: 4px; color: var(--text-2); font-weight: 600; font-size: 14px; text-decoration: none; margin: 0 2px; align-self: flex-start; }
+    .back:hover { color: var(--text); text-decoration: none; }
+    .ans { margin: 0 4px 4px; }
+    .ans h1.qa { font-size: clamp(22px, 2.4vw, 28px); font-weight: 800; letter-spacing: -.025em; line-height: 1.2; margin: 4px 0 6px; }
+    .ans .qd { font-size: 15px; }
+    .related { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+    .related .v-mut { font-size: var(--fs-small); font-weight: 700; margin-right: 4px; }
+    .drag .lost { font-size: var(--fs-small); color: var(--muted); margin-top: 3px; }
+    .drag .lost b { font-size: 15px; margin-right: 2px; }
+    .drag .v-btn { flex: none; }
+    a.go { margin-top: 12px; width: 100%; }
     .mrow { display: flex; gap: 10px; align-items: center; padding: 8px 0; }
     .mrow .grow { min-width: 0; flex: 1; }
     .mrow .nm { font-size: 13.5px; font-weight: 600; display: flex; justify-content: space-between; margin-bottom: 6px; gap: 6px; }
@@ -268,12 +320,23 @@ export class AnalysisComponent {
 
   Math = Math; String = String; money = money; pctV = pctV; meta = groupMeta; groups = GROUPS; profiles = PROFILES;
   hex = (k: string) => GROUP_HEX[k as GroupKey] ?? '#9aa3b8';
-  tabs: { key: Tab; label: string }[] = [{ key: 'mix', label: 'Mix' }, { key: 'returns', label: 'Returns' }, { key: 'market', label: 'vs Market' }, { key: 'improve', label: 'Improve' }];
   ranges: Range[] = ['3M', '1Y', '3Y', 'ALL'];
   quick = [10000, 25000, 50000, 100000];
 
-  tab = toSignal(this.route.queryParamMap.pipe(map(q => (['mix', 'returns', 'market', 'improve'].includes(q.get('tab') ?? '') ? q.get('tab') : 'mix') as Tab)),
-    { initialValue: 'mix' as Tab });
+  tab = toSignal(this.route.queryParamMap.pipe(map((p): Tab | null => {
+    const q = p.get('q') as Tab | null;
+    if (q && ['mix', 'returns', 'market', 'dragging', 'goals'].includes(q)) return q;
+    return LEGACY[p.get('tab') ?? ''] ?? null;
+  })), { initialValue: null as Tab | null });
+  private answers = inject(OverviewService).answers;
+  titles: Record<Tab, string> = { mix: 'Is my mix on target?', returns: 'Where did my returns come from?', market: 'Am I beating the market?',
+    dragging: "What's dragging me down?", goals: 'Am I on track for my goals?' };
+  /** The list skips "Am I making money?": its page is "Where did my returns come from?". */
+  hub = computed<Question[]>(() => (this.answers()?.questions ?? []).filter(x => x.id !== 'money'));
+  current = computed<Question | undefined>(() => this.answers()?.questions.find(x => x.id === this.tab()));
+  related = computed<Question[]>(() => this.hub().filter(x => x.id !== this.tab()).slice(0, 3));
+  dragging = computed<DragItem[]>(() => this.answers()?.dragging ?? []);
+  toneClass = toneClass; path = linkPath; query = linkQuery;
   holding = signal<number | null>(null);
   explain = signal<string | null>(null);
   pts = (v: number | null | undefined) => v === null || v === undefined ? '—' : (v > 0 ? '+' : '−') + Math.abs(v).toFixed(1) + ' pts';
@@ -341,6 +404,7 @@ export class AnalysisComponent {
     effect(() => {
       const r = this.range();
       this.store.version();
+      if (this.tab() !== 'returns') return;
       untracked(() => {
         const key = snapshotKey('perf', this.store.scopeKey(), r);
         const snap = readSnapshot<Performance>(key);
@@ -378,7 +442,6 @@ export class AnalysisComponent {
     } catch (e) { if (n === this.rbSeq) { this.rebalance.set(null); this.rbError.set(errorMessage(e)); } }
   }
 
-  setTab(t: Tab) { void this.router.navigate([], { queryParams: { tab: t }, queryParamsHandling: 'merge', replaceUrl: true }); }
   gapText(gap: number) { return Math.abs(gap) < 1 ? 'on' : (gap > 0 ? '+' : '−') + Math.abs(gap).toFixed(1); }
   sellNames(r: { sells?: { name: string }[] }) { return (r.sells ?? []).map(s => s.name).slice(0, 2).join(', ') + ((r.sells?.length ?? 0) > 2 ? '…' : ''); }
 
@@ -414,15 +477,8 @@ export class AnalysisComponent {
     try { await this.store.saveSetting('retirementPlan', plan); } catch (e) { this.toast.error(errorMessage(e)); }
   }
 
-  impactTone(s: Suggestion) { return s.impact.startsWith('Save') ? 'good' : s.tone; }
-
-  act(s: Suggestion) {
-    if (s.instrument_id) { this.holding.set(s.instrument_id); return; }
-    if (s.link?.startsWith('/analysis')) {
-      const tab = new URLSearchParams(s.link.split('?')[1] ?? '').get('tab') as Tab | null;
-      this.setTab(tab ?? 'mix');
-      return;
-    }
-    void this.router.navigateByUrl(s.link || '/');
+  open(d: DragItem) {
+    if (d.kind !== 'group' && d.id) { this.holding.set(d.id); return; }
+    void this.router.navigateByUrl(d.link || '/analysis');
   }
 }

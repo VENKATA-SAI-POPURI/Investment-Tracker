@@ -20,7 +20,12 @@ export interface TxnDialogState {
   notes?: string | null;
   /** The action this save fulfils: after a save the shell marks it done with the new transaction ids. */
   actionId?: string;
+  /** Called with the new transaction ids after each save (a guided flow ticks its step off). */
+  onSaved?: (ids: number[]) => void;
 }
+
+/** Prefill for the P2P wallet form and a callback after it saves (a guided flow). */
+export interface WalletPrefill { amount?: number | null; onSaved?: () => void; }
 
 /** The global "Mark matured" dialog for a fixed deposit (A19). */
 export interface FdMatureState { instrumentId: number; actionId?: string; }
@@ -42,9 +47,10 @@ export class TxnDialogService {
   add(kind?: AddKind, extra: Partial<TxnDialogState> = {}) { this.picker.set(false); this.state.set({ mode: 'add', kind, ...extra }); }
   /** Opens the Add sheet (pick what to add first). */
   openPicker() { this.picker.set('pick'); }
+  readonly wallet = signal<WalletPrefill | null>(null);
   /** Opens the Add sheet on the P2P wallet form (money added from the bank, or withdrawn to it). */
-  openWallet() { this.picker.set('wallet'); }
-  closePicker() { this.picker.set(false); }
+  openWallet(prefill: WalletPrefill | null = null) { this.wallet.set(prefill); this.picker.set('wallet'); }
+  closePicker() { this.picker.set(false); this.wallet.set(null); }
   edit(txn: Transaction) { this.state.set({ mode: 'edit', txn }); }
   close() { this.state.set(null); }
   openFdMature(instrumentId: number, actionId?: string) { this.fdMature.set({ instrumentId, actionId }); }

@@ -12,6 +12,7 @@ import { AuthService } from '../../core/auth.service';
 import { TxnDialogService } from '../../core/txn-dialog.service';
 import { IconComponent } from '../../shared/icon.component';
 import { HoldingSheetComponent } from '../../shared/v2/holding-sheet.component';
+import { GroupSheetComponent } from '../../shared/v2/group-sheet.component';
 
 /** A card on the page: Equity joins India and Global stocks; every other card is one group. */
 interface CardDef { key: string; label: string; icon: string; color: string; groups: GroupKey[]; }
@@ -34,15 +35,16 @@ interface Card extends CardDef { value: number; pct: number; change: string | nu
 @Component({
   selector: 'app-portfolio',
   standalone: true,
-  imports: [IconComponent, HoldingSheetComponent],
+  imports: [IconComponent, HoldingSheetComponent, GroupSheetComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
   <div class="v2">
     <section class="v-card summary">
       <div class="sum">
         <div><div class="v-mut lb">Total value</div><div class="v-num big">{{ money(total()) }}</div></div>
-        <div class="right"><div class="v-mut lb">Total gain · return a year</div>
-          <div class="v-num gain" [class.v-gain]="gain() >= 0" [class.v-loss]="gain() < 0">{{ money(gain(), true) }}{{ xirr() !== null ? ' · ' + pctV(xirr()) : '' }}</div></div>
+        <button class="right" type="button" (click)="explain.set('all')" aria-label="How the total gain and return are worked out">
+          <div class="v-mut lb">Total gain · return a year <app-icon name="info" [size]="12" [stroke]="2.4" /></div>
+          <div class="v-num gain" [class.v-gain]="gain() >= 0" [class.v-loss]="gain() < 0">{{ money(gain(), true) }}{{ xirr() !== null ? ' · ' + pctV(xirr()) : '' }}</div></button>
       </div>
       <div class="stack" aria-hidden="true">@for (s of stack(); track s.key) { <b [style.background]="s.color" [style.flex-grow]="s.value"></b> }</div>
     </section>
@@ -84,6 +86,9 @@ interface Card extends CardDef { value: number; pct: number; change: string | nu
             }
             @if (s.hidden) { <button class="moreb" (click)="expand(s.group)">Show {{ s.hidden }} more</button> }
           } @empty { <p class="v-empty">Nothing here yet.</p> }
+          <div class="howto">@for (g of c.groups; track g) {
+            <button class="v-link" (click)="explain.set(g)"><app-icon name="info" [size]="14" /> How {{ c.groups.length > 1 ? meta(g).label : 'these numbers are' }}{{ c.groups.length > 1 ? ' is' : '' }} worked out</button>
+          }</div>
         }
       </section>
     } @empty {
@@ -97,11 +102,15 @@ interface Card extends CardDef { value: number; pct: number; change: string | nu
     }
   </div>
   @if (holdingId(); as id) { <v-holding-sheet [id]="id" (closed)="closeHolding()" /> }
+  @if (explain(); as k) { <v-group-sheet [key]="k" (closed)="explain.set(null)" /> }
   `,
   styles: [`
-    .summary { background: radial-gradient(110% 90% at 100% 0%, rgba(168, 140, 255, .5) 0%, rgba(168, 140, 255, 0) 55%), linear-gradient(140deg, #5b3fd9 0%, #6d4ae8 55%, #4f3bc4 100%) !important;
-      color: #fff; border: 0 !important; box-shadow: inset 0 1px 1px rgba(255,255,255,.45), 0 20px 44px -22px rgba(91, 63, 217, .7) !important; }
-    .summary .lb { color: rgba(255,255,255,.7) !important; }
+    .summary { background: var(--hero) !important; color: #fff; border: 1px solid rgba(255,255,255,.12) !important;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.16), 0 24px 50px -24px rgba(76,62,200,.6) !important; }
+    .summary .lb { color: rgba(255,255,255,.7) !important; display: inline-flex; align-items: center; gap: 4px; }
+    button.right { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: right; }
+    .howto { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 12px 0 4px; border-top: 1px solid var(--border); margin-top: 6px; }
+    .howto .v-link { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-small); }
     .summary .v-gain { color: #bbf7d0; } .summary .v-loss { color: #fecdd3; }
     .summary .stack { background: rgba(255,255,255,.12); padding: 2px; height: 14px; }
     .summary .stack b { border-radius: 99px; }
@@ -131,7 +140,7 @@ interface Card extends CardDef { value: number; pct: number; change: string | nu
     .hold .r b { font-weight: 700; }
     .t-gain { color: var(--pos); } .t-loss { color: var(--neg); } .t-mut { color: var(--muted); } .t-warn { color: var(--warn); }
     .cashrow { display: flex; align-items: center; gap: 11px; flex-wrap: wrap; margin: 12px 0 2px; padding: 10px 12px; border-radius: 14px;
-      background: rgba(240, 96, 158, .16); border: 1px solid rgba(240, 96, 158, .3); text-decoration: none; color: inherit; }
+      background: rgba(251, 113, 133, .1); border: 1px solid rgba(251, 113, 133, .25); text-decoration: none; color: inherit; }
     .cashrow .n { font-weight: 700; font-size: 13.5px; } .cashrow .s { font-size: 11.5px; color: var(--muted); }
     .cashrow b { font-weight: 800; white-space: nowrap; }
     .cashrow .v-btn { flex: none; }
@@ -166,6 +175,8 @@ export class PortfolioComponent {
   holdingId = computed(() => { const h = Number(this.qp().holding); return Number.isFinite(h) && h > 0 ? h : null; });
 
   showClosed = signal(false);
+  explain = signal<string | null>(null);
+  meta = groupMeta;
   private opened = signal<Set<string> | null>(null);
   private expanded = signal<Set<string>>(new Set());
 

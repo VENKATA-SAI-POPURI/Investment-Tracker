@@ -1134,13 +1134,34 @@ export interface Suggestion {
 export interface Overview {
   as_of: string;
   totals: { value: number; put_in: number; gain: number; gain_pct: number | null; xirr: number | null; day_change: number;
-    day_change_pct: number | null; unrealized: number; realized: number; income: number; missing_prices: string[] };
+    day_change_pct: number | null; unrealized: number; realized: number; income: number; missing_prices: string[]; monthly_in?: number | null };
   market: { xirr: number | null; end_value: number | null; diff: number | null; groups_ahead: number; groups_compared: number; note: string;
     series: { date: string; market: number | null }[] };
   targets: { mine: Record<string, number> | null; has_mine: boolean;
     suggested: { profile: string; age: number | null; equity: number; mix: Record<string, number>; how: string } };
   groups: GroupRow[];
   suggestions: Suggestion[];
+}
+export interface Question {
+  id: 'money' | 'market' | 'mix' | 'goals' | 'dragging' | 'returns' | 'tax'; q: string; answer: string; detail: string;
+  tone: 'good' | 'warn' | 'bad' | 'muted'; icon: string; link: string; badge?: string | null;
+}
+export interface TodoItem {
+  id: string; tone: 'primary' | 'warn' | 'bad' | 'info' | 'good'; icon: string; title: string; detail?: string; impact?: string;
+  cta: string; link: string; flow?: 'invest'; steps?: number; value?: number;
+}
+export interface DragItem {
+  kind: 'group' | 'holding' | 'p2p'; id?: number; key?: string; group: string; name: string; amount: number;
+  text: string; why: string; cta: string; link: string;
+}
+export interface GoalRow {
+  id: number | 'retirement'; kind: 'goal' | 'retirement'; name: string; target: number; date: string; current: number;
+  projected: number; status: 'on_track' | 'achieved' | 'at_risk' | 'off_track' | null; probability: number | null;
+  monthly_now: number; monthly_needed: number | null; extra: number; progress_pct: number | null;
+  allocation?: Record<string, number>;
+}
+export interface Answers {
+  as_of: string; questions: Question[]; todo: TodoItem[]; dragging: DragItem[]; goals: GoalRow[]; monthly_in: number | null;
 }
 export interface GroupRebalanceRow {
   key: import('./groups').GroupKey; label: string; current: number; target_pct: number; action: 'buy' | 'sell' | 'hold';
@@ -1175,4 +1196,7 @@ export interface GroupExplain {
   by_year: { year: number; put_in: number; taken_out: number }[];
   holdings: { id: number; name: string; is_open: boolean; put_in: number; taken_out: number; value: number; gain: number; xirr: number | null;
     market: string; flows: number; first: string | null }[];
+  /** Data checks touching these holdings (a doubt about a number and its fix, side by side). */
+  issues?: { id: string; severity: 'bad' | 'warn' | 'info'; title: string; detail: string | null; count: number;
+    items: { instrument_id: number; name: string; detail?: string }[]; fix?: string | null; link?: string | null }[];
 }

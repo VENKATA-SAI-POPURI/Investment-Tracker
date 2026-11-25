@@ -17,6 +17,7 @@ import { FdMatureDialogComponent } from '../shared/fd-mature-dialog.component';
 import { IconComponent } from '../shared/icon.component';
 import { NavBadges, TOOLS_NAV, navActive } from '../shared/nav-list.component';
 import { greeting } from '../core/groups';
+import { money } from '../core/format';
 import { linkUnder } from '../shared/priority/priority';
 import { STATUS_META, statusFromSeverity, vitalOf, worstStatus } from '../shared/priority/priority';
 import { TxnFormComponent } from '../shared/txn-form.component';
@@ -185,6 +186,7 @@ export class ShellComponent {
   private title = inject(Title);
 
   tools = TOOLS_NAV;
+  money = money;
   primary = PRIMARY;
   more = MORE;
   classic = CLASSIC;
@@ -368,6 +370,7 @@ export class ShellComponent {
 
   /** A dialog save that fulfils an action marks it done once, with the new transaction ids as evidence (§8.4). */
   txnSaved(s: TxnDialogState, txnIds: number[]) {
+    s.onSaved?.(txnIds);
     if (!s.actionId) return;
     void this.runner.dialogSaved(s.actionId, txnIds);
     // "Save & add another" keeps the dialog open; later saves are not evidence for the same action

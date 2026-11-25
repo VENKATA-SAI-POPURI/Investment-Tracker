@@ -160,13 +160,13 @@
             <div class="card-head"><div><h2>Your plans</h2><span class="hint">Set on their own pages; shown here for reference</span></div>
               @if (inherited('plans')) { <span class="badge info inh">From the family plan until you change it</span> }</div>
             <div>
-              <a class="summary" routerLink="/risk" fragment="mix">
+              <a class="summary" routerLink="/analysis" [queryParams]="{ tab: 'mix' }">
                 <span><span class="k">Target mix:</span> {{ targetsSet() ? 'set' + (profileLabel() ? ' · ' + profileLabel() : '') : 'not set' }}</span>
-                <span class="go">{{ targetsSet() || !auth.canWrite() ? 'Risk & mix' : 'Set it' }} →</span>
+                <span class="go">{{ targetsSet() || !auth.canWrite() ? 'Analysis' : 'Set it' }} →</span>
               </a>
-              <a class="summary" routerLink="/plan" [queryParams]="{ tab: 'retirement' }">
+              <a class="summary" routerLink="/analysis" [queryParams]="{ q: 'goals' }">
                 <span><span class="k">Retirement plan:</span> {{ retireAge() ? 'retire at ' + retireAge() : retirementSet() ? 'set' : 'not set' }}</span>
-                <span class="go">{{ retirementSet() || !auth.canWrite() ? 'Plan' : 'Set it' }} →</span>
+                <span class="go">{{ retirementSet() || !auth.canWrite() ? 'Goals' : 'Set it' }} →</span>
               </a>
             </div>
           </div>

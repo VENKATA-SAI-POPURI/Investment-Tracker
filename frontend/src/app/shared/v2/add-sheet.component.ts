@@ -61,9 +61,11 @@ interface Tile { label: string; icon: string; color: string; kind: AddKind; mark
     .sub { font-size: 13.5px; font-weight: 500; margin: 2px 0 16px; }
     .tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
     .tile { border-radius: 18px; padding: 14px 6px 12px; text-align: center; font: inherit; font-size: 12.5px; font-weight: 700; border: 0; cursor: pointer;
-      background: color-mix(in srgb, var(--c) 20%, transparent); border: 1px solid color-mix(in srgb, var(--c) 35%, transparent); color: #fff; display: flex; flex-direction: column; align-items: center; }
-    .bi { width: 42px; height: 42px; border-radius: 14px; margin-bottom: 8px; display: grid; place-items: center; color: #fff; background: var(--c);
-      box-shadow: 0 6px 14px color-mix(in srgb, var(--c) 40%, transparent); }
+      background: color-mix(in srgb, var(--c) 10%, var(--surface-2)); border: 1px solid color-mix(in srgb, var(--c) 28%, transparent); color: var(--text); display: flex;
+      transition: transform .2s var(--ease), border-color .2s ease; flex-direction: column; align-items: center; }
+    .bi { width: 44px; height: 44px; border-radius: 14px; margin-bottom: 9px; display: grid; place-items: center; color: var(--c);
+      background: color-mix(in srgb, var(--c) 18%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 30%, transparent); }
+    .tile:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--c) 55%, transparent); }
     .more { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
     .import { display: flex; align-items: center; gap: 12px; width: 100%; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.16) !important; border-radius: 18px; padding: 13px;
       margin-top: 12px; border: 0; cursor: pointer; font: inherit; text-align: left; color: var(--accent); }
@@ -95,7 +97,7 @@ export class AddSheetComponent {
   money = money;
   mode = signal<'pick' | 'wallet'>(this.dialog.picker() === 'wallet' ? 'wallet' : 'pick');
   dir = signal<'in' | 'out'>('in');
-  amount: number | null = null;
+  amount: number | null = this.dialog.wallet()?.amount ?? null;
   date = new Date().toISOString().slice(0, 10);
   platform = 'LenDenClub';
   saving = signal(false);
@@ -112,8 +114,10 @@ export class AddSheetComponent {
       await firstValueFrom(this.api.addCash({ account: 'p2p_escrow', date: this.date, direction: out ? 'out' : 'in', amount: +this.amount!,
         category: this.platform || null, kind: out ? 'Withdrawal' : 'Deposit', notes: out ? 'Withdrawn to bank' : 'Added from bank' }));
       this.toast.ok(`${out ? 'Withdrawal' : 'Top-up'} of ${money(+this.amount!)} saved`);
+      const done = this.dialog.wallet()?.onSaved;
       await this.store.changed();
       this.dialog.closePicker();
+      done?.();
     } catch (e) { this.toast.error(errorMessage(e)); } finally { this.saving.set(false); }
   }
   more: { label: string; kind: AddKind }[] = [
