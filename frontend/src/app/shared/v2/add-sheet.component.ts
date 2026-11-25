@@ -97,7 +97,7 @@ export class AddSheetComponent {
   money = money;
   mode = signal<'pick' | 'wallet'>(this.dialog.picker() === 'wallet' ? 'wallet' : 'pick');
   dir = signal<'in' | 'out'>('in');
-  amount: number | null = null;
+  amount: number | null = this.dialog.wallet()?.amount ?? null;
   date = new Date().toISOString().slice(0, 10);
   platform = 'LenDenClub';
   saving = signal(false);
@@ -114,8 +114,10 @@ export class AddSheetComponent {
       await firstValueFrom(this.api.addCash({ account: 'p2p_escrow', date: this.date, direction: out ? 'out' : 'in', amount: +this.amount!,
         category: this.platform || null, kind: out ? 'Withdrawal' : 'Deposit', notes: out ? 'Withdrawn to bank' : 'Added from bank' }));
       this.toast.ok(`${out ? 'Withdrawal' : 'Top-up'} of ${money(+this.amount!)} saved`);
+      const done = this.dialog.wallet()?.onSaved;
       await this.store.changed();
       this.dialog.closePicker();
+      done?.();
     } catch (e) { this.toast.error(errorMessage(e)); } finally { this.saving.set(false); }
   }
   more: { label: string; kind: AddKind }[] = [

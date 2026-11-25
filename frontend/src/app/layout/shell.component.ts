@@ -370,6 +370,7 @@ export class ShellComponent {
 
   /** A dialog save that fulfils an action marks it done once, with the new transaction ids as evidence (§8.4). */
   txnSaved(s: TxnDialogState, txnIds: number[]) {
+    s.onSaved?.(txnIds);
     if (!s.actionId) return;
     void this.runner.dialogSaved(s.actionId, txnIds);
     // "Save & add another" keeps the dialog open; later saves are not evidence for the same action
