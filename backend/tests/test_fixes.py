@@ -94,3 +94,55 @@ def test_group_explain_adds_up():
         assert sum(y["put_in"] for y in e["by_year"]) == pytest.approx(e["put_in"], abs=0.05)
         g = next(x for x in ov.group_view(port, txns, {}, BENCH_HIST, FX_HIST, TODAY)["groups"] if x["key"] == key)
         assert e["xirr"] == g["xirr"]
+
+
+def us_dividend_book(with_usd=True):
+    from demo_book import _t
+    insts, txns = book()
+    txns.append(_t(50, 3, "2025-08-15", "DIVIDEND", 885.0, amount_fc=10.0 if with_usd else None))
+    return insts, txns
+
+
+@pytest.mark.parametrize("with_usd", [True, False])
+def test_us_dividend_stays_in_the_usd_wallet(with_usd):
+    insts, txns = book()
+    before = compute_portfolio(insts, txns, USD_INR, today=TODAY)
+    insts, txns = us_dividend_book(with_usd)
+    port = compute_portfolio(insts, txns, USD_INR, today=TODAY)
+    w0 = next(p for p in before["positions"] if p["asset_class"] == "cash")
+    w1 = next(p for p in port["positions"] if p["asset_class"] == "cash")
+    usd = 10.0 if with_usd else 885.0 / USD_INR
+    assert w1["balance_usd"] == pytest.approx(w0["balance_usd"] + usd, abs=0.01)
+    # the dividend is Apple's income, and not money taken out of the portfolio
+    apple = next(p for p in port["positions"] if p["name"] == "Apple")
+    assert apple["income"] == 885.0
+    seg = {s["segment"]: s for s in port["segments"]}
+    assert port["totals"]["value"] == pytest.approx(before["totals"]["value"] + usd * USD_INR, abs=0.05)
+    # history agrees with the portfolio on today's value and on the return
+    insts, txns = us_dividend_book(with_usd)
+    h = build_history(insts, txns, PRICE_HIST, FX_HIST, BENCH_HIST, today=TODAY, usd_inr=USD_INR)
+    assert h["metrics"]["end_value"] == pytest.approx(port["totals"]["value"], abs=0.05)
+    assert h["metrics"]["xirr"] == port["totals"]["xirr"]
+    assert seg["Equity (USA)"]["xirr"] is not None
+
+
+def test_us_dividend_makes_no_money_out_entry_and_old_ones_are_removed(app, client):
+    from tracker.migrations import m007_us_dividends_in_wallet
+    h = auth(USER, "user")
+    client.post("/api/forex", headers=h, json={"date": "2025-01-02", "amount": 85000, "amount_fc": 1000, "type": "FX_IN"})
+    us = client.post("/api/transactions", headers=h, json={"type": "BUY", "date": "2025-01-05", "quantity": 2, "amount": 34000,
+                                                           "amount_fc": 400, "instrument": {"asset_class": "equity", "name": "Apple", "market": "USA"}}).json
+    div = client.post("/api/transactions", headers=h, json={"instrument_id": us["instrument_id"], "type": "DIVIDEND",
+                                                            "date": "2025-05-15", "amount": 850, "amount_fc": 10}).json
+    db = app.extensions["ledger"].db
+    assert not db.query("SELECT * FROM cash_movements WHERE transaction_id = ?", (div["id"],))
+    # an old automatic entry for it is removed by the migration; a hand-typed one stays
+    db.execute("INSERT INTO cash_movements (owner, account, date, direction, amount, kind, transaction_id, source, created_at, updated_at) "
+               "VALUES (?, 'capital', '2025-05-15', 'out', 850, 'Withdrawal', ?, 'auto', 'x', 'x')", (USER, div["id"]))
+    db.execute("INSERT INTO cash_movements (owner, account, date, direction, amount, kind, source, created_at, updated_at) "
+               "VALUES (?, 'capital', '2025-05-16', 'out', 100, 'Withdrawal', 'manual', 'x', 'x')", (USER,))
+    db.batch(m007_us_dividends_in_wallet(db))
+    left = db.query("SELECT source FROM cash_movements WHERE owner = ? AND date >= '2025-05-15'", (USER,))
+    assert [r["source"] for r in left] == ["manual"]
+    checks = {c["id"] for c in client.get("/api/checks", headers=h).json}
+    assert "wallet-negative" not in checks

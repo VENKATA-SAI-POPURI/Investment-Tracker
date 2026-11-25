@@ -217,10 +217,10 @@
             <div class="field"><label for="tf-amt">{{ f.type === 'SELL' ? 'Sale proceeds' : f.type === 'DIVIDEND' ? 'Amount received' : 'Total cost' }} (₹)</label>
               <input id="tf-amt" class="input num" type="number" step="0.01" min="0" name="amount" [(ngModel)]="f.amount" /></div>
           </div>
-          @if (isUsd() && f.type !== 'DIVIDEND') {
+          @if (isUsd()) {
             <div class="cols">
               <div class="field"><label for="tf-usd">Amount in USD ($)</label><input id="tf-usd" class="input num" type="number" step="0.01" min="0" name="amount_fc" [(ngModel)]="f.amount_fc" />
-                <span class="hint">Used to track your US wallet balance and currency gains</span></div>
+                <span class="hint">{{ f.type === 'DIVIDEND' ? 'Paid into your USD wallet: it raises the wallet balance' : 'Used to track your US wallet balance and currency gains' }}</span></div>
               @if (fxRate() && f.amount_fc) {
                 <div class="field"><label>&nbsp;</label><button type="button" class="btn" (click)="fillInr()">Fill ₹ at today's rate ({{ fxRate()!.toFixed(2) }})</button></div>
               }

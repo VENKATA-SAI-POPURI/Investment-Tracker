@@ -92,6 +92,10 @@ charges); automatic cash rules unchanged but now shown on Activity › Rules wit
 - `xirr` picks the root nearest 10% (like Excel) when flows switch sign many times.
 - `GET /api/overview/group/<key>` + `shared/v2/group-sheet.component.ts`: how a group's numbers are worked out.
 
+- US stock dividends (owner has a USD wallet) are paid into the wallet: they raise its USD balance, are not an
+  external cash flow, and make no "money out" cash entry; migration 007 removes the old automatic ones.
+  `portfolio.usd_of()` converts US amounts without a USD figure at today's USD/INR in both engines.
+
 ## Settings added to the Settings page (App & calculations)
 
 - "Show the classic tools in the menu" → `advancedFeatures`.
