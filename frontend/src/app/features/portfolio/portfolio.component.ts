@@ -36,7 +36,7 @@ interface Card extends CardDef { value: number; pct: number; change: string | nu
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
   <div class="v2">
-    <section class="v-card">
+    <section class="v-card summary">
       <div class="sum">
         <div><div class="v-mut lb">Total value</div><div class="v-num big">{{ money(total()) }}</div></div>
         <div class="right"><div class="v-mut lb">Total gain · return a year</div>
@@ -87,6 +87,12 @@ interface Card extends CardDef { value: number; pct: number; change: string | nu
   @if (holdingId(); as id) { <v-holding-sheet [id]="id" (closed)="closeHolding()" /> }
   `,
   styles: [`
+    .summary { background: radial-gradient(120% 120% at 100% 0%, #3b2a8c 0%, rgba(59, 42, 140, 0) 60%), linear-gradient(150deg, #1a1534, #2a2060);
+      color: #fff; border: 0; box-shadow: 0 16px 34px -14px rgba(26, 21, 52, .6); }
+    .summary .lb { color: rgba(255,255,255,.7) !important; }
+    .summary .v-gain { color: #6ee7b7; } .summary .v-loss { color: #fca5a5; }
+    .summary .stack { background: rgba(255,255,255,.12); padding: 2px; height: 14px; }
+    .summary .stack b { border-radius: 99px; }
     .sum { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; }
     .lb { font-size: 12.5px; font-weight: 600; }
     .big { font-size: 28px; }

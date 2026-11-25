@@ -114,3 +114,14 @@
 .tabbar a.on { color: var(--accent); }
 .fab { width: 54px; height: 54px; border-radius: 18px; background: var(--grad); color: #fff; display: grid; place-items: center; margin: -26px auto 0;
   box-shadow: 0 10px 22px rgba(106, 70, 245, .45); border: 0; cursor: pointer; }
+
+/* polish: the current place stands out */
+.si.on { background: var(--grad); color: #fff; box-shadow: 0 8px 18px -8px rgba(106, 70, 245, .7); }
+.si { transition: background .15s ease, color .15s ease; }
+.side { background: linear-gradient(180deg, #ffffff 0%, #faf8ff 100%); }
+.tabbar { border: 1px solid rgba(255, 255, 255, .9); box-shadow: 0 14px 34px -10px rgba(76, 56, 180, .35); }
+.tabbar a { position: relative; }
+.tabbar a.on app-icon { background: var(--accent-soft); border-radius: 12px; padding: 4px 12px; margin-bottom: -2px; }
+.tabbar a app-icon { padding: 4px 12px; transition: background .15s ease; }
+.fab { transition: transform .15s ease; } .fab:active { transform: scale(.94); }
+.who, .iconbtn { border: 1px solid rgba(255, 255, 255, .9); }

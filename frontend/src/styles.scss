@@ -635,3 +635,70 @@ button.v-row, a.v-row { cursor: pointer; text-decoration: none; }
 .v-stats b { font-size: 15px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
 .v-logo { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; font-weight: 800; font-size: 13px; flex: none;
   color: var(--c); background: color-mix(in srgb, var(--c) 12%, white); }
+
+/* ══ Redesign polish (v2.1): depth, colour and motion ══════════════════════════════════════════════════════ */
+body {
+  background:
+    radial-gradient(900px 520px at -5% -8%, rgba(124, 92, 255, .16) 0%, rgba(124, 92, 255, 0) 60%),
+    radial-gradient(760px 460px at 105% -4%, rgba(255, 158, 112, .16) 0%, rgba(255, 158, 112, 0) 58%),
+    radial-gradient(700px 600px at 50% 110%, rgba(16, 185, 160, .07) 0%, rgba(16, 185, 160, 0) 60%),
+    var(--bg);
+  background-attachment: fixed;
+}
+:root { --shadow: 0 1px 2px rgba(26, 21, 52, .04), 0 12px 32px -14px rgba(76, 56, 180, .22); }
+
+/* cards: a hairline of light on top, a soft violet shadow, a lift on hover */
+.v-card { background: linear-gradient(180deg, #ffffff 0%, #fdfcff 100%); border: 1px solid rgba(255, 255, 255, .9);
+  box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, .9); transition: transform .18s ease, box-shadow .18s ease; }
+@media (hover: hover) { .v-card:hover { box-shadow: 0 1px 2px rgba(26, 21, 52, .05), 0 18px 40px -16px rgba(76, 56, 180, .3); } }
+
+/* section titles get a small gradient mark */
+.v-sec h2 { display: inline-flex; align-items: center; gap: 8px; }
+.v-sec h2::before { content: ""; width: 6px; height: 18px; border-radius: 4px; background: var(--grad); }
+
+/* group icons: solid colour gradients with a coloured glow */
+.v-ic { background: linear-gradient(140deg, color-mix(in srgb, var(--c, var(--accent)) 72%, white) 0%, var(--c, var(--accent)) 100%);
+  color: #fff; box-shadow: 0 6px 14px -6px color-mix(in srgb, var(--c, var(--accent)) 70%, transparent); }
+.v-tone.warn { background: linear-gradient(140deg, #ffcf7a, #f2a516); color: #fff; box-shadow: 0 6px 14px -6px #f2a516; }
+.v-tone.bad { background: linear-gradient(140deg, #ff8a98, #e4475a); color: #fff; box-shadow: 0 6px 14px -6px #e4475a; }
+.v-tone.info { background: linear-gradient(140deg, #7fb3ff, #2f80ed); color: #fff; box-shadow: 0 6px 14px -6px #2f80ed; }
+.v-tone.good { background: linear-gradient(140deg, #5fd6a3, #12a16b); color: #fff; box-shadow: 0 6px 14px -6px #12a16b; }
+.v-tone.brand { background: var(--grad); color: #fff; box-shadow: 0 6px 14px -6px #6a46f5; }
+.v-logo { background: linear-gradient(140deg, color-mix(in srgb, var(--c) 16%, white), color-mix(in srgb, var(--c) 30%, white)); }
+
+/* hero: rings and a glow */
+.v-hero::before, .v-hero::after { content: ""; position: absolute; border-radius: 50%; pointer-events: none; }
+.v-hero::before { width: 260px; height: 260px; right: -90px; top: -110px; border: 36px solid rgba(255, 255, 255, .07); }
+.v-hero::after { width: 160px; height: 160px; left: -60px; bottom: -80px; background: radial-gradient(circle, rgba(255, 255, 255, .16), rgba(255, 255, 255, 0) 70%); }
+.v-hero > * { position: relative; z-index: 1; }
+.v-hero .glass > div { background: rgba(255, 255, 255, .13); border: 1px solid rgba(255, 255, 255, .16); backdrop-filter: blur(6px); }
+
+/* controls: brand gradient for the active choice */
+.v-seg .on { background: var(--grad); color: #fff; box-shadow: 0 6px 14px -6px rgba(106, 70, 245, .6); }
+.v-seg.soft .on { background: #fff; color: var(--accent); box-shadow: 0 1px 3px rgba(26, 21, 52, .1); }
+.v-filters button.on { background: var(--grad); color: #fff; box-shadow: 0 6px 14px -6px rgba(106, 70, 245, .6); }
+.v-filters button.on .d { background: #fff !important; }
+.v-chips button.on { color: var(--accent); }
+.v-btn { transition: transform .12s ease, filter .12s ease; }
+.v-btn:active, button.v-row:active, a.v-row:active { transform: scale(.98); }
+@media (hover: hover) { button.v-row:hover, a.v-row:hover { background: linear-gradient(90deg, rgba(106, 70, 245, .04), rgba(106, 70, 245, 0)); } }
+.v-row { border-radius: 0; transition: background .15s ease, transform .12s ease; }
+
+/* pills a touch richer */
+.v-pill.ok { background: linear-gradient(135deg, #e3f7ee, #d2f2e3); }
+.v-pill.no { background: linear-gradient(135deg, #fdebee, #fbdde2); }
+
+/* share bars (used on Home rows) */
+.v-share { height: 5px; border-radius: 99px; background: var(--bg); margin-top: 6px; overflow: hidden; max-width: 160px; }
+.v-share b { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, color-mix(in srgb, var(--c) 60%, white), var(--c)); }
+
+/* entrance: cards rise in, one after another */
+@keyframes v-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.v2 > * { animation: v-rise .45s cubic-bezier(.2, .8, .2, 1) both; }
+.v2 > *:nth-child(2) { animation-delay: .04s; } .v2 > *:nth-child(3) { animation-delay: .08s; } .v2 > *:nth-child(4) { animation-delay: .12s; }
+.v2 > *:nth-child(5) { animation-delay: .16s; } .v2 > *:nth-child(6) { animation-delay: .2s; } .v2 > *:nth-child(n+7) { animation-delay: .24s; }
+@media (prefers-reduced-motion: reduce) { .v2 > * { animation: none; } .v-card, .v-btn, .v-row { transition: none; } }
+
+/* KPI tiles: tinted boxes rather than bare numbers */
+.v-kpis > div { background: linear-gradient(160deg, #f6f3ff, #fbfaff); border-radius: 16px; padding: 10px 12px; border: 1px solid #efeafe; }
+.v-stats > div { background: linear-gradient(160deg, #f6f3ff, #fbfaff); border: 1px solid #efeafe; }
