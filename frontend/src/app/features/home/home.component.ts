@@ -11,7 +11,6 @@ import { readSnapshot, snapshotKey, writeSnapshot } from '../../core/snapshot';
 import { StoreService } from '../../core/store.service';
 import { TxnDialogService } from '../../core/txn-dialog.service';
 import { IconComponent } from '../../shared/icon.component';
-import { TiltDirective } from '../../shared/v2/spatial';
 import { AreaChartComponent, DonutComponent, SparkComponent } from '../../shared/v2/charts';
 import { GroupSheetComponent } from '../../shared/v2/group-sheet.component';
 
@@ -21,7 +20,7 @@ type Range = '6M' | '1Y' | 'ALL';
 @Component({
   selector: 'app-home',
   standalone: true,
-  imports: [RouterLink, IconComponent, AreaChartComponent, DonutComponent, SparkComponent, GroupSheetComponent, TiltDirective],
+  imports: [RouterLink, IconComponent, AreaChartComponent, DonutComponent, SparkComponent, GroupSheetComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
   <div class="v2">
@@ -38,7 +37,7 @@ type Range = '6M' | '1Y' | 'ALL';
     } @else {
     <div class="v-grid hero-row">
       <!-- hero -->
-      <section class="v-hero" aria-label="Net worth" [vTilt]="5"><span class="lg-rim" aria-hidden="true"></span><span class="lg-sheen" aria-hidden="true"></span>
+      <section class="v-hero" aria-label="Net worth"><span class="lg-rim" aria-hidden="true"></span>
         @if (heroArea(); as ha) {
           <svg class="harea" viewBox="0 0 400 100" preserveAspectRatio="none" aria-hidden="true">
             <defs><linearGradient id="hfill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".28" /><stop offset="1" stop-color="#fff" stop-opacity="0" /></linearGradient></defs>
@@ -65,7 +64,7 @@ type Range = '6M' | '1Y' | 'ALL';
       </section>
 
       <!-- growth -->
-      <section class="v-card" vTilt>
+      <section class="v-card">
         <div class="v-ch"><h2>Growth</h2>
           <div class="v-chips" role="tablist" aria-label="Period">
             @for (r of ranges; track r) { <button role="tab" [class.on]="range() === r" [attr.aria-selected]="range() === r" (click)="range.set(r)">{{ r === 'ALL' ? 'All' : r }}</button> }
@@ -80,7 +79,7 @@ type Range = '6M' | '1Y' | 'ALL';
       </section>
 
       <!-- mix -->
-      <section class="v-card" vTilt>
+      <section class="v-card">
         <div class="v-ch"><h2>Your mix</h2><span class="hint">{{ ov()?.targets?.has_mine ? 'vs your target' : 'share of everything' }}</span></div>
         <div class="mix">
           <v-donut [parts]="donut()" [size]="128" [thickness]="19" [top]="groups().length + ' groups'" [bottom]="money(ov()?.totals?.value)" />

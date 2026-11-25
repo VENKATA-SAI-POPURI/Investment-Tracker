@@ -179,8 +179,11 @@ class Services:
 
     def _portfolio(self, scope: str | None, targets: dict, rec: float = 0.0) -> tuple[dict, dict]:
         data = self.ledger.load(scope)
-        port = compute_portfolio(data["instruments"], data["transactions"], self.usd_inr(), targets, p2p_recovery=rec)
+        port = compute_portfolio(data["instruments"], data["transactions"], self.usd_inr(), targets, p2p_recovery=rec,
+                                 cash=data["cash_movements"])
         port["contributions"] = self._contributions(data["cash_movements"])
+        # the P2P wallet's idle cash (money added, less loans funded and withdrawals)
+        port["contributions"]["p2p_escrow_balance"] = round(sum(p["value"] for p in port["positions"] if p.get("status") == "wallet"), 2)
         port["prices"] = self.prices_status()
         return port, data
 
@@ -210,7 +213,8 @@ class Services:
 
     @staticmethod
     def _contributions(cash: list[dict]) -> dict:
-        cap = [c for c in cash if c["account"] == "capital"]
+        from .analytics.portfolio import is_wallet_cash
+        cap = [c for c in cash if c["account"] == "capital" or is_wallet_cash(c)]
         dep = sum(float(c["amount"] or 0) for c in cap if c["direction"] == "in")
         wd = sum(float(c["amount"] or 0) for c in cap if c["direction"] == "out" and c.get("kind") != "Profit Withdrawal")
         profit = sum(float(c["amount"] or 0) for c in cap if c.get("kind") == "Profit Withdrawal")
@@ -262,7 +266,8 @@ class Services:
                                on_refreshed=self.ledger._bump)
         bench_hist = {k: {**px.BENCHMARKS[k], "points": hist.get(px.BENCHMARKS[k]["symbol"], [])} for k in bench_keys}
         result = build_history(insts, txns, {s: hist.get(s, []) for s in symbols}, hist.get(px.USDINR, []), bench_hist,
-                               rng=rng, usd_inr=self.usd_inr(), p2p_recovery=rec)
+                               rng=rng, usd_inr=self.usd_inr(), p2p_recovery=rec,
+                               cash=data["cash_movements"] if segment in (None, d.SEG_P2P) else None)
         result["segment"] = segment
         return result
 

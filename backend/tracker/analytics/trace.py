@@ -167,6 +167,9 @@ def trace_txn(t: dict, inst: dict, inst_txns: list[dict], port: dict, linked_cas
         else:
             why = ("it happens inside your US broker account; the rupee transfer to that account is the cash flow"
                    if pos["segment"] == d.SEG_EQ_US and pos["owner"] in owners and typ in (d.BUY, d.SELL, d.DIVIDEND, d.INTEREST)
+                   else "the loan is funded from your P2P wallet; money you added to the wallet is the cash flow "
+                        "(or this amount on this date, if no top-up was recorded before it)"
+                   if ac == d.P2P and typ == d.BUY
                    else "no money crossed into or out of the portfolio")
             steps.append(_step("xirr", "Return (XIRR)", f"Not a cash flow: {why}", tone="info", icon="repeat",
                                code="analytics/portfolio.py · external_flows"))
@@ -240,6 +243,12 @@ def data_checks(port: dict, txns: list[dict], instruments: list[dict], settings:
         [{"instrument_id": p["id"], "name": p["name"], "detail": f"{p['overdue_days']} days late · {_inr(_f(p.get('outstanding')))} left"}
          for p in pos if p["asset_class"] == d.P2P and (p.get("overdue_days") or 0) > 30],
         "Open the loan and set its status.")
+    w = [p for p in pos if p.get("status") == "wallet" and (p.get("wallet") or {}).get("topups", 0) > 1]
+    add("p2p-topups-missing", "info", "P2P loans with no wallet top-up recorded before them",
+        "Their amount counts as added to the wallet on the loan date. Record your top-ups (+ › P2P wallet) for exact "
+        "money-in figures and an exact wallet balance.",
+        [{"instrument_id": p["id"], "name": p["name"], "detail": f"{_inr(p['wallet']['topups'])} counted as added on loan dates"}
+         for p in w], "Add your bank → wallet top-ups, or your current wallet balance as one top-up.")
     add("wallet-negative", "bad", "USD wallet below zero",
         "US stock buys used more dollars than were sent to the account.",
         [{"instrument_id": p["id"], "name": p["name"], "detail": f"${p.get('balance_usd', 0):,.2f}"} for p in pos

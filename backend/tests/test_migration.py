@@ -18,7 +18,7 @@ def legacy_fingerprint(db):
 def test_legacy_import_reconciles_and_never_touches_legacy_rows(legacy_copy):
     db = SqliteDatabase(legacy_copy)
     before = legacy_fingerprint(db)
-    assert run_migrations(db, log=lambda *_: None) == [1, 2, 3, 4, 5, 6, 7]
+    assert run_migrations(db, log=lambda *_: None) == [1, 2, 3, 4, 5, 6, 7, 8]
     assert "goal_id" in db.columns("sip_plans")
     assert verify_legacy_import(db) == []
     assert legacy_fingerprint(db) == before
@@ -50,7 +50,7 @@ def test_m005_migrates_snoozes_to_the_right_owner_and_is_idempotent(tmp_path, mo
                    (owner, json.dumps(value)))
     db.execute("INSERT INTO user_settings (owner, key, value, updated_at) VALUES ('bad@example.com', 'dismissedInsights', 'oops', 'x')")
 
-    assert run_migrations(db, log=lambda *_: None) == [5, 6, 7]
+    assert run_migrations(db, log=lambda *_: None) == [5, 6, 7, 8]
     rows = {(r["owner"], r["id"]): r for r in db.query("SELECT * FROM action_log")}
     assert {k: rows[k]["snooze_until"] for k in rows} == {
         ("other@example.com", f"concentration:{theirs}"): "2026-12-31",

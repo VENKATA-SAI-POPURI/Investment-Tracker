@@ -9,7 +9,7 @@ from datetime import date, timedelta
 from .. import domain as d
 from .assumptions import RISK_FREE  # ~ Indian 1-year T-bill; one source in the Assumption Book
 from .portfolio import (EPF_DEFAULT_RATE, EPS, epf_accrued, epf_balance, fd_accrued, fd_value, p2p_repaid, p2p_write_down_from,
-                        run_fifo, to_date, usd_of, deposit_rates, _f)
+                        run_fifo, to_date, usd_of, deposit_rates, p2p_wallets, _f)
 from .xirr import xirr
 
 RANGES = {"1M": 30, "3M": 91, "6M": 182, "1Y": 365, "3Y": 1095, "5Y": 1826}
@@ -42,7 +42,7 @@ def _range_start(rng: str, first: date, today: date) -> date:
 
 def build_history(instruments: list[dict], txns: list[dict], price_hist: dict[str, list], fx_hist: list,
                   bench_hist: dict[str, dict], today: date | None = None, rng: str = "ALL",
-                  usd_inr: float | None = None, p2p_recovery: float | None = None) -> dict:
+                  usd_inr: float | None = None, p2p_recovery: float | None = None, cash: list[dict] | None = None) -> dict:
     """Daily value history, returns, risk and benchmarks. Today's value uses the same prices and USD/INR rate as
     compute_portfolio (`usd_inr`, each holding's last price), so the two engines agree on today."""
     today = today or date.today()
@@ -74,7 +74,7 @@ def build_history(instruments: list[dict], txns: list[dict], price_hist: dict[st
         for t in ts:
             day, amt, typ = str(t["date"])[:10], _f(t["amount"]), t["type"]
             if typ in (d.BUY, d.FX_IN):
-                if not usd_internal:
+                if not usd_internal and ac != d.P2P:   # a P2P loan is funded from the P2P wallet (its flows below)
                     flows_by_day[day] += amt
             elif typ in (d.SELL, d.FX_OUT):
                 if not usd_internal:
@@ -112,6 +112,14 @@ def build_history(instruments: list[dict], txns: list[dict], price_hist: dict[st
             qty_events[iid], cost_events[iid] = adjusted, ce
 
     dep_rate = deposit_rates(instruments, txns, usd_inr or fallback_fx)
+    p2p_w = p2p_wallets(instruments, txns, cash, today)
+    for w in p2p_w.values():
+        for dt, a in w["flows"]:
+            flows_by_day[dt] -= a        # money added to the wallet is money into the portfolio
+    p2p_series = [Series(w["points"]) for w in p2p_w.values()]
+    wallet_days = [to_date(dt) for w in p2p_w.values() for dt, _ in w["flows"]]
+    if wallet_days:
+        first = min(first, min(wallet_days))
 
     def wallet_fc_events(inst):
         events = defaultdict(float)
@@ -237,6 +245,12 @@ def build_history(instruments: list[dict], txns: list[dict], price_hist: dict[st
             cost += c
             if groups is not None and v:
                 groups[group_of[iid]] = groups.get(group_of[iid], 0.0) + v
+        for ps in p2p_series:
+            bal = ps.at(iso) or 0.0
+            value += bal
+            cost += bal
+            if groups is not None and bal:
+                groups[d.GRP_P2P] = groups.get(d.GRP_P2P, 0.0) + bal
         for inst, ws in wallets:
             bal = ws.at(iso) or 0.0
             value += bal * fx_at(iso)

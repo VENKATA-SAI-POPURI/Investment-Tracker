@@ -381,12 +381,11 @@ class Ledger:
         elif ac == d.FIXED_DEPOSIT and typ == d.MATURITY:
             cash("capital", "out", "Fixed Deposits", "Withdrawal", f"FD maturity at {name}")
         elif ac == d.P2P and typ == d.BUY:
-            cash("capital", "in", "P2P", "Deposit", f"{name} lending on {inst.get('platform') or ''}".strip())
-            cash("p2p_escrow", "in", inst.get("platform"), "Deposit", f"Auto: {inst.get('ref') or ''} - {name} lending")
+            # lent from the P2P wallet: the money came in when the wallet was topped up, not now
+            cash("p2p_escrow", "out", inst.get("platform"), "Loan funded", f"Loan funded – {inst.get('ref2') or name}")
         elif ac == d.P2P and typ == d.REPAYMENT:
+            # repayments go straight to the bank: money back to you; the wallet is untouched
             cash("capital", "out", "P2P", "Withdrawal", f"P2P repayment – {inst.get('ref2') or name}")
-            if (t.get("source") or "").startswith("import"):
-                cash("p2p_escrow", "out", inst.get("platform"), "Repayment", f"LenDen repayment – {inst.get('ref2') or name}")
         elif ac == d.CASH and typ in (d.FX_IN, d.FX_OUT):
             rate = amt / float(t["amount_fc"]) if t.get("amount_fc") else 0
             label = "deposit" if typ == d.FX_IN else "withdrawal"
@@ -411,8 +410,9 @@ class Ledger:
         (d.EPF, d.CREDIT): "Interest credited stays inside EPF: not money in or out.",
         (d.EQUITY, d.DIVIDEND): "Indian dividends go to your bank (money out). US dividends are paid into the USD wallet "
                                 "and stay in the US account, so they make no cash entry and raise the wallet balance.",
-        (d.P2P, d.REPAYMENT): "The whole repayment (principal and interest) counts as money taken out. The escrow "
-                              "entry is made only for imported repayments.",
+        (d.P2P, d.BUY): "A loan is funded from your P2P wallet, so it isn't new money: the wallet top-up was. (If no "
+                        "top-up was recorded before it, the loan amount counts as added on its date.)",
+        (d.P2P, d.REPAYMENT): "Repayments are paid straight to your bank: money back to you. The P2P wallet is untouched.",
     }
 
     def cash_rules(self) -> list[dict]:

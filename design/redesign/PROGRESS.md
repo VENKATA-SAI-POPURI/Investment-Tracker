@@ -111,6 +111,17 @@ charges); automatic cash rules unchanged but now shown on Activity › Rules wit
   only, off with reduced motion) and `startScrollDepth` (parallax orbs `.spatial-orbs` in the shell). `v-area.fill`
   takes its size from the card (absolute svg), so it can't grow the row.
 
+- v6 balanced (owner: "too much"): liquid glass is the one effect; calm deep backdrop with two soft glows, single violet
+  hero, white type (no gradient text), glass highlight for selections (gradient only on primary actions), no tilt or
+  drifting light, small press. The `vTilt` directive is kept but no longer used.
+
+- P2P wallet (owner: bank → wallet → loans; repayments → bank): `portfolio.p2p_wallets` walks top-ups (unlinked
+  Deposit/Withdrawal rows on `p2p_escrow`, typed by the user), loans funded and withdrawals; a loan larger than the
+  balance counts the shortfall as a top-up on its date. A synthetic position (`status: 'wallet'`, negative id) holds
+  the idle cash and the P2P external flows; loans' own BUYs are no longer flows. Both engines use it (`cash=`).
+  Cash rules: P2P BUY → escrow out "Loan funded"; REPAYMENT → capital out only. Migration 008 rewrites old auto rows.
+  + sheet › "P2P wallet top-up / withdrawal"; Checks lists loans with no top-up recorded.
+
 ## Settings added to the Settings page (App & calculations)
 
 - "Show the classic tools in the menu" → `advancedFeatures`.
