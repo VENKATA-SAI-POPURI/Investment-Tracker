@@ -83,8 +83,11 @@ def test_rules_come_from_the_code(client):
     by = {(r["asset_class"], r["type"]): r for r in rules}
     assert by[("mutual_fund", "BUY")]["entries"][0]["account"] == "capital"
     assert by[("equity", "BUY")]["entries"] == [] and by[("equity", "BUY")]["note"]
+    # P2P: a loan is funded out of the wallet; a repayment goes to the bank, imported or not
+    assert [(e["account"], e["direction"]) for e in by[("p2p", "BUY")]["entries"]] == [("p2p_escrow", "out")]
     rep = by[("p2p", "REPAYMENT")]
-    assert len(rep["import_entries"]) == len(rep["entries"]) + 1   # escrow out only for imports
+    assert [(e["account"], e["direction"]) for e in rep["entries"]] == [("capital", "out")]
+    assert rep["import_entries"] == rep["entries"]
 
 
 def test_trace_and_checks_api(client):

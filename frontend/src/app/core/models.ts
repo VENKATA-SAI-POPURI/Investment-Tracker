@@ -252,6 +252,8 @@ export interface Position {
   emis_behind?: number;
   data_as_of?: string;
   written_down?: number;
+  /** P2P wallet (status 'wallet'): money added, top-ups inferred from loans, withdrawn, lent. */
+  wallet?: { balance: number; added: number; topups: number; withdrawn: number; lent: number };
   // FD
   accrued_interest?: number;
   days_to_maturity?: number | null;

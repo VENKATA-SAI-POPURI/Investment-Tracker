@@ -159,7 +159,8 @@ def latest_fx_from_txns(txns: list[dict]) -> float | None:
 
 
 def compute_portfolio(instruments: list[dict], txns: list[dict], usd_inr: float | None,
-                      targets: dict | None = None, today: date | None = None, p2p_recovery: float | None = None) -> dict:
+                      targets: dict | None = None, today: date | None = None, p2p_recovery: float | None = None,
+                      cash: list[dict] | None = None) -> dict:
     today = today or date.today()
     today_s = today.isoformat()
     by_inst: dict[int, list[dict]] = defaultdict(list)
@@ -206,6 +207,7 @@ def compute_portfolio(instruments: list[dict], txns: list[dict], usd_inr: float 
         positions.append(_wallet_position(inst, ts, us_fc_by_owner.get(inst["owner"], 0.0), fx))
 
     _p2p_schedules(positions, today)
+    positions += _wallet_positions(p2p_wallets(instruments, txns, cash, today))
 
     total_value = sum(p["value"] for p in positions)
     for p in positions:
@@ -560,6 +562,77 @@ def position_flows(pos: dict, ts: list[dict], today: date) -> list[tuple[date, f
     return flows
 
 
+AUTO_ESCROW_NOTES = ("Auto:", "LenDen repayment", "Loan funded")   # rows the app (or the old app) generated
+
+
+def is_wallet_cash(c: dict) -> bool:
+    """A P2P wallet top-up or withdrawal the user recorded: an unlinked Deposit / Withdrawal on the escrow account.
+    Generated rows (loans funded, the old app's automatic lending and repayment rows) are not."""
+    return (c.get("account") == "p2p_escrow" and not c.get("transaction_id") and c.get("kind") in ("Deposit", "Withdrawal")
+            and not str(c.get("notes") or "").startswith(AUTO_ESCROW_NOTES))
+
+
+def p2p_wallets(instruments: list[dict], txns: list[dict], cash: list[dict] | None, today: date) -> dict[str, dict]:
+    """Each owner's P2P wallet (LenDenClub and similar): money added from the bank, loans funded from it, money
+    withdrawn back to the bank. Repayments go straight to the bank and never touch it.
+
+    Walked in date order: a loan larger than the balance counts the shortfall as a top-up on the loan's date (so a
+    missing top-up never makes the balance negative, and with no top-ups recorded every loan is its own top-up,
+    exactly as before). Returns {owner: {balance, added, topups, withdrawn, lent, flows [(iso, amount)],
+    points [(iso, balance)]}}; flows use the investor's sign (money added is negative)."""
+    p2p_ids = {i["id"]: i["owner"] for i in instruments if i["asset_class"] == d.P2P}
+    events: dict[str, list[tuple[str, int, float]]] = defaultdict(list)
+    for t in txns:
+        owner = p2p_ids.get(t["instrument_id"])
+        if owner and t["type"] == d.BUY and _f(t["amount"]) > 0:
+            events[owner].append((str(t["date"])[:10], 1, _f(t["amount"])))
+    for c in cash or []:
+        if is_wallet_cash(c) and _f(c.get("amount")) > 0:
+            events[c["owner"]].append((str(c["date"])[:10], 0 if c["kind"] == "Deposit" else 2, _f(c["amount"])))
+    out = {}
+    for owner, evs in events.items():
+        bal = added = topups = withdrawn = lent = 0.0
+        flows, points = [], []
+        for day, kind, amt in sorted(evs):
+            if day > today.isoformat():
+                continue
+            if kind == 0:
+                bal += amt; added += amt; flows.append((day, -amt))
+            elif kind == 1:
+                lent += amt
+                if amt > bal + EPS:
+                    short = amt - bal
+                    topups += short; flows.append((day, -short)); bal = 0.0
+                else:
+                    bal -= amt
+            else:
+                withdrawn += amt; flows.append((day, amt)); bal = max(bal - amt, 0.0)
+            points.append((day, round(bal, 2)))
+        out[owner] = {"balance": round(bal, 2), "added": round(added, 2), "topups": round(topups, 2),
+                      "withdrawn": round(withdrawn, 2), "lent": round(lent, 2), "flows": flows, "points": points}
+    return out
+
+
+def _wallet_positions(wallets: dict[str, dict]) -> list[dict]:
+    out = []
+    for n, (owner, w) in enumerate(sorted(wallets.items())):
+        out.append({
+            "id": -(n + 1), "owner": owner, "name": "P2P wallet", "asset_class": d.P2P, "segment": d.SEG_P2P, "group": d.GRP_P2P,
+            "market": None, "currency": "INR", "sector": None, "market_cap": None, "category": None, "sub_category": None,
+            "tax_class": d.TAX_INCOME, "symbol": None, "price_source": None, "platform": None, "status": "wallet", "ref": None,
+            "ref2": None, "rate": None, "tenure_months": None, "maturity_date": None, "notes": None,
+            "quantity": None, "cost": w["balance"], "value": w["balance"], "invested": round(w["added"] + w["topups"], 2),
+            "proceeds": w["withdrawn"], "income": 0.0, "realized": 0.0, "unrealized": 0.0, "unrealized_pct": None,
+            "total_return": 0.0, "xirr": None, "day_change": 0.0, "has_price": False, "outstanding": 0.0, "interest": 0.0,
+            "principal_repaid": 0.0, "overdue_days": 0, "at_risk": 0.0, "last_repayment": None,
+            "wallet": {k: w[k] for k in ("balance", "added", "topups", "withdrawn", "lent")},
+            "wallet_flows": [[dt, a] for dt, a in w["flows"]],
+            "first_date": w["points"][0][0] if w["points"] else None, "last_date": w["points"][-1][0] if w["points"] else None,
+            "is_open": w["balance"] > 0.01, "txn_count": 0,
+        })
+    return out
+
+
 def wallet_owners(positions: list[dict]) -> set[str]:
     """Owners with a USD broker wallet: their US stock trades are internal to that account."""
     return {p["owner"] for p in positions if p["asset_class"] == d.CASH}
@@ -572,6 +645,11 @@ def external_flows(p: dict, ts: list[dict], owners_with_wallet: set[str], today:
         # bank <-> USD wallet transfers are the external flows of the US account
         return [(to_date(t["date"]), -_f(t["amount"]) if t["type"] == d.FX_IN else _f(t["amount"]))
                 for t in ts if t["type"] in (d.FX_IN, d.FX_OUT)]
+    if p["asset_class"] == d.P2P:
+        if p.get("status") == "wallet":
+            return [(to_date(dt), float(a)) for dt, a in p.get("wallet_flows") or []]
+        # a loan is funded from the P2P wallet: only its repayments (straight to the bank) cross the edge
+        return [(to_date(t["date"]), _f(t["amount"])) for t in ts if t["type"] in (d.REPAYMENT, d.INTEREST)]
     if p["segment"] == d.SEG_EQ_US and p["owner"] in owners_with_wallet:
         # buys, sales and dividends all happen inside the US account (dividends land in the USD wallet); only the
         # rupee transfers to and from that account cross the portfolio's edge
@@ -591,7 +669,7 @@ def _segments(positions: list[dict], by_inst: dict, instruments: list[dict], tod
             if k == "invested" and p["asset_class"] == d.CASH:
                 continue
             s[k] += _f(p.get(k))
-        if p.get("is_open") and p["asset_class"] != d.CASH:
+        if p.get("is_open") and p["asset_class"] != d.CASH and p.get("status") != "wallet":
             s["open_count"] += 1
         s["flows"] += external_flows(p, by_inst.get(p["id"], []), owners_with_wallet, today)
 
@@ -642,6 +720,7 @@ def _totals(positions: list[dict], segments: list[dict], today: date) -> dict:
         "unrealized_pct": r2(unrealized / cost * 100) if cost > EPS else None,
         "realized": r2(realized), "income": r2(income), "total_gain": r2(unrealized + realized + income),
         "day_change": r2(day_change), "day_change_pct": r2(day_change / (value - day_change) * 100) if value - day_change > EPS else None,
-        "xirr": _pct(xirr(flows)), "open_positions": sum(1 for p in positions if p.get("is_open") and p["asset_class"] != d.CASH),
+        "xirr": _pct(xirr(flows)), "open_positions": sum(1 for p in positions if p.get("is_open") and p["asset_class"] != d.CASH
+                                                         and p.get("status") != "wallet"),
         "missing_prices": missing,
     }

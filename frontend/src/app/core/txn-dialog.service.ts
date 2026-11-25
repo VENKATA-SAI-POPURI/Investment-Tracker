@@ -38,10 +38,12 @@ export class TxnDialogService {
   readonly fdMature = signal<FdMatureState | null>(null);
   readonly whatIf = signal<WhatIfState | null>(null);
   /** The redesign's "what would you like to add?" sheet. */
-  readonly picker = signal(false);
+  readonly picker = signal<false | 'pick' | 'wallet'>(false);
   add(kind?: AddKind, extra: Partial<TxnDialogState> = {}) { this.picker.set(false); this.state.set({ mode: 'add', kind, ...extra }); }
   /** Opens the Add sheet (pick what to add first). */
-  openPicker() { this.picker.set(true); }
+  openPicker() { this.picker.set('pick'); }
+  /** Opens the Add sheet on the P2P wallet form (money added from the bank, or withdrawn to it). */
+  openWallet() { this.picker.set('wallet'); }
   closePicker() { this.picker.set(false); }
   edit(txn: Transaction) { this.state.set({ mode: 'edit', txn }); }
   close() { this.state.set(null); }

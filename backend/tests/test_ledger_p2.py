@@ -33,7 +33,7 @@ def test_m006_adds_goal_id_once_and_is_idempotent(tmp_path, monkeypatch):
     assert run_migrations(db, log=lambda *_: None) == [1, 2, 3, 4, 5]
     monkeypatch.undo()
     assert "goal_id" not in db.columns("sip_plans")
-    assert run_migrations(db, log=lambda *_: None) == [6, 7]
+    assert run_migrations(db, log=lambda *_: None) == [6, 7, 8]
     assert "goal_id" in db.columns("sip_plans")
     assert run_migrations(db, log=lambda *_: None) == []
     assert migrations.m006_sip_goal(db) == []           # replaying the step itself is a no-op

@@ -68,8 +68,11 @@ def test_p2p_loan_repayment_and_escrow(client):
     assert r.status_code == 201
     pos = next(p for p in client.get("/api/portfolio", headers=h).json["positions"] if p["id"] == loan["id"])
     assert pos["outstanding"] == 670 and pos["interest"] == 30
+    # the loan was funded from the P2P wallet; the repayment went to the bank and left the wallet alone
     escrow = client.get("/api/cash?account=p2p_escrow", headers=h).json
-    assert len(escrow) == 1 and escrow[0]["kind"] == "Deposit"
+    assert len(escrow) == 1 and escrow[0]["kind"] == "Loan funded" and escrow[0]["direction"] == "out"
+    capital = client.get("/api/cash?account=capital", headers=h).json
+    assert [(c["direction"], c["amount"]) for c in capital] == [("out", 360)]
 
 
 def test_settings_validation(client):

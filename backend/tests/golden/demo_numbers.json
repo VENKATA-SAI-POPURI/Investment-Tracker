@@ -100,6 +100,14 @@
    "value": 52000.0,
    "xirr": 11.46
   },
+  "P2P wallet": {
+   "cost": 0.0,
+   "income": 0.0,
+   "realized": 0.0,
+   "unrealized": 0.0,
+   "value": 0.0,
+   "xirr": null
+  },
   "Parag Parikh Flexi Cap": {
    "cost": 100000.0,
    "income": 0.0,

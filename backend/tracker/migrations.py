@@ -579,6 +579,26 @@ def m007_us_dividends_in_wallet(db: Database) -> list:
              "AND i.owner IN (SELECT owner FROM instruments WHERE asset_class = 'cash'))", None)]
 
 
+def m008_p2p_wallet(db: Database) -> list:
+    """P2P money moves bank -> wallet -> loan, and repayments go straight to the bank. Rewrite the automatic rows of
+    earlier versions: a loan becomes "Loan funded" out of the wallet (no new money in); a repayment no longer
+    touches the wallet. Rows typed by hand and the old app's own rows are left as they are."""
+    now = now_iso()
+    funded = ("SELECT t.id FROM transactions t JOIN instruments i ON i.id = t.instrument_id "
+              "WHERE i.asset_class = 'p2p' AND t.type = 'BUY'")
+    repaid = ("SELECT t.id FROM transactions t JOIN instruments i ON i.id = t.instrument_id "
+              "WHERE i.asset_class = 'p2p' AND t.type = 'REPAYMENT'")
+    return [
+        ("INSERT INTO cash_movements (owner, account, date, direction, amount, category, kind, notes, transaction_id, source, "
+         "created_at, updated_at) SELECT t.owner, 'p2p_escrow', t.date, 'out', t.amount, i.platform, 'Loan funded', "
+         "'Loan funded – ' || COALESCE(i.ref2, i.name), t.id, 'auto', ?, ? FROM transactions t JOIN instruments i ON i.id = t.instrument_id "
+         "WHERE i.asset_class = 'p2p' AND t.type = 'BUY' AND t.id IN (SELECT transaction_id FROM cash_movements "
+         "WHERE source = 'auto' AND transaction_id IS NOT NULL)", (now, now)),
+        (f"DELETE FROM cash_movements WHERE source = 'auto' AND kind != 'Loan funded' AND transaction_id IN ({funded})", None),
+        (f"DELETE FROM cash_movements WHERE source = 'auto' AND account = 'p2p_escrow' AND transaction_id IN ({repaid})", None),
+    ]
+
+
 MIGRATIONS = [
     (1, "core_schema", m001_core_schema),
     (2, "legacy_import", m002_legacy_import),
@@ -587,6 +607,7 @@ MIGRATIONS = [
     (5, "actions_snapshots", m005_actions_snapshots),
     (6, "sip_goal", m006_sip_goal),
     (7, "us_dividends_in_wallet", m007_us_dividends_in_wallet),
+    (8, "p2p_wallet", m008_p2p_wallet),
 ]
 
 

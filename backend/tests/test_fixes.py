@@ -159,3 +159,61 @@ def test_rupee_only_us_entries_convert_at_the_average_deposit_rate():
     port = compute_portfolio(insts, txns, 88.4, today=TODAY)
     wallet = next(p for p in port["positions"] if p["asset_class"] == "cash")
     assert wallet["balance_usd"] == pytest.approx(4000 - 170000 / 85.0, abs=0.01)
+
+
+def wallet_cash(day, kind, amount, notes=None):
+    return {"owner": "demo@example.com", "account": "p2p_escrow", "date": day, "direction": "in" if kind == "Deposit" else "out",
+            "amount": amount, "kind": kind, "notes": notes, "transaction_id": None, "source": "manual"}
+
+
+def test_p2p_wallet_balance_is_added_less_lent_less_withdrawn():
+    from tracker.analytics.portfolio import p2p_wallets
+    insts, txns = book()
+    cash = [wallet_cash("2025-11-01", "Deposit", 12000), wallet_cash("2026-07-01", "Withdrawal", 1000),
+            wallet_cash("2025-11-02", "Deposit", 999, notes="Auto: P2P-001 - lending")]   # an old generated row: ignored
+    w = p2p_wallets(insts, txns, cash, TODAY)["demo@example.com"]
+    # loans of 5,000 (Dec 2025) and 4,000 (May 2026) come out of the 12,000 added; 1,000 withdrawn
+    assert (w["added"], w["lent"], w["withdrawn"], w["topups"], w["balance"]) == (12000, 9000, 1000, 0, 2000)
+
+
+def test_p2p_wallet_counts_a_shortfall_as_a_top_up_on_the_loan_date():
+    from tracker.analytics.portfolio import p2p_wallets
+    insts, txns = book()
+    w = p2p_wallets(insts, txns, [wallet_cash("2025-11-01", "Deposit", 3000)], TODAY)["demo@example.com"]
+    assert w["topups"] == 2000 + 4000 and w["balance"] == 0
+    assert ("2025-12-05", -2000) in w["flows"]
+
+
+def test_p2p_wallet_cash_is_in_net_worth_and_both_engines_agree():
+    insts, txns = book()
+    base = compute_portfolio(insts, txns, USD_INR, today=TODAY)
+    cash = [wallet_cash("2025-11-01", "Deposit", 12000)]
+    insts, txns = book()
+    port = compute_portfolio(insts, txns, USD_INR, today=TODAY, cash=cash)
+    wallet = next(p for p in port["positions"] if p.get("status") == "wallet")
+    assert wallet["value"] == 3000 and wallet["group"] == "p2p"
+    assert port["totals"]["value"] == pytest.approx(base["totals"]["value"] + 3000, abs=0.01)
+    insts, txns = book()
+    h = build_history(insts, txns, PRICE_HIST, FX_HIST, BENCH_HIST, today=TODAY, usd_inr=USD_INR, cash=cash)
+    assert h["metrics"]["end_value"] == pytest.approx(port["totals"]["value"], abs=0.05)
+    assert h["metrics"]["xirr"] == port["totals"]["xirr"]
+
+
+def test_m008_rewrites_old_automatic_p2p_rows(app, client):
+    from tracker.migrations import m008_p2p_wallet
+    h = auth(USER, "user")
+    loan = client.post("/api/p2p/loans", headers=h, json={"name": "B", "ref2": "L-9", "date": "2026-01-01", "amount": 1000,
+                                                          "tenure_months": 3, "rate": 30}).json
+    rep = client.post("/api/transactions", headers=h, json={"instrument_id": loan["id"], "type": "REPAYMENT",
+                                                             "date": "2026-02-05", "amount": 350, "principal": 320}).json
+    db = app.extensions["ledger"].db
+    db.execute("DELETE FROM cash_movements")
+    buy_id = db.one("SELECT id FROM transactions WHERE instrument_id = ? AND type = 'BUY'", (loan["id"],))["id"]
+    old = [(USER, "capital", "in", 1000, "Deposit", buy_id), (USER, "p2p_escrow", "in", 1000, "Deposit", buy_id),
+           (USER, "capital", "out", 350, "Withdrawal", rep["id"]), (USER, "p2p_escrow", "out", 350, "Repayment", rep["id"])]
+    for o in old:
+        db.execute("INSERT INTO cash_movements (owner, account, date, direction, amount, kind, transaction_id, source, created_at, updated_at) "
+                   "VALUES (?, ?, '2026-01-01', ?, ?, ?, ?, 'auto', 'x', 'x')", o)
+    db.batch(m008_p2p_wallet(db))
+    rows = sorted((r["account"], r["direction"], r["kind"]) for r in db.query("SELECT * FROM cash_movements"))
+    assert rows == [("capital", "out", "Withdrawal"), ("p2p_escrow", "out", "Loan funded")]

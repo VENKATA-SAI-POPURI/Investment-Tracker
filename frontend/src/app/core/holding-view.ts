@@ -31,6 +31,7 @@ export function holdingLine(p: Position): HoldingLine {
       const status = (p.status || '').toLowerCase();
       const ends = p.maturity_date ? ` · ends ${monthYear(p.maturity_date)}` : '';
       let sub: string, t: HoldingLine['tone'] = tone(p.interest);
+      if (status === 'wallet') return { sub: 'Idle cash in the P2P wallet', change: '', tone: 'mut' };
       if (status === 'closed') sub = `Closed · ${money(p.invested)} lent`;
       else if (status === 'defaulted') { sub = `Defaulted · ${money(left)} unpaid, counted at ${money(p.value)}`; t = 'loss'; }
       else if ((p.emis_behind ?? 0) > 0) { sub = `${money(left)} left · ${p.emis_behind} EMI${p.emis_behind === 1 ? '' : 's'} behind (due ${fmtDate(p.next_due, false)})`; t = 'warn'; }
