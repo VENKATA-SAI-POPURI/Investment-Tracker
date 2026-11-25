@@ -84,7 +84,7 @@
                   </button>
                 }
               </div>
-              <a class="bell-all" routerLink="/actions" (click)="closeBell()">All actions <app-icon name="chevronRight" [size]="13" /></a>
+              <a class="bell-all" [routerLink]="advanced() ? '/actions' : '/'" (click)="closeBell()">{{ advanced() ? 'All actions' : 'Your to-do list' }} <app-icon name="chevronRight" [size]="13" /></a>
             }
             @if (bellComingUp().length) {
               <div class="bell-sec" id="bell-coming-up">Coming up</div>

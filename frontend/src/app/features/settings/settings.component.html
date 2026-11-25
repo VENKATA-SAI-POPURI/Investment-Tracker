@@ -164,9 +164,9 @@
                 <span><span class="k">Target mix:</span> {{ targetsSet() ? 'set' + (profileLabel() ? ' · ' + profileLabel() : '') : 'not set' }}</span>
                 <span class="go">{{ targetsSet() || !auth.canWrite() ? 'Analysis' : 'Set it' }} →</span>
               </a>
-              <a class="summary" routerLink="/plan" [queryParams]="{ tab: 'retirement' }">
+              <a class="summary" routerLink="/analysis" [queryParams]="{ q: 'goals' }">
                 <span><span class="k">Retirement plan:</span> {{ retireAge() ? 'retire at ' + retireAge() : retirementSet() ? 'set' : 'not set' }}</span>
-                <span class="go">{{ retirementSet() || !auth.canWrite() ? 'Plan' : 'Set it' }} →</span>
+                <span class="go">{{ retirementSet() || !auth.canWrite() ? 'Goals' : 'Set it' }} →</span>
               </a>
             </div>
           </div>

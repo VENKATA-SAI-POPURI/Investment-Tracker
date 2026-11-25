@@ -139,6 +139,30 @@ charges); automatic cash rules unchanged but now shown on Activity › Rules wit
   Home net worth counts up; all off with reduced motion. Home group rows sit on one grid
   (`40px 1fr 64px 112px`; ≤ 480 px the sparkline hides). Settings › Your plans reads `groupTargets` and links to Analysis › Mix.
 
+## Question-led flow (owner: "no proper flow, not getting the most out of it", 25 Nov 2026)
+
+Approved mockups: `design/redesign/mockups-flow/*.png`. Owner chose: question-led structure, no "Ask" box, goals back
+in a simple form, mockups first.
+
+- Backend `tracker/analytics/answers.py` + `GET /api/answers` (`Services.answers`, memoised): `questions` (money, market,
+  mix, goals, dragging, returns, tax; each {q, answer, detail, tone, icon, link, badge}), `todo` (the invest flow when a
+  group is under target, FD maturing → invest flow, late P2P, tax, review, data checks), `dragging` (groups behind their
+  market by ₹, holdings down 10%+, late loans), `goals` (each goal + the retirement plan: on track or short by ₹ a month).
+  Nothing new is computed: it reads the overview, goal projections, retirement plan, tax and data checks.
+  `overview.totals.monthly_in` = money added a month over the last six months (EPF left out) sizes the invest flow.
+- `GET /api/overview/group/all` explains the whole portfolio; every explanation carries `issues` (data checks that touch it).
+- Home: hero, "How am I doing?" (first four questions), To do (one button each), Growth. `OverviewService.answers`.
+- Analysis: `/analysis` lists the questions; `?q=mix|market|dragging|returns|goals` opens one (answer first, details,
+  related questions); old `?tab=` links map over (improve → dragging). `features/analysis/goals-view.component.ts`:
+  goal cards with "Fix it" (sets the monthly amount / `retirementPlan.monthly_sip`), add/edit with "share of today's
+  money" (the same % of each segment), and a three-field retirement set-up.
+- Guided flow `features/flow/invest-flow.component.ts` at `/flow/invest?amount=&from=`: Amount → Plan (rebalance, buys
+  only) → Record (each buy opens the add-entry form pre-filled; `TxnDialogState.onSaved` / `TxnDialogService.openWallet
+  ({amount, onSaved})` tick it off) → Done (mix before/after, gap to targets, next to-do).
+- ⓘ sheet (`shared/v2/group-sheet.component.ts`): four numbered steps (money in, money out, still there, yearly rate) and
+  the data issues with a "Fix it" link; opened from the Home hero, the Portfolio summary and each Portfolio card.
+- Dead links fixed: Settings › Retirement plan → Analysis › goals; the bell's "All actions" → Home unless classic tools are on.
+
 ## Settings added to the Settings page (App & calculations)
 
 - "Show the classic tools in the menu" → `advancedFeatures`.

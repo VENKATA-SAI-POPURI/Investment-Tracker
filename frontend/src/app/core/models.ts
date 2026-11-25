@@ -1196,4 +1196,7 @@ export interface GroupExplain {
   by_year: { year: number; put_in: number; taken_out: number }[];
   holdings: { id: number; name: string; is_open: boolean; put_in: number; taken_out: number; value: number; gain: number; xirr: number | null;
     market: string; flows: number; first: string | null }[];
+  /** Data checks touching these holdings (a doubt about a number and its fix, side by side). */
+  issues?: { id: string; severity: 'bad' | 'warn' | 'info'; title: string; detail: string | null; count: number;
+    items: { instrument_id: number; name: string; detail?: string }[]; fix?: string | null; link?: string | null }[];
 }

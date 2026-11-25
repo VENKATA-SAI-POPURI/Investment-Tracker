@@ -86,3 +86,17 @@ def test_answers_and_explain_all_api(client):
     e = client.get("/api/overview/group/all", headers=h)
     assert e.status_code == 200 and e.json["label"] == "Everything" and "issues" in e.json
     assert client.get("/api/overview/group/nope", headers=h).status_code == 400
+
+
+def test_retirement_plan_joins_the_goals(client):
+    h = auth(USER, "user")
+    client.post("/api/transactions", headers=h, json={"type": "BUY", "date": "2024-01-10", "quantity": 10, "amount": 150000,
+                                                      "instrument": {"asset_class": "mutual_fund", "name": "Index Fund"}})
+    assert client.get("/api/answers", headers=h).json["goals"] == []
+    r = client.put("/api/settings/retirementPlan", headers=h, json={"value": {"current_age": 35, "retire_age": 55, "monthly_expenses": 50000}})
+    assert r.status_code == 200
+    goals = client.get("/api/answers", headers=h).json["goals"]
+    ret = next(g for g in goals if g["kind"] == "retirement")
+    assert ret["name"] == "Retire at 55" and ret["target"] > 0 and ret["status"] in ("on_track", "at_risk", "off_track", "achieved")
+    if ret["status"] not in ("on_track", "achieved"):
+        assert ret["extra"] > 0 and ret["extra"] % 100 == 0

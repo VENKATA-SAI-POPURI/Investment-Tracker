@@ -50,6 +50,16 @@ const ON = ['on_track', 'achieved'];
         }
       </section>
     }
+    @if (auth.canWrite() && !hasRetirement()) {
+      <section class="v-card add">
+        <h3>Plan for retirement</h3>
+        <p class="v-mut sm hint" style="margin-top:0">Three numbers are enough to see if you're on track. EPF and NPS count towards it.</p>
+        <div class="three"><label>Your age <input class="v-input" type="number" min="18" max="80" [(ngModel)]="rp.current_age" /></label>
+          <label>Retire at <input class="v-input" type="number" min="30" max="85" [(ngModel)]="rp.retire_age" /></label>
+          <label>Spend a month today (₹) <input class="v-input" type="number" min="1000" step="1000" [(ngModel)]="rp.monthly_expenses" /></label></div>
+        <button class="v-btn primary" [disabled]="!rpValid() || busy() === 'retirement'" (click)="saveRetirement()">{{ busy() === 'retirement' ? 'Working it out…' : 'See if I\'m on track' }}</button>
+      </section>
+    }
     @if (auth.canWrite()) {
       <section class="v-card add">
         @if (!adding()) {
@@ -94,6 +104,8 @@ const ON = ['on_track', 'achieved'];
     .add h3 { margin: 0 0 10px; font-size: 16px; }
     .add label { display: flex; flex-direction: column; gap: 6px; font-size: var(--fs-small); font-weight: 600; color: var(--text-2); margin-bottom: 10px; }
     .add .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .add .three { display: grid; grid-template-columns: 1fr 1fr 1.4fr; gap: 10px; }
+    @media (max-width: 480px) { .add .three { grid-template-columns: 1fr 1fr; } .add .three label:last-child { grid-column: 1 / -1; } }
     .add .row { display: flex; gap: 8px; }
     .foot { font-size: 12px; margin: 12px 4px 0; }
   `],
@@ -110,6 +122,20 @@ export class GoalsViewComponent {
   busy = signal<number | 'retirement' | 'new' | null>(null);
   adding = signal(false);
   editId = signal<number | null>(null);
+  private savedPlan = () => (this.store.settings().retirementPlan as Record<string, number> | undefined) ?? {};
+  hasRetirement = computed(() => this.rows().some(r => r.kind === 'retirement'));
+  rp = { current_age: this.savedPlan()['current_age'] ?? null as number | null, retire_age: this.savedPlan()['retire_age'] ?? 60 as number | null,
+    monthly_expenses: this.savedPlan()['monthly_expenses'] ?? null as number | null };
+  rpValid = () => (this.rp.current_age ?? 0) >= 18 && (this.rp.retire_age ?? 0) > (this.rp.current_age ?? 0) && (this.rp.monthly_expenses ?? 0) > 0;
+
+  async saveRetirement() {
+    this.busy.set('retirement');
+    try {
+      await this.store.saveSetting('retirementPlan', { ...this.savedPlan(), current_age: +this.rp.current_age!, retire_age: +this.rp.retire_age!,
+        monthly_expenses: +this.rp.monthly_expenses! });
+      this.toast.ok('Retirement plan saved');
+    } catch (e) { this.toast.error(errorMessage(e)); } finally { this.busy.set(null); }
+  }
   draft = this.blank();
   private blank() {
     return { name: '', target_amount: null as number | null, target_date: '', monthly_contribution: null as number | null,
