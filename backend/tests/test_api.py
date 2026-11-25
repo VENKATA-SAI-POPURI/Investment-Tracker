@@ -185,11 +185,11 @@ def test_peek_reads_the_memo_without_building_it(app, client, offline_prices):
     h = auth(USER, "user")
     buy(client, h, symbol="TCS.NS")
     svc = app.extensions["services"]
-    assert svc._peek("performance", USER, "ALL", None) is None
+    assert svc.peek_performance(USER) is None
     assert client.get("/api/performance", headers=h).status_code == 200
-    assert svc._peek("performance", USER, "ALL", None) is not None
+    assert svc.peek_performance(USER) is not None
     buy(client, h, name="Infosys", symbol="INFY.NS")  # a ledger write makes the entry stale
-    assert svc._peek("performance", USER, "ALL", None) is None
+    assert svc.peek_performance(USER) is None
 
 
 def test_ipo_notification_links_to_the_watchlist(client):

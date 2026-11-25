@@ -8,7 +8,8 @@ from datetime import date, timedelta
 
 from .. import domain as d
 from .assumptions import RISK_FREE  # ~ Indian 1-year T-bill; one source in the Assumption Book
-from .portfolio import EPS, epf_balance, fd_accrued, run_fifo, to_date, _f
+from .portfolio import (EPF_DEFAULT_RATE, EPS, epf_accrued, epf_balance, fd_accrued, fd_value, p2p_repaid, p2p_write_down_from,
+                        run_fifo, to_date, _f)
 from .xirr import xirr
 
 RANGES = {"1M": 30, "3M": 91, "6M": 182, "1Y": 365, "3Y": 1095, "5Y": 1826}
@@ -40,10 +41,13 @@ def _range_start(rng: str, first: date, today: date) -> date:
 
 
 def build_history(instruments: list[dict], txns: list[dict], price_hist: dict[str, list], fx_hist: list,
-                  bench_hist: dict[str, dict], today: date | None = None, rng: str = "ALL") -> dict:
+                  bench_hist: dict[str, dict], today: date | None = None, rng: str = "ALL",
+                  usd_inr: float | None = None, p2p_recovery: float | None = None) -> dict:
+    """Daily value history, returns, risk and benchmarks. Today's value uses the same prices and USD/INR rate as
+    compute_portfolio (`usd_inr`, each holding's last price), so the two engines agree on today."""
     today = today or date.today()
     if not txns:
-        return {"series": [], "metrics": {}, "benchmarks": [], "monthly": []}
+        return {"series": [], "metrics": {}, "benchmarks": [], "monthly": [], "contributors": []}
     inst_map = {i["id"]: i for i in instruments}
     by_inst = defaultdict(list)
     for t in txns:
@@ -130,59 +134,120 @@ def build_history(instruments: list[dict], txns: list[dict], price_hist: dict[st
     cost_series = {iid: Series(e) for iid, e in cost_events.items()}
     wallets = [(i, wallet_fc_events(i)) for i in instruments if i["asset_class"] == d.CASH and i["id"] in by_inst]
 
+    today_iso = today.isoformat()
+
     def fx_at(iso):
+        if iso == today_iso and usd_inr:
+            return usd_inr
         return fx.at(iso) or fallback_fx or 0.0
 
-    def value_on(iso: str, day: date) -> tuple[float, float]:
-        value = cost = 0.0
-        for iid, ts in by_inst.items():
-            inst = inst_map[iid]
-            ac = inst["asset_class"]
-            if ac in d.UNITISED:
-                q = qty_series[iid].at(iso) or 0.0
-                c = cost_series[iid].at(iso) or 0.0
-                if q <= EPS:
-                    continue
+    first_day = {iid: to_date(min(str(t["date"])[:10] for t in ts)) for iid, ts in by_inst.items() if ts}
+
+    # Step series for deposits and loans: their state only changes on entry dates, so it is worked out once per
+    # date (with the same helpers compute_portfolio uses) and looked up per day.
+    steps: dict[int, Series] = {}
+    for iid, ts in by_inst.items():
+        inst = inst_map[iid]
+        ac = inst["asset_class"]
+        dates = sorted({str(t["date"])[:10] for t in ts})
+        if ac == d.P2P:
+            steps[iid] = Series([(dt, p2p_repaid(inst, ts, dt)["outstanding"]) for dt in dates])
+        elif ac == d.FIXED_DEPOSIT:
+            steps[iid] = Series([(dt, fd_value(inst, ts, to_date(dt))) for dt in dates])
+        elif ac == d.EPF:
+            rate = _f(inst.get("rate")) or EPF_DEFAULT_RATE
+            pts = []
+            for dt in dates:
+                upto = [t for t in ts if str(t["date"])[:10] <= dt]
+                pts.append((dt, (epf_balance(upto), epf_accrued(upto, rate, to_date(dt)), rate)))
+            steps[iid] = Series(pts)
+
+    def inst_value(iid: int, iso: str, day: date) -> tuple[float, float]:
+        """(value, cost) of one instrument at the end of `iso` (wallets are valued separately). The same rules
+        as compute_portfolio, so history and today's portfolio agree."""
+        ts = by_inst[iid]
+        inst = inst_map[iid]
+        ac = inst["asset_class"]
+        if ac in d.UNITISED:
+            q = qty_series[iid].at(iso) or 0.0
+            c = cost_series[iid].at(iso) or 0.0
+            if q <= EPS:
+                return 0.0, 0.0
+            usd = inst.get("currency") == "USD"
+            mult = fx_at(iso) if usd else 1.0
+            last = _f(inst.get("last_price"))
+            if day == today and last:
+                px = last   # today: the price the portfolio uses
+            else:
                 px = price_series.get(inst.get("symbol") or "", Series([])).at(iso) if inst.get("symbol") else None
-                if not px and day == today and inst.get("last_price"):
-                    px = _f(inst["last_price"])  # manually priced holdings (NPS) are known only for today
-                mult = fx_at(iso) if inst.get("currency") == "USD" else 1.0
-                value += q * px * mult if px and mult else c
-                cost += c
-            elif ac == d.P2P:
-                lent = sum(_f(t["amount"]) for t in ts if t["type"] == d.BUY and str(t["date"])[:10] <= iso)
-                back = sum(_f(t["principal"]) if t.get("principal") is not None else 0.0
-                           for t in ts if t["type"] == d.REPAYMENT and str(t["date"])[:10] <= iso)
-                out = max(lent - back, 0.0)
-                if (inst.get("status") or "") == "closed" and ts and iso >= str(ts[-1]["date"])[:10]:
-                    out = 0.0
-                value += out
-                cost += out
-            elif ac == d.EPF:
-                bal = epf_balance(ts, iso)
-                if bal > EPS:
-                    value += bal
-                    cost += bal
-            elif ac == d.FIXED_DEPOSIT:
-                if any(t["type"] == d.MATURITY and str(t["date"])[:10] <= iso for t in ts):
-                    continue
-                principal = sum(_f(t["amount"]) for t in ts if t["type"] == d.BUY and str(t["date"])[:10] <= iso)
-                if principal:
-                    start = to_date(ts[0]["date"])
-                    value += fd_accrued(principal, _f(inst.get("rate")), start, day) if inst.get("rate") else principal
-                    cost += principal
+            if not px and last and mult:
+                # no market price for this day (NPS, a manual price, or before the price history starts): move in a
+                # straight line from the average cost on the first day to today's price, instead of sitting at cost
+                # and jumping on the last day
+                span = max((today - first_day[iid]).days, 1)
+                frac = min(max((day - first_day[iid]).days / span, 0.0), 1.0)
+                unit_cost = c / q
+                today_unit = last * (fx_at(today_iso) if usd else 1.0)
+                return q * (unit_cost + (today_unit - unit_cost) * frac), c
+            return (q * px * mult if px and mult else c), c
+        if ac == d.P2P:
+            out = steps[iid].at(iso) or 0.0
+            status = (inst.get("status") or "").lower()
+            if status == "closed" and ts and iso >= str(ts[-1]["date"])[:10]:
+                return 0.0, 0.0
+            if status == "defaulted" and day >= p2p_write_down_from(inst, today):
+                return out * (100.0 if p2p_recovery is None else p2p_recovery) / 100, out
+            return out, out
+        if ac == d.EPF:
+            i = bisect_right(steps[iid].dates, iso) - 1
+            if i < 0:
+                return 0.0, 0.0
+            bal, acc, rate = steps[iid].vals[i]
+            if bal <= EPS:
+                return 0.0, 0.0
+            # between entries the interest due grows on the running balance (as epf_accrued does)
+            acc += bal * rate / 100 * (day - to_date(steps[iid].dates[i])).days / 365
+            return bal + max(acc, 0.0), bal
+        if ac == d.FIXED_DEPOSIT:
+            fv = steps[iid].at(iso)
+            if not fv or fv["matured"] or not fv["principal"]:
+                return 0.0, 0.0
+            if fv["value"] and inst.get("rate"):
+                mat = to_date(inst["maturity_date"]) if inst.get("maturity_date") else None
+                end = min(day, mat) if mat else day
+                acc = max(fd_accrued(fv["principal"], _f(inst["rate"]), first_day[iid], end) - fv["principal"] - fv["payouts"], 0.0)
+                return fv["principal"] + acc, fv["principal"]
+            return fv["value"], fv["principal"]
+        return 0.0, 0.0
+
+    group_of = {iid: d.group_of(inst_map[iid]) for iid in by_inst}
+
+    def value_on(iso: str, day: date, groups: dict | None = None) -> tuple[float, float]:
+        value = cost = 0.0
+        for iid in by_inst:
+            if inst_map[iid]["asset_class"] == d.CASH:
+                continue
+            v, c = inst_value(iid, iso, day)
+            value += v
+            cost += c
+            if groups is not None and v:
+                groups[group_of[iid]] = groups.get(group_of[iid], 0.0) + v
         for inst, ws in wallets:
             bal = ws.at(iso) or 0.0
             value += bal * fx_at(iso)
             cost += bal * fx_at(iso)
+            if groups is not None and bal:
+                groups[d.group_of(inst)] = groups.get(d.group_of(inst), 0.0) + bal * fx_at(iso)
         return value, cost
 
     # ── daily walk ──
-    days, values, costs, flows = [], [], [], []
+    days, values, costs, flows, gvals = [], [], [], [], []
     cur = first
     while cur <= today:
         iso = cur.isoformat()
-        v, c = value_on(iso, cur)
+        gv: dict[str, float] = {}
+        v, c = value_on(iso, cur, gv)
+        gvals.append(gv)
         days.append(iso)
         values.append(v)
         costs.append(c)
@@ -192,12 +257,19 @@ def build_history(instruments: list[dict], txns: list[dict], price_hist: dict[st
     ws = _range_start(rng, first, today).isoformat()
     i0 = days.index(ws) if ws in days else 0
     rets: list[tuple[str, float]] = []
+    if i0 == 0 and flows[0] > EPS:
+        # the first day: money went in and closed at the day's value (a buy above the close is a loss)
+        rets.append((days[0], values[0] / flows[0] - 1))
     for i in range(i0 + 1, len(days)):
         prev = values[i - 1]
         if prev > EPS:
             rets.append((days[i], (values[i] - flows[i]) / prev - 1))
     idx, index_series = 1.0, [(days[i0], 1.0)]
     for day, r in rets:
+        if day == days[i0]:
+            idx *= 1 + r
+            index_series[0] = (day, idx)
+            continue
         idx *= 1 + r
         index_series.append((day, idx))
 
@@ -215,16 +287,21 @@ def build_history(instruments: list[dict], txns: list[dict], price_hist: dict[st
     ret_for_sharpe = ann if ann is not None else (twr * 365.0 / span if span > 0 else None)
     sharpe = (ret_for_sharpe - RISK_FREE) / vol if vol and ret_for_sharpe is not None else None
 
-    window_flows = [(to_date(days[i0]), -values[i0])] if values[i0] > EPS else []
-    window_flows += [(to_date(days[i]), -flows[i]) for i in range(i0 + 1, len(days)) if flows[i]]
+    # Since the start (i0 = 0) the window begins empty and the first day's money counts as a flow; a later window
+    # begins with the value at its first day's close.
+    start_value = values[i0] if i0 > 0 else 0.0
+    first_flow = i0 + 1 if i0 > 0 else 0
+    window_flows = [(to_date(days[i0]), -start_value)] if start_value > EPS else []
+    window_flows += [(to_date(days[i]), -flows[i]) for i in range(first_flow, len(days)) if flows[i]]
     window_flows.append((today, values[-1]))
     port_xirr = xirr(window_flows)
+    net_flows = sum(flows[first_flow:])
 
     metrics = {
         "range": rng, "start": days[i0], "end": days[-1], "days": span,
-        "start_value": round(values[i0], 2), "end_value": round(values[-1], 2),
-        "net_flows": round(sum(flows[i0 + 1:]), 2),
-        "gain": round(values[-1] - values[i0] - sum(flows[i0 + 1:]), 2),
+        "start_value": round(start_value, 2), "end_value": round(values[-1], 2),
+        "net_flows": round(net_flows, 2),
+        "gain": round(values[-1] - start_value - net_flows, 2),
         "twr": _p(twr), "twr_annualised": _p(ann), "xirr": _p(port_xirr),
         "volatility": _p(vol), "max_drawdown": _p(mdd), "current_drawdown": _p(cur_dd), "sharpe": round(sharpe, 2) if sharpe is not None else None,
         "best_day": _p(max(trading)) if trading else None, "worst_day": _p(min(trading)) if trading else None,
@@ -243,7 +320,7 @@ def build_history(instruments: list[dict], txns: list[dict], price_hist: dict[st
             px = s.at(days[i])
             if b.get("currency") == "USD":
                 px = px * fx_at(days[i]) if px else None
-            f = values[i0] if i == i0 else flows[i]
+            f = (start_value if i0 > 0 else flows[i0]) if i == i0 else flows[i]
             if px and f:
                 units += f / px
                 bflows.append((to_date(days[i]), -f))
@@ -258,6 +335,31 @@ def build_history(instruments: list[dict], txns: list[dict], price_hist: dict[st
             "excess_xirr": _p(port_xirr - bx) if port_xirr is not None and bx is not None else None,
             "values": bvals,
         })
+
+    # ── contributors: each holding's gain inside the window (value at the end − value at the start + money it
+    #    returned − money put in), so the list adds up to the window's gain apart from the USD wallet's cash ──
+    d0, d1 = days[i0], days[-1]
+    contributors = []
+    for iid, ts in by_inst.items():
+        inst = inst_map[iid]
+        if inst["asset_class"] == d.CASH:
+            continue
+        v0 = inst_value(iid, d0, to_date(d0))[0] if i0 > 0 else 0.0
+        v1 = inst_value(iid, d1, today)[0]
+        net = 0.0
+        for t in ts:
+            day = str(t["date"])[:10]
+            if day > d1 or (day <= d0 if i0 > 0 else day < d0):
+                continue
+            amt = _f(t["amount"])
+            if t["type"] == d.BUY:
+                net -= amt
+            elif t["type"] in (d.SELL, d.DIVIDEND, d.INTEREST, d.REPAYMENT, d.MATURITY):
+                net += amt
+        if v0 or v1 or net:
+            contributors.append({"id": iid, "name": inst["name"], "group": group_of[iid], "asset_class": inst["asset_class"],
+                                 "start_value": round(v0, 2), "end_value": round(v1, 2), "gain": round(v1 - v0 + net, 2)})
+    contributors.sort(key=lambda c: -c["gain"])
 
     # ── monthly returns (TWR chained within each month) ──
     monthly: dict[str, float] = {}
@@ -279,7 +381,8 @@ def build_history(instruments: list[dict], txns: list[dict], price_hist: dict[st
     series = []
     for i in picks:
         row = {"date": days[i], "value": round(values[i], 2), "cost": round(costs[i], 2),
-               "net_invested": round(cum_flow[i], 2), "index": round(idx_map.get(days[i], 1.0), 6)}
+               "net_invested": round(cum_flow[i], 2), "index": round(idx_map.get(days[i], 1.0), 6),
+               "groups": {g: round(v, 2) for g, v in gvals[i].items()}}
         for b in benchmarks:
             v = b["values"][i - i0]
             row[b["key"]] = round(v, 2) if v is not None else None
@@ -287,7 +390,7 @@ def build_history(instruments: list[dict], txns: list[dict], price_hist: dict[st
     for b in benchmarks:
         b.pop("values")
 
-    return {"series": series, "metrics": metrics, "benchmarks": benchmarks,
+    return {"series": series, "metrics": metrics, "benchmarks": benchmarks, "contributors": contributors,
             "monthly": [{"month": m, "return": _p(v)} for m, v in sorted(monthly.items())]}
 
 

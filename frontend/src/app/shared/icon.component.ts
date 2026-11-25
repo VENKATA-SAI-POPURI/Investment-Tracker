@@ -60,6 +60,30 @@ const PATHS: Record<string, string> = {
   star: 'M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z',
   zap: 'M13 2 4 14h7l-1 8 9-12h-7z',
   rocket: 'M5 15c-1.5 1.5-2 5-2 5s3.5-.5 5-2M14 4c3-1 6-1 6-1s0 3-1 6l-6 6-5-5zM9 10H5l-2 3 4 1M14 15v4l-3 2-1-4',
+  // ── redesign set (Lucide, ISC licence) ──
+  handshake: 'M0 0m11 17 2 2a1 1 0 1 0 3-3M0 0m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4M0 0m21 3 1 11h-2M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3M3 4h8',
+  gem: 'M6 3h12l4 6-10 13L2 9ZM11 3 8 9l4 13 4-13-3-6M2 9h20',
+  piggy: 'M19 5c-1.5 0-2.8 1.4-3 2-3.5-1.5-11-.3-11 5 0 1.8 0 3 2 4.5V20h4v-2h3v2h4v-4c1-.5 1.7-1 2-2h2v-4h-2c0-1-.5-1.5-1-2V5zM2 9v1c0 1.1.9 2 2 2h1M16 11h.01',
+  arrowUpRight: 'M7 7h10v10M7 17 17 7',
+  arrowDownRight: 'M0 0m7 7 10 10M17 7v10H7',
+  calendarClock: 'M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5M16 2v4M8 2v4M3 10h5M17.5 17.5 16 16.3V14M10 16a6 6 0 1 0 12 0a6 6 0 1 0 -12 0',
+  gitBranch: 'M6 3L6 15M15 6a3 3 0 1 0 6 0a3 3 0 1 0 -6 0M3 18a3 3 0 1 0 6 0a3 3 0 1 0 -6 0M18 9a9 9 0 0 1-9 9',
+  shieldCheck: 'M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1zM0 0m9 12 2 2 4-4',
+  repeat: 'M0 0m17 2 4 4-4 4M3 11v-1a4 4 0 0 1 4-4h14M0 0m7 22-4-4 4-4M21 13v1a4 4 0 0 1-4 4H3',
+  sparkles: 'M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0zM20 3v4M22 5h-4M4 17v2M5 18H3',
+  trendUp: 'M22 7L13.5 15.5L8.5 10.5L2 17M16 7L22 7L22 13',
+  pieChart: 'M21.21 15.89A10 10 0 1 1 8 2.83M22 12A10 10 0 0 0 12 2v10z',
+  landmark: 'M3 22L21 22M6 18L6 11M10 18L10 11M14 18L14 11M18 18L18 11M12 2L20 7L4 7Z',
+  arrowLeftRight: 'M0 0m16 3 4 4-4 4M20 7H4M0 0m8 21-4-4 4-4M4 17h16',
+  house: 'M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
+  barChart: 'M3 3v18h18M18 17V9M13 17V5M8 17v-3',
+  target2: 'M2 12a10 10 0 1 0 20 0a10 10 0 1 0 -20 0M6 12a6 6 0 1 0 12 0a6 6 0 1 0 -12 0M10 12a2 2 0 1 0 4 0a2 2 0 1 0 -4 0',
+  triangleAlert: 'M0 0m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3M12 9v4M12 17h.01',
+  circleCheck: 'M2 12a10 10 0 1 0 20 0a10 10 0 1 0 -20 0M0 0m9 12 2 2 4-4',
+  receiptText: 'M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1ZM14 8H8M16 12H8M13 16H8',
+  fileText: 'M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7ZM14 2v4a2 2 0 0 0 2 2h4M10 9H8M16 13H8M16 17H8',
+  wallet2: 'M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4',
+  listV2: 'M8 6L21 6M8 12L21 12M8 18L21 18M3 6L3.01 6M3 12L3.01 12M3 18L3.01 18',
 };
 
 @Component({
@@ -67,11 +91,12 @@ const PATHS: Record<string, string> = {
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `<svg [attr.width]="size()" [attr.height]="size()" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-    stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path [attr.d]="d()" /></svg>`,
+    [attr.stroke-width]="stroke()" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path [attr.d]="d()" /></svg>`,
   styles: [':host{display:inline-flex;flex:none;line-height:0}'],
 })
 export class IconComponent {
   name = input.required<string>();
   size = input(18);
+  stroke = input(1.75);
   d = computed(() => PATHS[this.name()] ?? PATHS['info']);
 }

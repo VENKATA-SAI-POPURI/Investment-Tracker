@@ -18,6 +18,8 @@ from .analytics import calendar as calendar_mod
 from .analytics import forecast, optimizer, plans, quant
 from .analytics import calibration as calibration_mod
 from .analytics import goals as goals_mod
+from .analytics import overview as overview_mod
+from .analytics import trace as trace_mod
 from .analytics import scenarios as scen_mod
 from .analytics import tax as tax_mod
 from .analytics.calendar import build_calendar
@@ -31,6 +33,7 @@ from .ledger import Ledger
 
 PRICE_TTL_MIN = 15
 DEFAULT_SLAB = 0.30
+P2P_DEFAULT_RECOVERY = 0.0                    # % of a defaulted P2P loan counted (setting p2pDefaultRecovery)
 NIFTY = px.BENCHMARKS["NIFTY50"]["symbol"]  # ^NSEI
 NIFTY_KEY = f"quote:{NIFTY}"                 # system value: {price, prev_close, date}
 FAMILY_OWNER = "__family__"                  # kpi_snapshots owner for the family view (SPEC §7.4)
@@ -155,11 +158,28 @@ class Services:
         """(port, data), memoised on ('portfolio', scope, targetAllocation, today).
         RETURNED OBJECTS ARE SHARED AND READ-ONLY. Callers build new dicts (GET /portfolio sends a copy)."""
         targets = settings.get("targetAllocation") or {}
-        return self._memo("portfolio", scope, targets, date.today(), fn=lambda: self._portfolio(scope, targets))
+        rec = self.p2p_recovery(settings)
+        return self._memo("portfolio", scope, targets, rec, date.today(), fn=lambda: self._portfolio(scope, targets, rec))
 
-    def _portfolio(self, scope: str | None, targets: dict) -> tuple[dict, dict]:
+    @staticmethod
+    def p2p_recovery(settings: dict | None) -> float:
+        """% of a defaulted P2P loan's principal expected back (setting p2pDefaultRecovery). Default 0: a loan
+        the platform marks defaulted counts as nothing until money actually comes back."""
+        try:
+            v = (settings or {}).get("p2pDefaultRecovery")
+            return min(max(float(v), 0.0), 100.0) if v not in (None, "") else P2P_DEFAULT_RECOVERY
+        except (TypeError, ValueError):
+            return P2P_DEFAULT_RECOVERY
+
+    def _request_recovery(self) -> float:
+        try:
+            return self.p2p_recovery(self.settings())
+        except Exception:  # noqa: BLE001 — outside a request (jobs, tests) the default applies
+            return P2P_DEFAULT_RECOVERY
+
+    def _portfolio(self, scope: str | None, targets: dict, rec: float = 0.0) -> tuple[dict, dict]:
         data = self.ledger.load(scope)
-        port = compute_portfolio(data["instruments"], data["transactions"], self.usd_inr(), targets)
+        port = compute_portfolio(data["instruments"], data["transactions"], self.usd_inr(), targets, p2p_recovery=rec)
         port["contributions"] = self._contributions(data["cash_movements"])
         port["prices"] = self.prices_status()
         return port, data
@@ -213,9 +233,14 @@ class Services:
         return self.ledger._peek(self._key(*key))
 
     def performance(self, scope: str | None, rng: str = "ALL", segment: str | None = None) -> dict:
-        return self._memo("performance", scope, rng, segment, fn=lambda: self._performance(scope, rng, segment))
+        rec = self._request_recovery()
+        return self._memo("performance", scope, rng, segment, rec, fn=lambda: self._performance(scope, rng, segment, rec))
 
-    def _performance(self, scope: str | None, rng: str, segment: str | None) -> dict:
+    def peek_performance(self, scope: str | None, rng: str = "ALL") -> dict | None:
+        """The whole-portfolio history for `rng` if it is already built (never builds it)."""
+        return self._peek("performance", scope, rng, None, self._request_recovery())
+
+    def _performance(self, scope: str | None, rng: str, segment: str | None, rec: float = P2P_DEFAULT_RECOVERY) -> dict:
         data = self.ledger.load(scope)
         insts, txns = data["instruments"], data["transactions"]
         if segment:
@@ -236,9 +261,71 @@ class Services:
         hist = px.ensure_history(self.ledger.db, sorted(symbols | bench_syms | {px.USDINR}), start)
         bench_hist = {k: {**px.BENCHMARKS[k], "points": hist.get(px.BENCHMARKS[k]["symbol"], [])} for k in bench_keys}
         result = build_history(insts, txns, {s: hist.get(s, []) for s in symbols}, hist.get(px.USDINR, []), bench_hist,
-                               rng=rng)
+                               rng=rng, usd_inr=self.usd_inr(), p2p_recovery=rec)
         result["segment"] = segment
         return result
+
+    # ── the redesigned app: groups, market comparison, rebalancing, suggestions ──
+    BENCH_KEYS = ("NIFTY500", "SP500", "GOLD")
+
+    def bench_history(self, txns: list[dict]) -> tuple[dict, list]:
+        """Benchmark closes (Nifty 500, S&P 500, gold) and USD/INR from the first transaction on. A failed fetch
+        returns what is stored; comparisons that need a missing series come back empty, never wrong."""
+        if not txns:
+            return {}, []
+        start = min(to_date(t["date"]) for t in txns)
+        syms = [px.BENCHMARKS[k]["symbol"] for k in self.BENCH_KEYS] + [px.USDINR]
+        try:
+            hist = px.ensure_history(self.ledger.db, syms, start)
+        except Exception as e:  # noqa: BLE001 — the overview still loads without market comparison
+            print(f"[overview] benchmark history unavailable: {e!r}")
+            hist = {}
+        bench = {k: {**px.BENCHMARKS[k], "points": hist.get(px.BENCHMARKS[k]["symbol"], [])} for k in self.BENCH_KEYS}
+        return bench, hist.get(px.USDINR, [])
+
+    def overview(self, scope: str | None, settings: dict) -> dict:
+        """Totals, the seven groups (targets, market comparison) and up to five suggestions. Memoised like the
+        portfolio. RETURNED OBJECTS ARE SHARED AND READ-ONLY."""
+        def build() -> dict:
+            ctx = self.context(scope, settings)
+            port, data = ctx["port"], ctx["data"]
+            bench, fx = self.bench_history(data["transactions"])
+            view = overview_mod.group_view(port, data["transactions"], settings, bench, fx)
+            view["suggestions"] = overview_mod.suggestions(view, port, ctx["tax"], date.today(), self._slab(settings))
+            return view
+        return self._memo("overview", scope, settings, date.today(), fn=build)
+
+    def group_rebalance(self, scope: str | None, settings: dict, new_money: float, allow_sell: bool,
+                        target_set: str = "mine") -> dict:
+        view = self.overview(scope, settings)
+        t = view["targets"]
+        targets = (t["mine"] if target_set == "mine" and t["mine"] else t["suggested"]["mix"])
+        ctx = self.context(scope, settings)
+        port, data = ctx["port"], ctx["data"]
+
+        def plan(legs):
+            return tax_mod.plan_sales(port, data["transactions"], data["instruments"], legs,
+                                      slab_rate=self._slab(settings), today=date.today())
+        res = overview_mod.rebalance(view["groups"], targets, new_money, allow_sell, plan_sales=plan)
+        res["target_set"] = "mine" if targets is t["mine"] else "suggested"
+        return res
+
+    # ── Activity: how an entry flows, data checks, the cash rules ──
+    def trace(self, scope: str | None, settings: dict, tid: int) -> dict:
+        t = self.ledger.transaction(tid, scope)
+        ctx = self.context(scope, settings)
+        port, data = ctx["port"], ctx["data"]
+        inst = next(i for i in data["instruments"] if i["id"] == t["instrument_id"])
+        inst_txns = [x for x in data["transactions"] if x["instrument_id"] == inst["id"]]
+        linked = [c for c in data["cash_movements"] if c.get("transaction_id") == tid]
+        rule = next((r for r in self.ledger.cash_rules() if r["asset_class"] == inst["asset_class"] and r["type"] == t["type"]), None)
+        out = trace_mod.trace_txn(t, inst, inst_txns, port, linked, rule, self.ledger._auto_enabled(inst["owner"]), date.today())
+        out["rule"] = rule
+        return out
+
+    def checks(self, scope: str | None, settings: dict) -> list[dict]:
+        ctx = self.context(scope, settings)
+        return trace_mod.data_checks(ctx["port"], ctx["data"]["transactions"], ctx["data"]["instruments"], settings, date.today())
 
     def tax(self, scope: str | None, settings: dict, fy: str | None = None) -> dict:
         """Tax for `fy` (default: the current FY, which is the context's computation) plus the list of years."""
@@ -459,7 +546,7 @@ class Services:
         if build_history:
             metrics = self._perf_metrics(scope)
         else:
-            metrics = (self._peek("performance", scope, "ALL", None) or {}).get("metrics")
+            metrics = (self.peek_performance(scope) or {}).get("metrics")
         sips = self.ledger.sips(scope)
         ef = settings.get("emergencyFund") if isinstance(settings.get("emergencyFund"), dict) else None
 
@@ -673,11 +760,11 @@ class Services:
 
     def _perf_ready(self, scope: str | None) -> bool:
         """Whether the ALL-range performance /brief peeks (A16) is warm right now."""
-        return self._peek("performance", scope, "ALL", None) is not None
+        return self.peek_performance(scope) is not None
 
     def _peek_metrics(self, scope: str | None) -> dict | None:
         """The ALL-range history metrics when performance is already warm, else None (never builds history)."""
-        return (self._peek("performance", scope, "ALL", None) or {}).get("metrics")
+        return (self.peek_performance(scope) or {}).get("metrics")
 
     def _open_ids(self, scope: str | None, ctx: dict) -> list[str] | None:
         """H13: ids of the open or planned concentration:/sector: rows, for build_insights' hysteresis.
@@ -951,7 +1038,7 @@ class Services:
         try/except (E7), and never for an empty ledger. Its projection_1y is computed only then (H12)."""
         owner = owner or self.owner()
         today = date.today()
-        perf = self._peek("performance", scope, "ALL", None)
+        perf = self.peek_performance(scope)
         res = self._memo("brief", scope, owner, settings, today, since, self.ledger.actions_rev, perf is not None,
                          self._hash(scope, settings),
                          fn=lambda: self._build_brief(scope, settings, since, owner, perf, today))
@@ -1296,7 +1383,7 @@ class Services:
         and the date join the memo key. RETURNED OBJECTS ARE SHARED AND READ-ONLY."""
         bk = self.book(scope, settings)
         mix_key = sorted((mix or {}).items()) or None
-        perf = self._peek("performance", scope, "ALL", None)
+        perf = self.peek_performance(scope)
         today = date.today()
 
         def build() -> dict:

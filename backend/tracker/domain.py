@@ -66,6 +66,37 @@ def segment_of(inst: dict) -> str:
             EPF: SEG_EPF, NPS: SEG_NPS}[ac]
 
 
+# ── Groups: the seven parts the app shows (redesign) ──
+# Each group is one or more segments. The USD broker wallet stays with Global stocks because it is the cash of the
+# same broker account (its rupee transfers are that account's external cash flows).
+GRP_EQ_IN = "equity_india"
+GRP_EQ_GLOBAL = "equity_global"
+GRP_MF = "mutual_funds"
+GRP_P2P = "p2p"
+GRP_COMMODITY = "commodities"
+GRP_EPF = "epf"
+GRP_OTHERS = "others"
+GROUPS = (GRP_EQ_IN, GRP_EQ_GLOBAL, GRP_MF, GRP_P2P, GRP_COMMODITY, GRP_EPF, GRP_OTHERS)
+GROUP_LABELS = {GRP_EQ_IN: "India stocks", GRP_EQ_GLOBAL: "Global stocks", GRP_MF: "Mutual funds", GRP_P2P: "P2P",
+                GRP_COMMODITY: "Commodities", GRP_EPF: "EPF", GRP_OTHERS: "Others"}
+SEGMENT_GROUP = {SEG_EQ_IN: GRP_EQ_IN, SEG_EQ_US: GRP_EQ_GLOBAL, SEG_MF: GRP_MF, SEG_P2P: GRP_P2P,
+                 SEG_COMMODITY: GRP_COMMODITY, SEG_EPF: GRP_EPF, SEG_FD: GRP_OTHERS, SEG_NPS: GRP_OTHERS}
+
+
+def group_of(inst: dict) -> str:
+    return SEGMENT_GROUP[segment_of(inst)]
+
+
+def groups_from_segments(targets: dict | None) -> dict[str, float]:
+    """A segment-keyed target mix (the old `targetAllocation`) summed into groups."""
+    out: dict[str, float] = {}
+    for seg, v in (targets or {}).items():
+        g = SEGMENT_GROUP.get(seg)
+        if g is not None and v not in (None, ""):
+            out[g] = round(out.get(g, 0.0) + float(v), 4)
+    return out
+
+
 # ── Tax treatment ──
 TAX_EQUITY = "equity"                  # listed Indian equity & equity-oriented MFs (STT paid)
 TAX_FOREIGN = "foreign_equity"         # foreign stocks, overseas FoFs

@@ -177,6 +177,20 @@
             <div class="form">
               <label class="check"><input type="checkbox" [(ngModel)]="autoFlows" (ngModelChange)="saveAuto()" [disabled]="!auth.canWrite()" />
                 Record capital flows automatically for mutual funds, FDs, P2P, USD transfers and dividends</label>
+              <a routerLink="/activity" [queryParams]="{ tab: 'rules' }" class="small">See exactly what each kind of entry records →</a>
+            </div>
+          </div>
+
+          <div class="card" id="app">
+            <div class="card-head"><h2>App &amp; calculations</h2></div>
+            <div class="form">
+              <label class="check"><input type="checkbox" [ngModel]="store.settings().advancedFeatures === true"
+                (ngModelChange)="put('advancedFeatures', $event, $event ? 'Classic tools are back in the menu' : 'Classic tools hidden')" [disabled]="!auth.canWrite()" />
+                Show the classic tools in the menu (Plan &amp; goals, Actions, Markets, Risk &amp; mix, Recurring plans, Cash flows, Classic home)</label>
+              <div class="field"><label for="p2p-rec">Defaulted P2P loans count at</label>
+                <div class="row"><input id="p2p-rec" class="input num" style="max-width:90px" type="number" min="0" max="100" step="5"
+                  [ngModel]="+(store.settings().p2pDefaultRecovery ?? 0)" (change)="saveRecovery($any($event.target).value)" [disabled]="!auth.canWrite()" /> % of what's left</div>
+                <span class="hint">A loan the platform marks defaulted counts as this share until money comes back. 0% is the careful choice.</span></div>
             </div>
           </div>
         </div>

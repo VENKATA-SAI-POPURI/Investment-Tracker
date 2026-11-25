@@ -6,76 +6,43 @@
   </div>
 }
 
-<header class="appbar no-print">
-  <div class="bar">
-    <button class="icon-btn menu-btn" (click)="drawer.set(true)" aria-label="Open menu" [attr.aria-expanded]="drawer()"><app-icon name="menu" /></button>
-    <a routerLink="/" class="brand" aria-label="Investments, Home">
-      <span class="logo"><app-icon name="lotus" [size]="18" /></span>
-      <span class="brand-text">Investments<small>Shubh Labh</small></span>
-    </a>
-
-    <!-- Portfolio switcher -->
-    <div class="pop-wrap">
-      <button class="switcher" [class.static]="!auth.canSwitch()" (click)="auth.canSwitch() && toggle('portfolio')" [attr.aria-expanded]="menu() === 'portfolio'">
-        <span class="sw-avatar" [class.family]="!selected() && auth.canSwitch()">
-          @if (!selected() && auth.canSwitch()) { <app-icon name="users" [size]="14" /> } @else { {{ initials(auth.portfolioLabel()) }} }
-        </span>
-        <span class="sw-text"><small>Portfolio</small><b>{{ auth.portfolioLabel() }}</b></span>
-        @if (auth.canSwitch()) { <app-icon name="chevronDown" [size]="14" /> }
-      </button>
-      @if (menu() === 'portfolio') {
-        <div class="pop switch-pop" role="menu">
-          <div class="pop-title">Switch portfolio</div>
-          <button class="pop-item" [class.on]="!selected()" (click)="pick(null)">
-            <span class="sw-avatar family"><app-icon name="users" [size]="14" /></span>
-            <span class="pi-text"><b>Family</b><small>Every member, combined</small></span>
-            @if (!selected()) { <app-icon name="check" [size]="15" /> }
-          </button>
-          @for (m of auth.members(); track m.email) {
-            <button class="pop-item" [class.on]="selected() === m.email.toLowerCase()" (click)="pick(m)">
-              <span class="sw-avatar">{{ initials(m.name) }}</span>
-              <span class="pi-text"><b>{{ m.name }}@if (m.self) { <em>you</em> }</b><small>{{ m.email }}</small></span>
-              @if (selected() === m.email.toLowerCase()) { <app-icon name="check" [size]="15" /> }
-            </button>
-          }
-          @if (auth.isAdmin()) { <a class="pop-foot" routerLink="/settings" fragment="people"><app-icon name="plus" [size]="14" /> Add a family member</a> }
-        </div>
+<div class="frame">
+  <!-- Desktop sidebar -->
+  <aside class="side no-print" aria-label="Main navigation">
+    <a routerLink="/" class="brand" aria-label="Investments, Home"><span class="logo-m"><app-icon name="trendUp" [size]="18" [stroke]="2.4" /></span>Investments</a>
+    <nav>
+      @for (it of primary; track it.path) {
+        <a class="si" [routerLink]="it.path" [class.on]="isOn(it)" [attr.aria-current]="isOn(it) ? 'page' : null"><app-icon [name]="it.icon" [size]="19" />{{ it.label }}</a>
       }
-    </div>
+      <div class="sep">More</div>
+      @for (it of more; track it.path) {
+        <a class="si" [routerLink]="it.path" [class.on]="isOn(it)" [attr.aria-current]="isOn(it) ? 'page' : null"><app-icon [name]="it.icon" [size]="19" />{{ it.label }}</a>
+      }
+      @if (advanced()) {
+        <div class="sep">Classic tools</div>
+        @for (it of classic; track it.path) {
+          <a class="si" [routerLink]="it.path" [class.on]="isOn(it)"><app-icon [name]="it.icon" [size]="19" />{{ it.label }}</a>
+        }
+      }
+    </nav>
+  </aside>
 
-    <!-- The five slots in ladder order, then More (§3.1) -->
-    <nav class="mainnav" aria-label="Primary">
-      <app-nav-list mode="bar" [url]="url()" [badges]="badges()" />
-      <div class="pop-wrap">
-        <button class="nl more" [class.on]="toolsActive()" (click)="toggle('tools')" [attr.aria-expanded]="menu() === 'tools'" aria-haspopup="menu">
-          More <app-icon name="chevronDown" [size]="13" />
-        </button>
-        @if (menu() === 'tools') {
-          <div class="pop tools-pop" role="menu" aria-label="Tools">
-            <div class="pop-title">Tools</div>
-            <app-nav-list mode="popover" [url]="url()" [badges]="badges()" (picked)="menu.set(null)" />
-          </div>
+  <div class="main">
+    <header class="top no-print">
+      <div class="title">
+        @if (isHome()) {
+          <small>{{ greeting() }}</small><h1>{{ firstName() }}</h1>
+        } @else if (shellTitle()) {
+          <h1>{{ shellTitle() }}</h1>
+        } @else {
+          <a routerLink="/" class="brand sm" aria-label="Investments, Home"><span class="logo-m"><app-icon name="trendUp" [size]="16" [stroke]="2.4" /></span><b>Investments</b></a>
         }
       </div>
-    </nav>
-
-    <span class="spacer"></span>
-
-    <!-- Prices pill: every width; the Data vital's status icon (shape and colour, never colour alone, §1.8), alone at ≤1180px (P0.7) -->
-    <button class="prices" type="button" (click)="refreshPrices()" [disabled]="store.refreshingPrices()"
-      [attr.data-status]="dataVital()?.status ?? 'unset'" [title]="pricesTitle()" [attr.aria-label]="pricesTitle()">
-      @if (store.refreshingPrices()) { <span class="spin"><app-icon name="refresh" [size]="13" /></span> }
-      @else { <span class="dot" aria-hidden="true"><app-icon [name]="statusIcon(dataVital()?.status ?? 'unset')" [size]="14" /></span> }
-      <span class="p-text">
-        @if (store.refreshingPrices()) { Updating… }
-        @else { <span class="p-label">Prices ·</span> <span class="p-age">{{ pricesAge() }}</span>
-          <span class="p-ic" aria-hidden="true"><app-icon name="refresh" [size]="12" /></span> }
-      </span>
-    </button>
+      <span class="spacer"></span>
 
     <!-- Bell (R13): the server's notices; act: ids under "Do now", the rest under "Coming up" -->
     <div class="pop-wrap">
-      <button class="icon-btn bell" (click)="toggleBell()" [attr.aria-expanded]="notify.open()" aria-haspopup="dialog"
+      <button class="iconbtn bell" (click)="toggleBell()" [attr.aria-expanded]="notify.open()" aria-haspopup="dialog"
         [attr.aria-label]="bellUnread() ? 'Reminders, ' + bellUnread() + ' unread' : 'Reminders'">
         <app-icon name="bell" [size]="18" />
         @if (bellUnread()) { <span class="count" aria-hidden="true">{{ bellUnread() > 99 ? '99+' : bellUnread() }}</span> }
@@ -133,55 +100,96 @@
       }
     </div>
 
-    @if (auth.canWrite()) {
-      <button class="btn add-btn" (click)="dialog.add()" aria-label="Add a transaction"><app-icon name="plus" [size]="15" /> <span class="add-label">Add</span></button>
-    }
 
-    <div class="pop-wrap">
-      <button class="me" (click)="toggle('user')" aria-label="Account" [attr.aria-expanded]="menu() === 'user'">
-        @if (auth.user()?.picture) { <img [src]="auth.user()!.picture" alt="" referrerpolicy="no-referrer" class="avatar" /> }
-        @else { <span class="avatar initials">{{ initials(auth.user()?.name || auth.user()?.email) }}</span> }
-      </button>
-      @if (menu() === 'user') {
-        <div class="pop user-pop" role="menu">
-          <div class="pop-title"><b>{{ auth.user()?.name || auth.user()?.email }}</b><small>{{ auth.user()?.email }} · {{ auth.realRole() }}</small></div>
-          <a class="pop-item" routerLink="/settings"><app-icon name="settings" [size]="15" /> <span class="pi-text"><b>Settings</b></span></a>
-          <button class="pop-item" (click)="auth.logout()"><app-icon name="logout" [size]="15" /> <span class="pi-text"><b>Sign out</b></span></button>
-        </div>
+      <!-- Family switcher -->
+      <div class="pop-wrap">
+        <button class="who" [class.static]="!auth.canSwitch()" (click)="auth.canSwitch() && toggle('portfolio')" [attr.aria-expanded]="menu() === 'portfolio'"
+          [attr.aria-label]="'Portfolio: ' + auth.portfolioLabel()">
+          <span class="av" [class.fam]="!selected() && auth.canSwitch()">
+            @if (!selected() && auth.canSwitch()) { <app-icon name="users" [size]="14" [stroke]="2.2" /> } @else { {{ initials(auth.portfolioLabel()) }} }
+          </span>
+          <span class="nm">{{ auth.portfolioLabel() }}</span>
+          @if (auth.canSwitch()) { <app-icon name="chevronDown" [size]="14" [stroke]="2.4" /> }
+        </button>
+        @if (menu() === 'portfolio') {
+          <div class="pop switch-pop" role="menu">
+            <div class="pop-title">Show portfolio of</div>
+            <button class="pop-item" [class.on]="!selected()" (click)="pick(null)">
+              <span class="av fam"><app-icon name="users" [size]="14" /></span>
+              <span class="pi-text"><b>Family</b><small>Every member, combined</small></span>
+              @if (!selected()) { <app-icon name="check" [size]="15" /> }
+            </button>
+            @for (m of auth.members(); track m.email) {
+              <button class="pop-item" [class.on]="selected() === m.email.toLowerCase()" (click)="pick(m)">
+                <span class="av">{{ initials(m.name) }}</span>
+                <span class="pi-text"><b>{{ m.name }}@if (m.self) { <em>you</em> }</b><small>{{ m.email }}</small></span>
+                @if (selected() === m.email.toLowerCase()) { <app-icon name="check" [size]="15" /> }
+              </button>
+            }
+            @if (auth.isAdmin()) { <a class="pop-foot" routerLink="/settings" fragment="people"><app-icon name="plus" [size]="14" /> Add a family member</a> }
+          </div>
+        }
+      </div>
+
+      @if (auth.canWrite()) {
+        <button class="v-btn primary sm add-desk" (click)="dialog.openPicker()"><app-icon name="plus" [size]="16" [stroke]="2.4" /> Add entry</button>
       }
-    </div>
+
+      <!-- Account and More (on the phone this is where Tax, Reports and Settings live) -->
+      <div class="pop-wrap">
+        <button class="iconbtn me" (click)="toggle('user')" aria-label="Menu" [attr.aria-expanded]="menu() === 'user'">
+          @if (auth.user()?.picture) { <img [src]="auth.user()!.picture" alt="" referrerpolicy="no-referrer" class="pic" /> }
+          @else { <app-icon name="menu" [size]="18" /> }
+        </button>
+        @if (menu() === 'user') {
+          <div class="pop user-pop" role="menu">
+            <div class="pop-title"><b>{{ auth.user()?.name || auth.user()?.email }}</b><small>{{ auth.user()?.email }} · {{ auth.realRole() }}</small></div>
+            <div class="menu-more">
+              @for (it of more; track it.path) {
+                <a class="pop-item" role="menuitem" [routerLink]="it.path"><app-icon [name]="it.icon" [size]="16" /> <span class="pi-text"><b>{{ it.label }}</b></span></a>
+              }
+              @if (advanced()) {
+                <div class="pop-title">Classic tools</div>
+                @for (it of classic; track it.path) {
+                  <a class="pop-item" role="menuitem" [routerLink]="it.path"><app-icon [name]="it.icon" [size]="16" /> <span class="pi-text"><b>{{ it.label }}</b></span></a>
+                }
+              }
+            </div>
+            <button class="pop-item" role="menuitem" (click)="refreshPrices()"><app-icon name="refresh" [size]="16" /> <span class="pi-text"><b>Refresh prices</b><small>{{ pricesAge() }}</small></span></button>
+            <button class="pop-item" role="menuitem" (click)="auth.logout()"><app-icon name="logout" [size]="16" /> <span class="pi-text"><b>Sign out</b></span></button>
+          </div>
+        }
+      </div>
+    </header>
+
+    @if (memberBanner(); as mb) {
+      <div class="member-banner no-print" role="status" [attr.data-kind]="mb.kind">
+        <app-icon [name]="mb.icon" [size]="14" /> <span>{{ mb.text }}</span>
+      </div>
+    }
+    @if (store.error() && !store.portfolio()) {
+      <div class="v2"><div class="v-note warn"><app-icon name="alert" /> <div><b>Couldn't load your portfolio.</b> {{ store.error() }}
+        <button class="v-btn sm" style="margin-left:8px" (click)="store.reload()">Retry</button></div></div></div>
+    }
+    <main><router-outlet /></main>
   </div>
-</header>
-@if (memberBanner(); as mb) {
-  <div class="member-banner no-print" role="status" [attr.data-kind]="mb.kind">
-    <app-icon [name]="mb.icon" [size]="14" /> <span>{{ mb.text }}</span>
-  </div>
-}
+</div>
 @if (menu() || notify.open()) { <div class="backdrop" (click)="closeMenus()"></div> }
 
-<!-- Drawer (≤1000px): the five places, then the tools -->
-@if (drawer()) {
-  <div class="scrim" (click)="drawer.set(false)"></div>
-  <aside class="drawer" aria-label="Menu">
-    <div class="drawer-head"><span class="logo"><app-icon name="lotus" [size]="18" /></span><b>Investments</b>
-      <button class="icon-btn" (click)="drawer.set(false)" aria-label="Close menu"><app-icon name="close" /></button></div>
-    <app-nav-list mode="drawer" [url]="url()" [badges]="badges()" (picked)="drawer.set(false)" />
-  </aside>
-}
-
-<div class="main">
-  @if (store.error() && !store.portfolio()) {
-    <div class="page"><div class="notice bad"><app-icon name="alert" /> <div><b>Couldn't load your portfolio.</b> {{ store.error() }}
-      <button class="btn sm" style="margin-left:8px" (click)="store.reload()">Retry</button></div></div></div>
+<!-- Phone tab bar: Home · Portfolio · (+) · Analysis · Activity -->
+<nav class="tabbar no-print" aria-label="Main navigation">
+  @for (it of primary.slice(0, 2); track it.path) {
+    <a [routerLink]="it.path" [class.on]="isOn(it)" [attr.aria-current]="isOn(it) ? 'page' : null"><app-icon [name]="it.icon" [size]="22" [stroke]="isOn(it) ? 2.3 : 1.9" />{{ it.label }}</a>
   }
-  <main><router-outlet /></main>
-</div>
-
-<!-- ≤760px: Home · Portfolio · (+) · Plan · Actions -->
-<nav class="bottom-nav no-print" aria-label="Primary">
-  <app-nav-list mode="bottom" [url]="url()" [badges]="badges()" [canAdd]="auth.canWrite()" (add)="dialog.add()" />
+  @if (auth.canWrite()) {
+    <button class="fab" (click)="dialog.openPicker()" aria-label="Add an entry"><app-icon name="plus" [size]="26" [stroke]="2.4" /></button>
+  } @else { <span></span> }
+  @for (it of primary.slice(2); track it.path) {
+    <a [routerLink]="it.path" [class.on]="isOn(it)" [attr.aria-current]="isOn(it) ? 'page' : null"><app-icon [name]="it.icon" [size]="22" [stroke]="isOn(it) ? 2.3 : 1.9" />{{ it.label }}</a>
+  }
 </nav>
 
+@if (dialog.picker()) { <v-add-sheet /> }
 @if (dialog.state(); as s) {
   <app-txn-form [state]="s" (saved)="txnSaved(s, $event)" (done)="dialog.close()" />
 }

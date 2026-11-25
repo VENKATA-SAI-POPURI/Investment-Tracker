@@ -8,6 +8,7 @@ import {
   Projection, StressTest, RetirementPlan, CashFlow, PortfolioRisk, Outlook, OptimizerResult, SipPlan,
   Action, ActionsResponse, ActionStatusBody, Brief, Plan, AssumptionsView, WhatIfParams, WhatIfSale, SipsResponse,
   NotificationsResponse, NotificationsSeenResponse, PlanCompare, PlanCompareRequest, TransactionsPage, TransactionsPageParams,
+  Overview, GroupRebalance, Trace, DataCheck, CashRule,
 } from './models';
 
 type Params = Record<string, string | number | boolean | null | undefined>;
@@ -65,6 +66,16 @@ export class ApiService {
     return this.post<{ added: number; removed: number; corrected: number; results: { symbol: string; ok: boolean; error?: string }[] }>('/import/tradebook/commit', { stocks });
   }
   casCommit(body: unknown) { return this.post<{ imported: number; results: { name: string; ok: boolean; imported?: number; error?: string; updated?: string }[] }>('/import/cas/commit', body); }
+
+  // redesign: the group overview and rebalancing by group
+  overview() { return this.get<Overview>('/overview'); }
+  groupRebalance(newMoney: number, allowSell: boolean, targets: 'mine' | 'suggested') {
+    return this.get<GroupRebalance>('/overview/rebalance', { new_money: newMoney, allow_sell: allowSell ? 1 : 0, targets });
+  }
+
+  trace(txnId: number) { return this.get<Trace>(`/trace/txn/${txnId}`); }
+  checks() { return this.get<DataCheck[]>('/checks'); }
+  cashRules() { return this.get<CashRule[]>('/rules'); }
 
   // portfolio & analytics
   portfolio() { return this.get<Portfolio>('/portfolio'); }

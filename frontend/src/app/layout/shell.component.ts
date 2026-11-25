@@ -15,10 +15,13 @@ import { StoreService } from '../core/store.service';
 import { TxnDialogService, TxnDialogState } from '../core/txn-dialog.service';
 import { FdMatureDialogComponent } from '../shared/fd-mature-dialog.component';
 import { IconComponent } from '../shared/icon.component';
-import { NavBadges, NavListComponent, TOOLS_NAV, navActive } from '../shared/nav-list.component';
+import { NavBadges, TOOLS_NAV, navActive } from '../shared/nav-list.component';
+import { greeting } from '../core/groups';
+import { linkUnder } from '../shared/priority/priority';
 import { STATUS_META, statusFromSeverity, vitalOf, worstStatus } from '../shared/priority/priority';
 import { TxnFormComponent } from '../shared/txn-form.component';
 import { WhatIfSaleComponent } from '../shared/what-if-sale.component';
+import { AddSheetComponent } from '../shared/v2/add-sheet.component';
 
 /* ── The Data vital, mirrored on the client (AMENDMENTS E20; brief.py `_freshness` and `_data_vital`) ── */
 
@@ -128,6 +131,33 @@ const APP_NAME = 'Investments';
 
 type Menu = 'portfolio' | 'tools' | 'user' | null;
 
+/** One place in the redesigned navigation. `match` lists the path prefixes where it shows as current. */
+export interface ShellNav { path: string; label: string; icon: string; match: string[]; }
+
+/** Home · Portfolio · Analysis · Activity (the phone tab bar puts + Add in the middle). */
+export const PRIMARY: ShellNav[] = [
+  { path: '/', label: 'Home', icon: 'house', match: ['/'] },
+  { path: '/portfolio', label: 'Portfolio', icon: 'layers', match: ['/portfolio', '/holdings', '/holding/', '/p2p', '/fixed-deposits', '/forex', '/epf', '/nps'] },
+  { path: '/analysis', label: 'Analysis', icon: 'barChart', match: ['/analysis'] },
+  { path: '/activity', label: 'Activity', icon: 'listV2', match: ['/activity', '/transactions', '/import'] },
+];
+export const MORE: ShellNav[] = [
+  { path: '/tax', label: 'Tax', icon: 'receiptText', match: ['/tax'] },
+  { path: '/reports', label: 'Reports', icon: 'fileText', match: ['/reports'] },
+  { path: '/settings', label: 'Settings', icon: 'settings', match: ['/settings'] },
+];
+/** Switched off by default; Settings › "Show classic tools" brings them back. */
+export const CLASSIC: ShellNav[] = [
+  { path: '/plan', label: 'Plan & goals', icon: 'target', match: ['/plan'] },
+  { path: '/actions', label: 'Actions', icon: 'bulb', match: ['/actions'] },
+  { path: '/markets', label: 'Markets', icon: 'zap', match: ['/markets'] },
+  { path: '/performance', label: 'Performance (classic)', icon: 'chart', match: ['/performance'] },
+  { path: '/risk', label: 'Risk & mix', icon: 'shield', match: ['/risk'] },
+  { path: '/recurring', label: 'Recurring plans', icon: 'repeat', match: ['/recurring'] },
+  { path: '/cash-flows', label: 'Cash flows', icon: 'wallet', match: ['/cash-flows'] },
+  { path: '/classic', label: 'Classic home', icon: 'home', match: ['/classic'] },
+];
+
 /**
  * The application frame: the five-slot bar (§3.1), the More popover, the drawer and the ≤760px bottom bar
  * (all one NavListComponent), the prices pill, the bell and the global dialogs. It renders no h1 (A22):
@@ -136,7 +166,7 @@ type Menu = 'portfolio' | 'tools' | 'user' | null;
 @Component({
   selector: 'app-shell',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, IconComponent, NavListComponent, TxnFormComponent, FdMatureDialogComponent, WhatIfSaleComponent],
+  imports: [RouterOutlet, RouterLink, IconComponent, TxnFormComponent, FdMatureDialogComponent, WhatIfSaleComponent, AddSheetComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './shell.component.html',
   styleUrl: './shell.component.scss',
@@ -153,6 +183,20 @@ export class ShellComponent {
   private title = inject(Title);
 
   tools = TOOLS_NAV;
+  primary = PRIMARY;
+  more = MORE;
+  classic = CLASSIC;
+  advanced = computed(() => this.store.settings().advancedFeatures === true);
+  isOn = (it: ShellNav) => it.match.some(m => linkUnder(this.url(), m));
+  isHome = computed(() => this.url() === '/' || this.url() === '');
+  /** The page name the shell shows (new pages only; older pages render their own heading). */
+  shellTitle = signal<string | null>(null);
+  greeting = computed(() => { this.tick(); return greeting(); });
+  /** Home's greeting: the member being viewed, else the signed-in person (first name only). */
+  firstName = computed(() => {
+    const name = this.selected() ? this.auth.portfolioLabel() : (this.auth.user()?.name || this.auth.portfolioLabel());
+    return (name || 'there').split(' ')[0];
+  });
   menu = signal<Menu>(null);
   drawer = signal(false);
 
@@ -272,8 +316,10 @@ export class ShellComponent {
   private setDocumentTitle() {
     let r: ActivatedRouteSnapshot | null = this.router.routerState.snapshot.root;
     let name: string | undefined;
-    while (r) { name = (r.data?.['title'] as string | undefined) ?? name; r = r.firstChild; }
+    let shell = false;
+    while (r) { name = (r.data?.['title'] as string | undefined) ?? name; shell = (r.data?.['shellTitle'] as boolean | undefined) ?? shell; r = r.firstChild; }
     this.title.setTitle(name ? `${name} · ${APP_NAME}` : APP_NAME);
+    this.shellTitle.set(shell && name ? name : null);
   }
 
   /** Tab rows wider than the screen scroll so the current tab is in view (§3.2). */

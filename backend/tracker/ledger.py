@@ -400,6 +400,37 @@ class Ledger:
             cash("capital", "out", "Equity/Commodity", "Withdrawal", f"{name} dividend")
         return rows
 
+    CASH_RULE_NOTES = {
+        (d.EQUITY, d.BUY): "Stock buys are paid from your broker balance, which the app doesn't track, so no cash entry.",
+        (d.EQUITY, d.SELL): "Sale money stays in your broker balance, so no cash entry.",
+        (d.COMMODITY, d.BUY): "Like stocks: paid from the broker balance, no cash entry.",
+        (d.COMMODITY, d.SELL): "Like stocks: no cash entry.",
+        (d.FIXED_DEPOSIT, d.INTEREST): "Interest paid out to your bank creates no cash entry (the maturity does).",
+        (d.EPF, d.CREDIT): "Interest credited stays inside EPF: not money in or out.",
+        (d.P2P, d.REPAYMENT): "The whole repayment (principal and interest) counts as money taken out. The escrow "
+                              "entry is made only for imported repayments.",
+    }
+
+    def cash_rules(self) -> list[dict]:
+        """What cash entries each kind of transaction creates, worked out by running `_auto_cash` itself on a
+        sample of each (so this table can never disagree with the code). One row per asset class and type."""
+        out = []
+        n = 0
+        for ac, types in d.TXN_TYPES_BY_CLASS.items():
+            inst = {"asset_class": ac, "name": "<name>", "platform": "<platform>", "ref": "<ref>", "ref2": "<loan id>"}
+            for typ in types:
+                n += 1
+                variants = []
+                for source in (("manual", "import") if (ac, typ) == (d.P2P, d.REPAYMENT) else ("manual",)):
+                    sql = self._auto_cash(inst, {"type": typ, "amount": 1000.0, "amount_fc": 12.0, "date": "2026-01-01",
+                                                 "source": source}, 0, "owner")
+                    variants.append({"source": source, "entries": [
+                        {"account": p[1], "direction": p[3], "category": p[5], "kind": p[6], "note": p[7]} for _, p in sql]})
+                out.append({"id": f"R{n}", "asset_class": ac, "type": typ, "entries": variants[0]["entries"],
+                            "import_entries": variants[1]["entries"] if len(variants) > 1 else None,
+                            "note": self.CASH_RULE_NOTES.get((ac, typ))})
+        return out
+
     def _auto_enabled(self, owner: str) -> bool:
         s = self.get_settings(owner, "user")
         return str(s.get("autoCapitalFlows", "true")).lower() != "false"
