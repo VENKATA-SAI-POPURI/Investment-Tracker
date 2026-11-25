@@ -11,6 +11,7 @@ import { readSnapshot, snapshotKey, writeSnapshot } from '../../core/snapshot';
 import { StoreService } from '../../core/store.service';
 import { TxnDialogService } from '../../core/txn-dialog.service';
 import { IconComponent } from '../../shared/icon.component';
+import { TiltDirective } from '../../shared/v2/spatial';
 import { AreaChartComponent, DonutComponent, SparkComponent } from '../../shared/v2/charts';
 import { GroupSheetComponent } from '../../shared/v2/group-sheet.component';
 
@@ -20,7 +21,7 @@ type Range = '6M' | '1Y' | 'ALL';
 @Component({
   selector: 'app-home',
   standalone: true,
-  imports: [RouterLink, IconComponent, AreaChartComponent, DonutComponent, SparkComponent, GroupSheetComponent],
+  imports: [RouterLink, IconComponent, AreaChartComponent, DonutComponent, SparkComponent, GroupSheetComponent, TiltDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
   <div class="v2">
@@ -37,7 +38,7 @@ type Range = '6M' | '1Y' | 'ALL';
     } @else {
     <div class="v-grid hero-row">
       <!-- hero -->
-      <section class="v-hero" aria-label="Net worth">
+      <section class="v-hero" aria-label="Net worth" [vTilt]="5"><span class="lg-rim" aria-hidden="true"></span><span class="lg-sheen" aria-hidden="true"></span>
         @if (heroArea(); as ha) {
           <svg class="harea" viewBox="0 0 400 100" preserveAspectRatio="none" aria-hidden="true">
             <defs><linearGradient id="hfill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".28" /><stop offset="1" stop-color="#fff" stop-opacity="0" /></linearGradient></defs>
@@ -64,7 +65,7 @@ type Range = '6M' | '1Y' | 'ALL';
       </section>
 
       <!-- growth -->
-      <section class="v-card">
+      <section class="v-card" vTilt>
         <div class="v-ch"><h2>Growth</h2>
           <div class="v-chips" role="tablist" aria-label="Period">
             @for (r of ranges; track r) { <button role="tab" [class.on]="range() === r" [attr.aria-selected]="range() === r" (click)="range.set(r)">{{ r === 'ALL' ? 'All' : r }}</button> }
@@ -79,7 +80,7 @@ type Range = '6M' | '1Y' | 'ALL';
       </section>
 
       <!-- mix -->
-      <section class="v-card">
+      <section class="v-card" vTilt>
         <div class="v-ch"><h2>Your mix</h2><span class="hint">{{ ov()?.targets?.has_mine ? 'vs your target' : 'share of everything' }}</span></div>
         <div class="mix">
           <v-donut [parts]="donut()" [size]="128" [thickness]="19" [top]="groups().length + ' groups'" [bottom]="money(ov()?.totals?.value)" />
@@ -142,6 +143,7 @@ type Range = '6M' | '1Y' | 'ALL';
     .v-hero { min-height: 212px; }
     .harea { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 58%; z-index: 0 !important; pointer-events: none; }
     @media (max-width: 999px) { .v-hero .glass { margin-top: 70px; } .harea { height: 62%; } }
+    @media (min-width: 1000px) { .v-hero { display: flex; flex-direction: column; align-items: flex-start; } .v-hero .glass { margin-bottom: 96px; align-self: stretch; } .harea { height: 30%; } }
     .prices { position: absolute; top: 14px; right: 14px; display: inline-flex; align-items: center; gap: 5px; font: inherit; font-size: 11.5px;
       font-weight: 600; color: #fff; background: rgba(255,255,255,.14); border: 0; border-radius: 99px; padding: 4px 9px; cursor: pointer; }
     .mix { display: grid; grid-template-columns: 128px minmax(0, 1fr); gap: 14px; align-items: center; }

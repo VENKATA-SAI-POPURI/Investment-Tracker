@@ -9,6 +9,7 @@ import { Position } from '../../core/models';
 import { OverviewService } from '../../core/overview.service';
 import { StoreService } from '../../core/store.service';
 import { IconComponent } from '../../shared/icon.component';
+import { TiltDirective } from '../../shared/v2/spatial';
 import { HoldingSheetComponent } from '../../shared/v2/holding-sheet.component';
 
 /** A card on the page: Equity joins India and Global stocks; every other card is one group. */
@@ -32,11 +33,11 @@ interface Card extends CardDef { value: number; pct: number; change: string | nu
 @Component({
   selector: 'app-portfolio',
   standalone: true,
-  imports: [IconComponent, HoldingSheetComponent, RouterLink],
+  imports: [IconComponent, HoldingSheetComponent, RouterLink, TiltDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
   <div class="v2">
-    <section class="v-card summary">
+    <section class="v-card summary" [vTilt]="4">
       <div class="sum">
         <div><div class="v-mut lb">Total value</div><div class="v-num big">{{ money(total()) }}</div></div>
         <div class="right"><div class="v-mut lb">Total gain · return a year</div>

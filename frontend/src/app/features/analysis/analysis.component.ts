@@ -14,6 +14,7 @@ import { readSnapshot, snapshotKey, writeSnapshot } from '../../core/snapshot';
 import { StoreService } from '../../core/store.service';
 import { ToastService } from '../../core/toast.service';
 import { IconComponent } from '../../shared/icon.component';
+import { TiltDirective } from '../../shared/v2/spatial';
 import { AreaChartComponent, DonutComponent } from '../../shared/v2/charts';
 import { HoldingSheetComponent } from '../../shared/v2/holding-sheet.component';
 import { GroupSheetComponent } from '../../shared/v2/group-sheet.component';
@@ -29,7 +30,7 @@ const PROFILES = [
 @Component({
   selector: 'app-analysis',
   standalone: true,
-  imports: [FormsModule, IconComponent, AreaChartComponent, DonutComponent, HoldingSheetComponent, GroupSheetComponent],
+  imports: [FormsModule, IconComponent, AreaChartComponent, DonutComponent, HoldingSheetComponent, GroupSheetComponent, TiltDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
   <div class="v2">
@@ -184,7 +185,7 @@ const PROFILES = [
         <div class="v-mut lead">{{ o.suggestions.length ? o.suggestions.length + ' idea' + (o.suggestions.length > 1 ? 's' : '') + ' · most urgent and biggest first' : '' }}</div>
         <div class="v-grid cols-2">
         @for (s of o.suggestions; track s.id; let i = $index) {
-          <section class="v-card sug">
+          <section class="v-card sug" vTilt>
             <span class="rk">#{{ i + 1 }}</span>
             <div class="top"><span class="v-tone" [class]="s.tone"><app-icon [name]="s.icon" [size]="20" /></span>
               <div><div class="t">{{ s.title }}</div><div class="s">{{ s.detail }}</div></div></div>

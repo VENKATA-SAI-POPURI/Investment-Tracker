@@ -25,6 +25,8 @@ let uid = 0;
 @Component({
   selector: 'v-area',
   standalone: true,
+  // in fill mode the chart's size comes from its card (never from its own content), so measuring can't grow it
+  host: { '[style.min-height.px]': 'h() + (labels().length ? 22 : 0)' },
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (paths(); as p) {
@@ -45,7 +47,7 @@ let uid = 0;
       <div class="v-skel" [style.height.px]="ch()"></div>
     }
   `,
-  styles: [':host{display:block;width:100%;min-width:0}:host(.fill){flex:1 1 auto;display:flex;flex-direction:column;justify-content:flex-end}.gl{stroke:var(--chart-grid,rgba(106,70,245,.12))}.xl{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);font-weight:600;margin-top:4px}'],
+  styles: [':host{display:block;width:100%;min-width:0}:host(.fill){flex:1 1 0;display:block;position:relative}:host(.fill) svg{position:absolute;left:0;top:0}:host(.fill) .xl{position:absolute;left:0;right:0;bottom:0}.gl{stroke:var(--chart-grid,rgba(106,70,245,.12))}.xl{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);font-weight:600;margin-top:4px}'],
 })
 export class AreaChartComponent {
   private host = inject(ElementRef<HTMLElement>);
@@ -74,7 +76,7 @@ export class AreaChartComponent {
       const measure = () => {
         const r = el.getBoundingClientRect();
         if (r.width > 0) this.cw.set(Math.round(r.width));
-        const room = this.fills ? Math.round(r.height - (this.labels().length ? 20 : 0)) : 0;
+        const room = this.fills ? Math.round(r.height - (this.labels().length ? 22 : 0)) : 0;
         this.ch.set(Math.max(this.h(), room));
       };
       measure();

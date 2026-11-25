@@ -106,6 +106,11 @@ charges); automatic cash rules unchanged but now shown on Activity › Rules wit
   anchored next to the sidebar at max 1360 px (the shell header shares it). `v-area` redraws at its real width
   (ResizeObserver) and, with class `fill`, takes its card's spare height. Portfolio cards flow in two columns ≥ 900 px.
 
+- v4 liquid glass + v5 spatial (end of `styles.scss`): clear lens-like glass (`@mixin liquid`, masked rim ::before),
+  capsule controls, spring presses; `shared/v2/spatial.ts` `vTilt` directive (pointer tilt + light, pointer devices
+  only, off with reduced motion) and `startScrollDepth` (parallax orbs `.spatial-orbs` in the shell). `v-area.fill`
+  takes its size from the card (absolute svg), so it can't grow the row.
+
 ## Settings added to the Settings page (App & calculations)
 
 - "Show the classic tools in the menu" → `advancedFeatures`.
