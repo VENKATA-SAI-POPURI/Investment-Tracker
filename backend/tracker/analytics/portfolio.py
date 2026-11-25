@@ -129,9 +129,25 @@ def run_fifo(instrument_id: int, txns: list[dict]) -> tuple[list[Lot], list[Real
 
 
 def usd_of(t: dict, rate: float | None) -> float:
-    """A US transaction's dollars: its own USD amount, else its rupee amount at `rate`. Both engines use this, with
-    the same rate (today's USD/INR), so the wallet balance agrees everywhere."""
+    """A US transaction's dollars: its own USD amount, else its rupee amount at `rate`, the owner's weighted-average
+    deposit rate (`deposit_rates`). Both engines use this, so the wallet balance agrees everywhere."""
     return _f(t.get("amount_fc")) or (_f(t["amount"]) / rate if rate else 0.0)
+
+
+def deposit_rates(instruments: list[dict], txns: list[dict], fallback: float | None) -> dict[str, float | None]:
+    """Each owner's weighted-average USD/INR over the rupees sent to the USD wallet (Σ ₹ ÷ Σ $ of FX_IN), the rate
+    the wallet shows as "bought at". Rupee amounts on US entries were paid from those dollars, so this is the
+    rate that turns them back into dollars. Owners with no deposits fall back to `fallback` (today's rate)."""
+    wallet_owner = {i["id"]: i["owner"] for i in instruments if i["asset_class"] == d.CASH}
+    inr: dict[str, float] = defaultdict(float)
+    usd: dict[str, float] = defaultdict(float)
+    for t in txns:
+        owner = wallet_owner.get(t["instrument_id"])
+        if owner and t["type"] == d.FX_IN and _f(t.get("amount_fc")) > 0:
+            inr[owner] += _f(t["amount"])
+            usd[owner] += _f(t["amount_fc"])
+    owners = {i["owner"] for i in instruments}
+    return {o: (inr[o] / usd[o] if usd.get(o) else fallback) for o in owners}
 
 
 def latest_fx_from_txns(txns: list[dict]) -> float | None:
@@ -156,6 +172,7 @@ def compute_portfolio(instruments: list[dict], txns: list[dict], usd_inr: float 
     us_fc_by_owner: dict[str, float] = defaultdict(float)  # net USD moved from wallet into US stocks
     wallets: list[tuple[dict, list[dict]]] = []
     has_wallet = {i["owner"] for i in instruments if i["asset_class"] == d.CASH}
+    dep_rate = deposit_rates(instruments, txns, fx or None)
 
     for inst in instruments:
         ts = sorted(by_inst.get(inst["id"], []), key=lambda x: (str(x["date"])[:10], x.get("id") or 0))
@@ -167,10 +184,11 @@ def compute_portfolio(instruments: list[dict], txns: list[dict], usd_inr: float 
             if inst.get("currency") == "USD":
                 for t in ts:
                     if t["type"] in (d.BUY, d.SELL):
-                        us_fc_by_owner[inst["owner"]] += usd_of(t, fx) if t["type"] == d.BUY else -usd_of(t, fx)
+                        rate = dep_rate.get(inst["owner"])
+                        us_fc_by_owner[inst["owner"]] += usd_of(t, rate) if t["type"] == d.BUY else -usd_of(t, rate)
                     elif t["type"] in (d.DIVIDEND, d.INTEREST) and inst["owner"] in has_wallet:
                         # US dividends are paid into the USD wallet and stay in the US account
-                        us_fc_by_owner[inst["owner"]] -= usd_of(t, fx)
+                        us_fc_by_owner[inst["owner"]] -= usd_of(t, dep_rate.get(inst["owner"]))
         elif ac == d.P2P:
             pos = _p2p_position(inst, ts, today, p2p_recovery)
         elif ac == d.FIXED_DEPOSIT:

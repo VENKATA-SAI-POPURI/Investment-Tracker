@@ -111,7 +111,7 @@ def test_us_dividend_stays_in_the_usd_wallet(with_usd):
     port = compute_portfolio(insts, txns, USD_INR, today=TODAY)
     w0 = next(p for p in before["positions"] if p["asset_class"] == "cash")
     w1 = next(p for p in port["positions"] if p["asset_class"] == "cash")
-    usd = 10.0 if with_usd else 885.0 / USD_INR
+    usd = 10.0 if with_usd else 885.0 / 83.5   # the wallet's average deposit rate (₹83,500 for $1,000)
     assert w1["balance_usd"] == pytest.approx(w0["balance_usd"] + usd, abs=0.01)
     # the dividend is Apple's income, and not money taken out of the portfolio
     apple = next(p for p in port["positions"] if p["name"] == "Apple")
@@ -146,3 +146,16 @@ def test_us_dividend_makes_no_money_out_entry_and_old_ones_are_removed(app, clie
     assert [r["source"] for r in left] == ["manual"]
     checks = {c["id"] for c in client.get("/api/checks", headers=h).json}
     assert "wallet-negative" not in checks
+
+
+def test_rupee_only_us_entries_convert_at_the_average_deposit_rate():
+    """Two deposits at ₹82 and ₹86: a rupee-only US buy converts at their weighted average, not at today's rate."""
+    from tracker.analytics.portfolio import deposit_rates
+    from demo_book import _inst, _t
+    insts = [_inst(1, "cash", "USD wallet", currency="USD"), _inst(2, "equity", "Microsoft", market="USA", currency="USD")]
+    txns = [_t(1, 1, "2025-01-02", "FX_IN", 82000, amount_fc=1000), _t(2, 1, "2025-06-02", "FX_IN", 258000, amount_fc=3000)]
+    assert deposit_rates(insts, txns, 88.4)[insts[0]["owner"]] == pytest.approx(85.0)
+    txns.append(_t(3, 2, "2025-07-01", "BUY", 170000, qty=5))   # no dollar amount
+    port = compute_portfolio(insts, txns, 88.4, today=TODAY)
+    wallet = next(p for p in port["positions"] if p["asset_class"] == "cash")
+    assert wallet["balance_usd"] == pytest.approx(4000 - 170000 / 85.0, abs=0.01)

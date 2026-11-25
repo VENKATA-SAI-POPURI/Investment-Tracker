@@ -94,7 +94,8 @@ charges); automatic cash rules unchanged but now shown on Activity › Rules wit
 
 - US stock dividends (owner has a USD wallet) are paid into the wallet: they raise its USD balance, are not an
   external cash flow, and make no "money out" cash entry; migration 007 removes the old automatic ones.
-  `portfolio.usd_of()` converts US amounts without a USD figure at today's USD/INR in both engines.
+  `portfolio.usd_of()` converts US amounts without a USD figure at the owner's weighted-average deposit rate
+  (`portfolio.deposit_rates`: Σ ₹ ÷ Σ $ of FX_IN; today's rate only when there are no deposits), in both engines.
 
 ## Settings added to the Settings page (App & calculations)
 
