@@ -178,6 +178,8 @@ def compute_portfolio(instruments: list[dict], txns: list[dict], usd_inr: float 
     for inst, ts in wallets:
         positions.append(_wallet_position(inst, ts, us_fc_by_owner.get(inst["owner"], 0.0), fx))
 
+    _p2p_schedules(positions, today)
+
     total_value = sum(p["value"] for p in positions)
     for p in positions:
         p["weight"] = round(p["value"] / total_value * 100, 2) if total_value > 0 else 0.0
@@ -328,6 +330,54 @@ def _p2p_position(inst: dict, ts: list[dict], today: date, recovery: float | Non
         "is_open": status != "closed" and outstanding > 0.01, "txn_count": len(ts),
     })
     return pos
+
+
+def add_months(dt: date, n: int) -> date:
+    y, m = divmod(dt.month - 1 + n, 12)
+    return date(dt.year + y, m + 1, min(dt.day, 28))
+
+
+def emi_principal_paid(lent: float, rate_pct: float, tenure: int) -> list[float]:
+    """Principal repaid after each EMI of an equal-instalment loan (P2P loans on Indian platforms repay this way)."""
+    r = (rate_pct or 0) / 1200
+    out, bal = [], lent
+    emi = lent * r / (1 - (1 + r) ** -tenure) if r > 0 else lent / tenure
+    for _ in range(tenure):
+        princ = emi - bal * r if r > 0 else emi
+        bal = max(bal - princ, 0.0)
+        out.append(lent - bal)
+    return out
+
+
+def _p2p_schedules(positions: list[dict], today: date) -> None:
+    """Monthly EMI status for active P2P loans: EMIs fall due each month up to the maturity date (the last EMI),
+    so the first is `tenure − 1` months before it. EMIs paid are read from the principal repaid against the loan's
+    own repayment schedule. Status is measured on the date of the latest repayment recorded for that person
+    (the statement date), so an old import doesn't make every loan look late. Sets next_due, emis_*, data_as_of
+    and overdue_days (days since the first unpaid EMI fell due, 0 when up to date)."""
+    by_owner: dict[str, list[dict]] = defaultdict(list)
+    for p in positions:
+        if p["asset_class"] == d.P2P:
+            by_owner[p["owner"]].append(p)
+    for owner, loans in by_owner.items():
+        last = [to_date(p["last_repayment"]) for p in loans if p.get("last_repayment")]
+        ref = min(max(last), today) if last else today
+        for p in loans:
+            p["data_as_of"] = ref.isoformat()
+            tenure = int(_f(p.get("tenure_months")))
+            if (p.get("status") or "active").lower() != "active" or (p.get("outstanding") or 0) <= 1 \
+                    or not p.get("maturity_date") or tenure <= 0:
+                continue
+            last_emi = to_date(p["maturity_date"])
+            dues = [add_months(last_emi, k - tenure + 1) for k in range(tenure)]
+            cum = emi_principal_paid(_f(p.get("invested")), _f(p.get("rate")), tenure)
+            tol = max(1.0, 0.02 * _f(p.get("invested")))
+            paid = sum(1 for c in cum if c <= _f(p.get("principal_repaid")) + tol)
+            due = sum(1 for x in dues if x <= ref)
+            nxt = dues[paid] if paid < tenure else None
+            p.update({"emis_total": tenure, "emis_paid": paid, "emis_behind": max(due - paid, 0),
+                      "next_due": nxt.isoformat() if nxt else None,
+                      "overdue_days": (ref - nxt).days if nxt and nxt < ref else 0})
 
 
 def fd_accrued(principal: float, rate_pct: float, start: date, end: date) -> float:

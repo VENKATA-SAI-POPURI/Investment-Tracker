@@ -245,6 +245,13 @@ export interface Position {
   overdue_days?: number;
   at_risk?: number;
   last_repayment?: string | null;
+  /** P2P EMI status (the 5th of each month up to the maturity date), measured on data_as_of. */
+  next_due?: string | null;
+  emis_total?: number;
+  emis_paid?: number;
+  emis_behind?: number;
+  data_as_of?: string;
+  written_down?: number;
   // FD
   accrued_interest?: number;
   days_to_maturity?: number | null;
@@ -1157,3 +1164,13 @@ export interface Trace {
 }
 export interface DataCheck { id: string; severity: 'bad' | 'warn' | 'info'; title: string; detail: string; count: number; fix: string; link: string | null;
   items: { instrument_id: number; name: string; detail: string; txn_id?: number }[]; }
+
+/** GET /overview/group/:key — how one group's numbers are worked out. */
+export interface GroupExplain {
+  key: string; label: string; as_of: string; value: number; put_in: number; taken_out: number; gain: number;
+  first_date: string | null; years: number; flows: number; xirr: number | null; simple_pct: number | null;
+  market: { labels: string[]; end_value: number | null; xirr: number | null; diff_pts: number | null; dividend_yield: Record<string, number>; how: string };
+  by_year: { year: number; put_in: number; taken_out: number }[];
+  holdings: { id: number; name: string; is_open: boolean; put_in: number; taken_out: number; value: number; gain: number; xirr: number | null;
+    market: string; flows: number; first: string | null }[];
+}

@@ -482,6 +482,8 @@ def test_stale_stored_closes_give_no_market_state(app, client, offline_prices, m
     h = auth(USER, "user")
     buy(client, h, symbol="TCS.NS")
     end = TODAY - timedelta(days=60)
+    while end.weekday() >= 5:   # the walk has weekday closes only; end on one so the ages below are exact
+        end -= timedelta(days=1)
     pts = walk(24000, 300, drift=0.0, vol=0.001, seed=3, end=end)
     pts = pts[:-5] + [(dt, round(max(c for _, c in pts) * 0.86, 2)) for dt, c in pts[-5:]]
     store_closes(app.extensions["ledger"], "^NSEI", pts)

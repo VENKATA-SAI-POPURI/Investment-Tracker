@@ -383,7 +383,7 @@ def suggestions(view: dict, port: dict, tax: dict | None, today: date, slab: flo
         amt = sum(_f(p.get("outstanding")) for p in overdue)
         out.append({"id": "p2p:overdue", "rank": 1, "tone": "warn", "icon": "alert",
                     "title": f"{len(overdue)} P2P loan{'s' if len(overdue) > 1 else ''} overdue",
-                    "detail": "More than 30 days late. Follow up, or mark as defaulted.",
+                    "detail": "An EMI is more than 30 days late. Follow up, or mark as defaulted.",
                     "impact": f"{_money(amt)} at risk", "value": amt, "cta": "View", "link": "/portfolio?group=p2p"})
     for p in sorted((p for p in pos if p["asset_class"] == d.FIXED_DEPOSIT and p.get("days_to_maturity") is not None
                      and 0 <= p["days_to_maturity"] <= 45), key=lambda p: p["days_to_maturity"]):
@@ -446,3 +446,59 @@ def suggestions(view: dict, port: dict, tax: dict | None, today: date, slab: flo
                     "impact": "Values may be off", "value": 0.0, "cta": "Fix", "link": "/activity?tab=checks"})
     out.sort(key=lambda s: (s["rank"], -s["value"]))
     return out[:limit]
+
+
+# ── how a group's numbers are worked out (the explanation sheet) ──
+
+def group_explain(port: dict, txns: list[dict], key: str, bench_hist: dict | None, fx_hist: list | None,
+                  today: date | None = None) -> dict:
+    """Everything behind one group's return and its market comparison: the money put in and taken out (by year),
+    the value now, the yearly return on those flows, the same flows in the group's market, and each holding."""
+    today = today or (to_date(port["as_of"]) if port.get("as_of") else date.today())
+    if key not in d.GROUPS:
+        raise ValueError("Unknown group")
+    by_inst: dict[int, list[dict]] = defaultdict(list)
+    for t in txns:
+        by_inst[t["instrument_id"]].append(t)
+    owners = wallet_owners(port["positions"])
+    prices = Prices(bench_hist or {}, fx_hist or [])
+    holdings, flows, routed, years = [], [], [], defaultdict(lambda: {"put_in": 0.0, "taken_out": 0.0})
+    for p in (p for p in port["positions"] if p["group"] == key):
+        fl = external_flows(p, by_inst.get(p["id"], []), owners, today)
+        k = bench_key(p)
+        flows += fl
+        routed += [(dt, a, k) for dt, a in fl]
+        for dt, a in fl:
+            years[dt.year]["put_in" if a < 0 else "taken_out"] += abs(a)
+        pin, pout, val = -sum(a for _, a in fl if a < 0), sum(a for _, a in fl if a > 0), _f(p["value"])
+        own = xirr(fl + ([(today, val)] if val > EPS else []))
+        holdings.append({"id": p["id"], "name": p["name"], "is_open": p.get("is_open"), "put_in": _r(pin), "taken_out": _r(pout),
+                         "value": _r(val), "gain": _r(val + pout - pin), "xirr": _pct(own), "market": BENCH_LABEL[k],
+                         "flows": len(fl), "first": min((dt for dt, _ in fl), default=None)})
+    value = sum(_f(p["value"]) for p in port["positions"] if p["group"] == key)
+    put_in = -sum(a for _, a in flows if a < 0)
+    taken_out = sum(a for _, a in flows if a > 0)
+    own = xirr(flows + ([(today, value)] if value > EPS else []))
+    end = _pme(routed, prices, today) if routed else None
+    bx = xirr(fl_bench(routed, end, today)) if end is not None else None
+    used = sorted({k for _, _, k in routed})
+    first = min((dt for dt, _ in flows), default=None)
+    years_held = (today - first).days / 365 if first else 0
+    for h in holdings:
+        h["first"] = h["first"].isoformat() if h["first"] else None
+    holdings.sort(key=lambda h: -(h["value"] or 0) - (h["gain"] or 0) * 1e-6)
+    return {
+        "key": key, "label": d.GROUP_LABELS[key], "as_of": today.isoformat(),
+        "value": _r(value), "put_in": _r(put_in), "taken_out": _r(taken_out), "gain": _r(value + taken_out - put_in),
+        "first_date": first.isoformat() if first else None, "years": round(years_held, 1), "flows": len(flows),
+        "xirr": _pct(own),
+        "simple_pct": _r((value + taken_out - put_in) / put_in * 100) if put_in > EPS else None,
+        "market": {"labels": [BENCH_LABEL[k] for k in used], "end_value": _r(end), "xirr": _pct(bx),
+                   "diff_pts": _r((own - bx) * 100) if own is not None and bx is not None else None,
+                   "dividend_yield": {k: DIV_YIELD[leg] for k in used for leg, _ in LEGS[k] if DIV_YIELD.get(leg)},
+                   "how": "Each rupee you put in is put into the market on the same day, and each rupee you took out is "
+                          "taken out of it on the same day. The market's yearly return on those same flows is compared "
+                          "with yours."},
+        "by_year": [{"year": y, "put_in": _r(v["put_in"]), "taken_out": _r(v["taken_out"])} for y, v in sorted(years.items())],
+        "holdings": holdings,
+    }

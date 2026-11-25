@@ -81,6 +81,17 @@ Done (golden numbers regenerated on purpose; history and portfolio now agree on 
 Not changed (owner to decide): Kite imports still leave brokerage/STT/stamp duty out of cost (the tradebook has no
 charges); automatic cash rules unchanged but now shown on Activity › Rules with notes on the gaps.
 
+## Owner review fixes (25 Nov 2026)
+
+- Every percentage now says what it is: "a year" = XIRR on the money put in; market differences are in
+  percentage points ("pts"). Group cards: market groups show gain on current cost; P2P, EPF and Others show the
+  yearly return (their "gain ÷ money put in" shrinks its base with each repayment or withdrawal).
+- EPF shows interest earned in rupees (credited + due since the last credit), not "% of contributions".
+- P2P: EMIs on the 5th up to the maturity date; `portfolio._p2p_schedules` reads EMIs paid from principal repaid
+  against the loan's own schedule, measured on the latest repayment date recorded (`data_as_of`).
+- `xirr` picks the root nearest 10% (like Excel) when flows switch sign many times.
+- `GET /api/overview/group/<key>` + `shared/v2/group-sheet.component.ts`: how a group's numbers are worked out.
+
 ## Settings added to the Settings page (App & calculations)
 
 - "Show the classic tools in the menu" → `advancedFeatures`.

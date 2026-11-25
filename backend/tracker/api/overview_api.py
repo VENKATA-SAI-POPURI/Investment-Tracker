@@ -30,3 +30,11 @@ def rebalance():
         raise ValidationError("targets must be mine or suggested")
     return jsonify(S().group_rebalance(g.scope, S().settings(), new_money, request.args.get("allow_sell") == "1",
                                        target_set))
+
+
+@bp.get("/overview/group/<key>")
+def group_explain(key):
+    from .. import domain as d
+    if key not in d.GROUPS:
+        raise ValidationError("Unknown group")
+    return jsonify(S().group_explain(g.scope, S().settings(), key))

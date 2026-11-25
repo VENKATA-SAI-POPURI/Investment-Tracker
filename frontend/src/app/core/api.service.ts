@@ -8,7 +8,7 @@ import {
   Projection, StressTest, RetirementPlan, CashFlow, PortfolioRisk, Outlook, OptimizerResult, SipPlan,
   Action, ActionsResponse, ActionStatusBody, Brief, Plan, AssumptionsView, WhatIfParams, WhatIfSale, SipsResponse,
   NotificationsResponse, NotificationsSeenResponse, PlanCompare, PlanCompareRequest, TransactionsPage, TransactionsPageParams,
-  Overview, GroupRebalance, Trace, DataCheck, CashRule,
+  Overview, GroupRebalance, Trace, DataCheck, CashRule, GroupExplain,
 } from './models';
 
 type Params = Record<string, string | number | boolean | null | undefined>;
@@ -69,6 +69,7 @@ export class ApiService {
 
   // redesign: the group overview and rebalancing by group
   overview() { return this.get<Overview>('/overview'); }
+  groupExplain(key: string) { return this.get<GroupExplain>(`/overview/group/${key}`); }
   groupRebalance(newMoney: number, allowSell: boolean, targets: 'mine' | 'suggested') {
     return this.get<GroupRebalance>('/overview/rebalance', { new_money: newMoney, allow_sell: allowSell ? 1 : 0, targets });
   }
