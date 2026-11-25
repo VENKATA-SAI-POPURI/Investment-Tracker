@@ -111,7 +111,7 @@ def todo(view: dict, port: dict, tax: dict | None, checks: list[dict], today: da
     if short:
         amt = max(round(monthly / 1000) * 1000, 5000.0) if monthly > 0 else 25000.0
         items.append({"id": "flow:invest", "flow": "invest", "tone": "primary", "icon": "target",
-                      "title": f"Put {_money(amt)} to work",
+                      "title": f"Put ₹{amt:,.0f} to work",
                       "detail": "Fills " + _names([g["label"] for g in sorted(short, key=lambda g: g["gap"])][:2]),
                       "cta": "Start", "link": f"/flow/invest?amount={amt:.0f}", "steps": 4, "value": amt})
     for s in suggestions(view, port, tax, today, slab, limit=12):
@@ -157,7 +157,7 @@ def questions(view: dict, drag: list[dict], goals: list[dict], tax: dict | None)
     out.append({"id": "money", "q": "Am I making money?",
                 "answer": (f"Yes · {_money(gain)} gain" if gain > 0 else f"Not yet · {_money(gain)}"),
                 "detail": f"{x:.1f}% a year on what you put in" if x is not None else "Not enough history for a yearly return",
-                "tone": "good" if gain > 0 else "bad", "icon": "trendingUp", "link": "/analysis?q=returns"})
+                "tone": "good" if gain > 0 else "bad", "icon": "trendUp", "link": "/analysis?q=returns"})
 
     diff = m.get("diff")
     if diff is None:

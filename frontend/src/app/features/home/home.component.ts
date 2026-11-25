@@ -1,26 +1,26 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, signal, untracked } from '@angular/core';
-import { Router, RouterLink } from '@angular/router';
+import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { ago, money, monthTicks, pctV } from '../../core/format';
-import { GROUP_HEX, groupMeta } from '../../core/groups';
-import { GroupRow, Performance, Suggestion } from '../../core/models';
+import { Performance, Question, TodoItem } from '../../core/models';
+import { linkPath, linkQuery, toneClass } from '../../core/links';
 import { OverviewService } from '../../core/overview.service';
 import { readSnapshot, snapshotKey, writeSnapshot } from '../../core/snapshot';
 import { StoreService } from '../../core/store.service';
 import { TxnDialogService } from '../../core/txn-dialog.service';
 import { IconComponent } from '../../shared/icon.component';
-import { AreaChartComponent, DonutComponent, SparkComponent } from '../../shared/v2/charts';
+import { AreaChartComponent } from '../../shared/v2/charts';
 import { GroupSheetComponent } from '../../shared/v2/group-sheet.component';
 
 type Range = '6M' | '1Y' | 'ALL';
 
-/** Home: where everything stands, in one screen of cards (redesign). */
+/** Home: "How am I doing?" answered in four lines, then the jobs worth doing now (question-led redesign). */
 @Component({
   selector: 'app-home',
   standalone: true,
-  imports: [RouterLink, IconComponent, AreaChartComponent, DonutComponent, SparkComponent, GroupSheetComponent],
+  imports: [RouterLink, IconComponent, AreaChartComponent, GroupSheetComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
   <div class="v2">
@@ -35,7 +35,7 @@ type Range = '6M' | '1Y' | 'ALL';
         }
       </div>
     } @else {
-    <div class="v-grid hero-row">
+    <div class="top">
       <!-- hero -->
       <section class="v-hero" aria-label="Net worth"><span class="lg-rim" aria-hidden="true"></span>
         @if (heroArea(); as ha) {
@@ -49,11 +49,11 @@ type Range = '6M' | '1Y' | 'ALL';
           <div class="big">{{ money(shownValue()) }}</div>
           <span class="chipw"><app-icon [name]="o.totals.day_change < 0 ? 'arrowDownRight' : 'arrowUpRight'" [size]="14" [stroke]="2.6" />
             {{ money(o.totals.day_change) }} · {{ pctV(o.totals.day_change_pct, 2) }} today</span>
-          <div class="glass">
+          <button class="glass" type="button" (click)="explain.set('all')" aria-label="How these numbers are worked out">
             <div><small>Invested</small><b>{{ money(o.totals.put_in) }}</b></div>
             <div><small>Gain</small><b>{{ money(o.totals.gain, true) }}</b></div>
-            <div><small>Return / yr</small><b>{{ pctV(o.totals.xirr) }}</b></div>
-          </div>
+            <div><small>Return / yr <app-icon name="info" [size]="12" [stroke]="2.4" /></small><b>{{ pctV(o.totals.xirr) }}</b></div>
+          </button>
         } @else {
           <div class="big" style="opacity:.6">—</div><div class="glass"><div style="height:44px"></div><div></div><div></div></div>
         }
@@ -63,8 +63,8 @@ type Range = '6M' | '1Y' | 'ALL';
         </button>
       </section>
 
-      <!-- growth -->
-      <section class="v-card">
+      <!-- growth (desktop sits beside the hero; phone shows it last) -->
+      <section class="v-card growth">
         <div class="v-ch"><h2>Growth</h2>
           <div class="v-chips" role="tablist" aria-label="Period">
             @for (r of ranges; track r) { <button role="tab" [class.on]="range() === r" [attr.aria-selected]="range() === r" (click)="range.set(r)">{{ r === 'ALL' ? 'All' : r }}</button> }
@@ -77,131 +77,83 @@ type Range = '6M' | '1Y' | 'ALL';
           }
         </div>
       </section>
-
-      <!-- mix -->
-      <section class="v-card">
-        <div class="v-ch"><h2>Your mix</h2><span class="hint">{{ ov()?.targets?.has_mine ? 'vs your target' : 'share of everything' }}</span></div>
-        <div class="mix">
-          <v-donut [parts]="donut()" [size]="136" [thickness]="18" [top]="groups().length + ' groups'" [bottom]="money(ov()?.totals?.value)" />
-          <div class="mixleg">
-            @for (g of groups(); track g.key) {
-              <div class="lg"><span class="d" [style.background]="hex(g.key)"></span><span class="nm">{{ g.label }}</span><b>{{ g.pct.toFixed(0) }}%</b>
-                @if (g.gap !== null) { <span class="dl" [class.u]="g.gap <= -1" [class.k]="g.gap > -1 && g.gap < 1">{{ gapText(g.gap) }}</span> }
-              </div>
-            }
-          </div>
-        </div>
-        <a class="foot" routerLink="/analysis" [queryParams]="{ tab: 'mix' }">
-          <span>{{ ov()?.targets?.has_mine ? (offTarget() ? offTarget() + ' group' + (offTarget() > 1 ? 's are' : ' is') + ' off target' : 'On target') : 'Set your target mix' }}</span>
-          <span class="go">{{ ov()?.targets?.has_mine ? 'Rebalance' : 'Set targets' }} <app-icon name="chevronRight" [size]="16" [stroke]="2.4" /></span>
-        </a>
-      </section>
     </div>
 
-    <!-- each part -->
-    <div class="v-sec"><h2>How each part is doing</h2><a class="v-link" routerLink="/analysis" [queryParams]="{ tab: 'market' }">Details <app-icon name="chevronRight" [size]="15" [stroke]="2.4" /></a></div>
-    <p class="cap">Yearly return, total gain, and how far ahead or behind the same money in its market. Tap one for the working.</p>
-    <section class="v-card tight parts">
-      @for (g of groups(); track g.key) {
-        <button class="v-row prow" (click)="explain.set(g.key)" [style.--c]="meta(g.key).color">
-          <span class="v-ic"><app-icon [name]="meta(g.key).icon" [size]="19" /></span>
-          <div class="nm"><div class="t">{{ g.label }}</div><div class="s">{{ money(g.value) }} · <span [class.v-gain]="g.gain > 0" [class.v-loss]="g.gain < 0">{{ money(g.gain, true) }}</span></div>
-            <div class="v-share"><b [style.width.%]="g.pct * 100 / maxPct()"></b></div></div>
-          <v-spark class="sp" [values]="spark(g.key)" [color]="hex(g.key)" [w]="64" [h]="26" />
-          <div class="rv"><b>{{ pctV(g.xirr) }}<small class="yr"> /yr</small></b>
-            @if (g.bench?.verdict; as v) {
-              <span class="v-pill" [class.ok]="v === 'ahead'" [class.no]="v === 'behind'" [class.eq]="v === 'same'">{{ v === 'same' ? '≈ market' : pts(g.bench!.diff) }}</span>
-            }
-          </div>
-        </button>
-      } @empty {
-        @for (i of [1, 2, 3]; track i) { <div class="v-skel" style="height:52px;margin:12px 0"></div> }
-      }
-    </section>
+    <div class="cols">
+      <div class="col">
+        <div class="v-sec"><h2>How am I doing?</h2><a class="v-link" routerLink="/analysis">All questions <app-icon name="chevronRight" [size]="15" [stroke]="2.4" /></a></div>
+        <section class="v-card tight">
+          @for (q of questions(); track q.id) {
+            <a class="v-row v-q" [routerLink]="path(q.link)" [queryParams]="query(q.link)">
+              <span class="v-tone" [class]="toneClass(q.tone)"><app-icon [name]="q.icon" [size]="20" /></span>
+              <div class="grow"><div class="qq">{{ q.q }}</div><div class="qa">{{ q.answer }}</div><div class="qd">{{ q.detail }}</div></div>
+              <app-icon class="chev" name="chevronRight" [size]="18" [stroke]="2.2" />
+            </a>
+          } @empty {
+            @for (i of [1, 2, 3, 4]; track i) { <div class="v-skel" style="height:64px;margin:12px 0"></div> }
+          }
+        </section>
+      </div>
 
-    <!-- attention -->
-    @if (attention().length) {
-      <div class="v-sec"><h2>Needs attention</h2><a class="v-link" routerLink="/analysis" [queryParams]="{ tab: 'improve' }">All {{ ov()?.suggestions?.length }} <app-icon name="chevronRight" [size]="15" [stroke]="2.4" /></a></div>
-      <section class="v-card tight attention">
-        @for (s of attention(); track s.id) {
-          <button class="v-row" (click)="go(s)">
-            <span class="v-tone" [class]="s.tone"><app-icon [name]="s.icon" [size]="19" /></span>
-            <div class="grow"><div class="t">{{ s.title }}</div><div class="s">{{ s.detail }}</div></div>
-            <div class="r"><b class="imp" [class.v-warn]="s.tone === 'warn'" [class.v-loss]="s.tone === 'bad'" [class.v-gain]="s.tone === 'good'">{{ s.impact }}</b></div>
-          </button>
+      <div class="col">
+        @if (todo().length) {
+          <div class="v-sec"><h2>To do</h2><span class="hint">{{ todo().length }} {{ todo().length === 1 ? 'thing' : 'things' }}</span></div>
+          <section class="v-card tight">
+            @for (t of todo(); track t.id) {
+              <div class="v-row v-todo">
+                <span class="v-tone" [class]="toneClass(t.tone)"><app-icon [name]="t.icon" [size]="20" /></span>
+                <div class="grow"><div class="tt">{{ t.title }}</div>@if (t.detail) { <div class="td">{{ t.detail }}</div> }
+                  @if (t.steps) { <div class="steps"><i class="d"></i>@for (i of stepsOf(t.steps); track $index) { <i></i> } <span>{{ t.steps }} steps · 2 min</span></div> }
+                </div>
+                <a class="v-btn sm" [class.primary]="$first" [routerLink]="path(t.link)" [queryParams]="query(t.link)">{{ t.cta }}</a>
+              </div>
+            }
+          </section>
+        } @else if (answers()) {
+          <div class="v-sec"><h2>To do</h2></div>
+          <section class="v-card v-empty"><span class="v-tone good"><app-icon name="checkCircle" [size]="22" /></span>
+            <b>Nothing needs you right now</b><span>New jobs show up here when something is due, late or off target.</span></section>
         }
-      </section>
-    }
+      </div>
+    </div>
     }
   </div>
   @if (explain(); as k) { <v-group-sheet [key]="k" (closed)="explain.set(null)" /> }
   `,
   styles: [`
-    .cap { font-size: var(--fs-small); color: var(--muted); margin: 0 2px; font-weight: 500; }
-    .yr { font-size: 12px; color: var(--muted); font-weight: 600; }
+    .top { display: grid; gap: 18px; }
+    @media (min-width: 1000px) { .top { grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 20px; } }
+    .cols { display: grid; gap: 4px; }
+    @media (min-width: 1000px) { .cols { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; } }
+    .col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+    @media (max-width: 999px) { .growth { order: 3; } .top { display: contents; } .v2 { display: flex; flex-direction: column; } }
     .v-hero { display: flex; flex-direction: column; min-height: 240px; }
-    .v-hero .glass { margin-top: auto; }
     .harea { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 46%; z-index: -1; pointer-events: none; opacity: .9; }
     .chipw { align-self: flex-start; }
+    button.glass { margin-top: auto; font: inherit; color: inherit; border: 0; background: none; padding: 0; text-align: left; cursor: pointer; width: 100%; }
+    button.glass small { display: inline-flex; align-items: center; gap: 4px; }
     .prices { position: absolute; top: 16px; right: 16px; display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 12px;
       font-weight: 700; color: #fff; background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.16); border-radius: 99px; padding: 5px 11px;
       cursor: pointer; transition: background .2s ease; }
     .prices:hover { background: rgba(255,255,255,.22); }
-    @media (max-width: 999px) { .v-hero { min-height: 260px; } .v-hero .glass { margin-top: 64px; } }
-    .mix { display: grid; grid-template-columns: 136px minmax(0, 1fr); gap: 18px; align-items: center; flex: 1; }
-    .mixleg { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-    .lg { display: grid; grid-template-columns: 10px minmax(0, 1fr) 44px 48px; gap: 8px; align-items: center; font-size: 13.5px; padding: 4px 0; font-weight: 500; min-width: 0; }
-    .lg .d { width: 10px; height: 10px; border-radius: 3px; }
-    .lg .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
-    .lg b { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
-    .dl { font-size: 11px; font-weight: 700; padding: 2px 0; border-radius: 6px; text-align: center; background: var(--surface-3); color: var(--text-2); font-variant-numeric: tabular-nums; }
-    .dl.u { background: var(--warn-soft); color: var(--warn); } .dl.k { background: var(--pos-soft); color: var(--pos); }
-    .foot { display: flex; align-items: center; justify-content: space-between; background: var(--accent-soft); border: 1px solid rgba(99,102,241,.3); border-radius: 14px;
-      padding: 11px 14px; margin-top: 16px; font-size: var(--fs-small); font-weight: 700; color: var(--accent-strong); text-decoration: none; transition: background .2s ease; }
-    .foot:hover { background: rgba(99,102,241,.24); text-decoration: none; }
-    .foot .go { display: inline-flex; align-items: center; gap: 2px; }
+    @media (max-width: 999px) { .v-hero { min-height: 250px; } button.glass { margin-top: 56px; } }
     .gain-in { margin-left: auto; font-weight: 700; }
     .gain-in::before { display: none; }
-    /* group rows: one grid, so names, trend lines and numbers line up in columns */
-    .prow { display: grid; grid-template-columns: 40px minmax(0, 1fr) 64px 112px; column-gap: 14px; }
-    .prow .nm { min-width: 0; }
-    .prow .t, .prow .s { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .prow .s { font-weight: 600; }
-    .prow .rv { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
-    .prow .rv b { font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; }
-    .attention .imp { font-size: 14px; white-space: nowrap; }
-    .attention .v-row .s { overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-    @media (max-width: 480px) {
-      .prow { grid-template-columns: 40px minmax(0, 1fr) 100px; } .prow .sp { display: none; }
-      .mix { grid-template-columns: 104px minmax(0, 1fr); gap: 12px; }
-      .mix v-donut svg { width: 104px; height: 104px; }
-      .lg { grid-template-columns: 9px minmax(0, 1fr) 38px 44px; gap: 6px; font-size: 12.5px; }
-      .attention .v-row { flex-wrap: wrap; }
-      .attention .v-row .r { width: 100%; text-align: left; padding-left: 58px; margin-top: -6px; }
-    }
-    @media (min-width: 760px) {
-      .parts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 32px; }
-      .parts .v-row:nth-child(2) { border-top: 0; }
-    }
+    .hint { font-size: var(--fs-small); color: var(--muted); font-weight: 600; }
   `],
 })
 export class HomeComponent {
   private api = inject(ApiService);
-  private router = inject(Router);
   store = inject(StoreService);
   auth = inject(AuthService);
   dialog = inject(TxnDialogService);
 
   money = money;
   pctV = pctV;
-  meta = groupMeta;
-  hex = (k: string) => GROUP_HEX[k as keyof typeof GROUP_HEX] ?? '#9aa3b8';
   ranges: Range[] = ['6M', '1Y', 'ALL'];
 
   range = signal<Range>('1Y');
   explain = signal<string | null>(null);
-  pts = (v: number | null) => v === null ? '—' : (v > 0 ? '+' : '−') + Math.abs(v).toFixed(1) + ' pts';
-  short = (label: string) => label.replace(' in ₹', '').replace(' mix', '').replace('EPFO rate', 'EPFO').replace('FD rate', 'FD');
   ov = inject(OverviewService).data;
   perf = signal<Performance | null>(null);
 
@@ -209,10 +161,14 @@ export class HomeComponent {
     const p = this.store.portfolio();
     return !!p && !p.positions.length;
   });
-  groups = computed<GroupRow[]>(() => (this.ov()?.groups ?? []).filter(g => g.value > 0.5 || (g.target ?? 0) > 0));
-  donut = computed(() => this.groups().map(g => ({ value: g.value, color: this.hex(g.key), label: g.label })));
-  offTarget = computed(() => this.groups().filter(g => g.gap !== null && Math.abs(g.gap) >= 1).length);
-  maxPct = computed(() => Math.max(1, ...this.groups().map(g => g.pct)));
+  answers = inject(OverviewService).answers;
+  /** Home asks the first four questions; Analysis lists them all. */
+  questions = computed<Question[]>(() => (this.answers()?.questions ?? []).slice(0, 4));
+  todo = computed<TodoItem[]>(() => (this.answers()?.todo ?? []).slice(0, 5));
+  toneClass = toneClass;
+  path = linkPath;
+  query = linkQuery;
+  stepsOf = (n: number) => Array.from({ length: Math.max(n - 1, 0) });
   /** The net worth as shown: counts up to the new value whenever it changes (0.8 s, eased). */
   shownValue = signal(0);
   private countFrom = 0;
@@ -228,14 +184,12 @@ export class HomeComponent {
     };
     this.countRaf = requestAnimationFrame(step);
   }
-  attention = computed<Suggestion[]>(() => (this.ov()?.suggestions ?? []).slice(0, 3));
   pricesAge = computed(() => ago(this.store.portfolio()?.prices?.last_refresh));
 
   growth = computed(() => {
     const s = this.perf()?.series ?? [];
     return { value: s.map(p => p.value), invested: s.map(p => p.net_invested), ticks: monthTicks(s.map(p => p.date)) };
   });
-  heroSpark = computed(() => this.growth().value.slice(-60));
   /** The year's value as a soft filled curve along the bottom of the hero (decorative; the Growth card has the real chart). */
   heroArea = computed(() => {
     const v = this.growth().value;
@@ -264,19 +218,5 @@ export class HomeComponent {
       this.perf.set(p);
       writeSnapshot(key, p);
     } catch { if (!snap) this.perf.set(null); }
-  }
-
-  spark(key: string): number[] {
-    const s = this.perf()?.series ?? [];
-    return s.slice(-40).map(p => p.groups?.[key] ?? 0);
-  }
-
-  gapText(gap: number): string {
-    if (Math.abs(gap) < 1) return 'on';
-    return (gap > 0 ? '+' : '−') + Math.abs(gap).toFixed(1);
-  }
-
-  go(s: Suggestion) {
-    void this.router.navigateByUrl(s.link || '/analysis?tab=improve');
   }
 }
