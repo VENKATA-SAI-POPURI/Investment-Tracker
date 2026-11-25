@@ -150,14 +150,14 @@ const PROFILES = [
       <section class="v-card">
         @if (ov(); as o) {
           <div class="score">
-            <v-donut [parts]="[{ value: o.market.groups_ahead, color: '#4ade80' }, { value: Math.max(o.market.groups_compared - o.market.groups_ahead, 0), color: 'rgba(255,255,255,.16)' }]"
+            <v-donut [parts]="[{ value: o.market.groups_ahead, color: '#6ad3a4' }, { value: Math.max(o.market.groups_compared - o.market.groups_ahead, 0), color: 'rgba(255,255,255,.16)' }]"
               [size]="84" [thickness]="11" [bottom]="o.market.groups_ahead + '/' + o.market.groups_compared" [bottomSize]="19" label="Groups at or above their market" />
             <div><div class="headline">You beat {{ o.market.groups_ahead }} of {{ o.market.groups_compared }} markets</div>
               <div class="v-mut sub">Overall {{ pctV(o.totals.xirr) }} a year vs {{ pctV(o.market.xirr) }} for the same money in each part's own market</div></div>
           </div>
           @if (marketChart(); as mc) {
-            <div style="margin-top:14px"><v-area [a]="mc.you" [b]="mc.market" [labels]="mc.ticks" [h]="112" colorB="#f0609e" [dashB]="true" label="Your value against the same money in the market" /></div>
-            <div class="v-legend"><span style="--c:var(--chart-a)">You</span><span style="--c:#f0609e">Same money in the market</span></div>
+            <div style="margin-top:14px"><v-area [a]="mc.you" [b]="mc.market" [labels]="mc.ticks" [h]="112" colorB="#d9b56f" [dashB]="true" label="Your value against the same money in the market" /></div>
+            <div class="v-legend"><span style="--c:var(--chart-a)">You</span><span style="--c:#d9b56f">Same money in the market</span></div>
           }
         } @else { <div class="v-skel" style="height:180px"></div> }
       </section>

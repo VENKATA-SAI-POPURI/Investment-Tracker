@@ -17,8 +17,8 @@ export const GROUP: Record<GroupKey, GroupMeta> = Object.fromEntries(GROUPS.map(
 
 /** Hex values of the group colours, for SVG charts that cannot read CSS variables in every browser. */
 export const GROUP_HEX: Record<GroupKey, string> = {
-  equity_india: '#3d7bfa', equity_global: '#8b5cf6', mutual_funds: '#10b9a0', p2p: '#f0609e',
-  commodities: '#f2a516', epf: '#ff7a45', others: '#9aa3b8',
+  equity_india: '#7ea6e8', equity_global: '#a99be6', mutual_funds: '#6fc2ad', p2p: '#d996ad',
+  commodities: '#d9b56f', epf: '#e2a07c', others: '#93a1b8',
 };
 
 export function groupMeta(key: string | null | undefined): GroupMeta {
