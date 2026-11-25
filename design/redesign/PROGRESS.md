@@ -97,6 +97,10 @@ charges); automatic cash rules unchanged but now shown on Activity › Rules wit
   `portfolio.usd_of()` converts US amounts without a USD figure at the owner's weighted-average deposit rate
   (`portfolio.deposit_rates`: Σ ₹ ÷ Σ $ of FX_IN; today's rate only when there are no deposits), in both engines.
 
+- Look v2.2: colourful backdrop (violet/pink/mint/peach) with frosted-glass cards (`styles.scss` end); no plain white.
+- Speed: `prices.history_fast` never blocks a read on the network for history it already has (stale symbols refresh
+  in a background thread, then `ledger._bump()`); Home and Analysis draw charts from this device's last copy.
+
 ## Settings added to the Settings page (App & calculations)
 
 - "Show the classic tools in the menu" → `advancedFeatures`.

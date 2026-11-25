@@ -10,6 +10,7 @@ import { money, monthTicks, pctV } from '../../core/format';
 import { GROUP_HEX, GROUPS, GroupKey, groupMeta } from '../../core/groups';
 import { Contributor2, GroupRebalance, GroupRow, Performance, Suggestion } from '../../core/models';
 import { OverviewService } from '../../core/overview.service';
+import { readSnapshot, snapshotKey, writeSnapshot } from '../../core/snapshot';
 import { StoreService } from '../../core/store.service';
 import { ToastService } from '../../core/toast.service';
 import { IconComponent } from '../../shared/icon.component';
@@ -340,12 +341,24 @@ export class AnalysisComponent {
     effect(() => {
       const r = this.range();
       this.store.version();
-      untracked(() => void firstValueFrom(this.api.performance(r)).then(p => this.perf.set(p)).catch(() => this.perf.set(null)));
+      untracked(() => {
+        const key = snapshotKey('perf', this.store.scopeKey(), r);
+        const snap = readSnapshot<Performance>(key);
+        if (snap) this.perf.set(snap);
+        void firstValueFrom(this.api.performance(r)).then(p => { this.perf.set(p); writeSnapshot(key, p); })
+          .catch(() => { if (!snap) this.perf.set(null); });
+      });
     });
     effect(() => {
       if (this.tab() !== 'market') return;
       this.store.version();
-      untracked(() => void firstValueFrom(this.api.performance('ALL')).then(p => this.allPerf.set(p)).catch(() => this.allPerf.set(null)));
+      untracked(() => {
+        const key = snapshotKey('perf', this.store.scopeKey(), 'ALL');
+        const snap = readSnapshot<Performance>(key);
+        if (snap) this.allPerf.set(snap);
+        void firstValueFrom(this.api.performance('ALL')).then(p => { this.allPerf.set(p); writeSnapshot(key, p); })
+          .catch(() => { if (!snap) this.allPerf.set(null); });
+      });
     });
     effect(() => {
       const money = this.newMoney(), sell = this.allowSell(), set = this.targetSet();

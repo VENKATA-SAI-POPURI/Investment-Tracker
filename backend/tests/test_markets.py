@@ -50,6 +50,7 @@ def market(monkeypatch):
     quotes = {"ONGC.NS": {"price": 267.5, "prev_close": 250.0}, "TCS.NS": {"price": hist["TCS.NS"][-1][1], "prev_close": None},
               "INFY.NS": {"price": hist["INFY.NS"][-1][1], "prev_close": None}}
     monkeypatch.setattr(px, "ensure_history", lambda db, syms, start, max_age_hours=12: {s: hist.get(s, []) for s in syms})
+    monkeypatch.setattr(px, "history_fast", lambda db, syms, start, max_age_hours=12, on_refreshed=None: {s: hist.get(s, []) for s in syms})
     monkeypatch.setattr(px, "fetch_quotes", lambda syms, timeout=15: {s: quotes.get(s) for s in syms})
     monkeypatch.setattr(mk, "universe", lambda ledger, refresh=False: [
         {"symbol": "TCS", "name": "Tata Consultancy Services", "industry": "Information Technology", "isin": None},
