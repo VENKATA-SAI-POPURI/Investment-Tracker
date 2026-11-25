@@ -156,9 +156,11 @@ export class HoldingSheetComponent {
         { label: 'Booked', value: money(p.realized + p.income, true), tone: t(p.realized + p.income) },
         { label: 'Return / yr', value: pctV(p.xirr) });
     } else if (p.asset_class === 'p2p') {
-      s.push({ label: 'Lent', value: money(p.invested) }, { label: 'Repaid', value: money(p.principal_repaid ?? 0) },
-        { label: 'Left', value: money(p.outstanding ?? 0) }, { label: 'Interest', value: money(p.interest ?? 0, true), tone: t(p.interest) },
-        { label: 'Rate', value: (p.rate ?? '—') + '%' }, { label: 'Return / yr', value: pctV(p.xirr) });
+      s.push({ label: 'Lent', value: money(p.invested) }, { label: 'Left to repay', value: money(p.outstanding ?? 0) },
+        { label: 'Interest so far', value: money(p.interest ?? 0, true), tone: t(p.interest) },
+        { label: 'EMIs paid', value: p.emis_total ? `${p.emis_paid} of ${p.emis_total}` : '—' },
+        { label: 'Next EMI', value: p.next_due ? fmtDate(p.next_due, false) : '—' },
+        { label: 'Ends', value: p.maturity_date ? fmtDate(p.maturity_date, true) : '—' });
     } else if (p.asset_class === 'fixed_deposit') {
       s.push({ label: 'Deposited', value: money(p.invested) }, { label: 'Interest so far', value: money(p.accrued_interest ?? 0, true), tone: 'gain' },
         { label: 'Rate', value: (p.rate ?? '—') + '%' }, { label: 'Matures', value: fmtDate(p.maturity_date, true) },
@@ -182,7 +184,9 @@ export class HoldingSheetComponent {
       const next = p.open_lots.filter(l => l.age_days < this.ltDays()).sort((a, b) => b.age_days - a.age_days)[0];
       return { text: `${qty(next.qty)} turn long-term in ${this.ltDays() - next.age_days} days`, tone: 'warn' };
     }
-    if (p.asset_class === 'p2p' && (p.overdue_days ?? 0) > 0) return { text: `${p.overdue_days} days past the due date`, tone: 'warn' };
+    if (p.asset_class === 'p2p' && (p.emis_behind ?? 0) > 0)
+      return { text: `${p.emis_behind} EMI${p.emis_behind === 1 ? '' : 's'} behind: the one due ${fmtDate(p.next_due)} isn't in the data as of ${fmtDate(p.data_as_of)}`, tone: 'warn' };
+    if (p.asset_class === 'p2p' && p.next_due) return { text: `Up to date · EMIs are due on the 5th; next ${fmtDate(p.next_due)} · ${p.rate}% a year`, tone: 'good' };
     if (!p.has_price && this.unitised() && p.is_open) return { text: 'No price yet: valued at cost until a ticker is added', tone: 'warn' };
     return null;
   });

@@ -15,6 +15,7 @@ import { ToastService } from '../../core/toast.service';
 import { IconComponent } from '../../shared/icon.component';
 import { AreaChartComponent, DonutComponent } from '../../shared/v2/charts';
 import { HoldingSheetComponent } from '../../shared/v2/holding-sheet.component';
+import { GroupSheetComponent } from '../../shared/v2/group-sheet.component';
 
 type Tab = 'mix' | 'returns' | 'market' | 'improve';
 type Range = '3M' | '1Y' | '3Y' | 'ALL';
@@ -27,7 +28,7 @@ const PROFILES = [
 @Component({
   selector: 'app-analysis',
   standalone: true,
-  imports: [FormsModule, IconComponent, AreaChartComponent, DonutComponent, HoldingSheetComponent],
+  imports: [FormsModule, IconComponent, AreaChartComponent, DonutComponent, HoldingSheetComponent, GroupSheetComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
   <div class="v2">
@@ -110,7 +111,8 @@ const PROFILES = [
           <div class="v-chips">@for (r of ranges; track r) { <button [class.on]="range() === r" (click)="range.set(r)">{{ r === 'ALL' ? 'All' : r }}</button> }</div></div>
         <div class="v-kpis">
           <div><small>Gain</small><b [class.v-gain]="(perf()?.metrics?.gain ?? 0) >= 0" [class.v-loss]="(perf()?.metrics?.gain ?? 0) < 0">{{ money(perf()?.metrics?.gain, true) }}</b></div>
-          <div><small>Return / yr</small><b>{{ pctV(perf()?.metrics?.xirr) }}</b></div>
+          @if (range() === '3M') { <div><small>Return (3 months)</small><b>{{ pctV(perf()?.metrics?.twr) }}</b></div> }
+          @else { <div><small>Return a year</small><b>{{ pctV(perf()?.metrics?.xirr) }}</b></div> }
           <div><small>Worst fall</small><b>{{ pctV(perf()?.metrics?.max_drawdown) }}</b></div>
         </div>
         <div style="margin-top:12px"><v-area [a]="growth().value" [b]="growth().invested" [labels]="growth().ticks" [h]="120" label="Value against money invested" /></div>
@@ -120,7 +122,7 @@ const PROFILES = [
       <section class="v-card">
         <div class="v-ch"><h2>Return by group</h2><span class="hint">per year, since you started</span></div>
         @for (g of byReturn(); track g.key) {
-          <div class="rbar" [style.--c]="hex(g.key)"><span class="v-ic sm"><app-icon [name]="meta(g.key).icon" [size]="15" /></span><span class="nm">{{ g.label }}</span>
+          <div class="rbar" [style.--c]="hex(g.key)" (click)="explain.set(g.key)" style="cursor:pointer"><span class="v-ic sm"><app-icon [name]="meta(g.key).icon" [size]="15" /></span><span class="nm">{{ g.label }}</span>
             <div class="bb"><b [style.width.%]="barW(g.xirr)" [class.neg]="(g.xirr ?? 0) < 0"></b></div><span class="v">{{ pctV(g.xirr) }}</span></div>
         }
       </section>
@@ -159,18 +161,18 @@ const PROFILES = [
         } @else { <div class="v-skel" style="height:180px"></div> }
       </section>
       <section class="v-card">
-        <div class="v-ch"><h2>Each group vs its market</h2><span class="hint">per year</span></div>
+        <div class="v-ch"><h2>Each group vs its market</h2><span class="hint">return a year · tap for the working</span></div>
         @for (g of compared(); track g.key) {
-          <div class="v-row">
+          <button class="v-row" (click)="explain.set(g.key)">
             <span class="res" [class.ok]="g.bench?.verdict !== 'behind'" [class.no]="g.bench?.verdict === 'behind'">
               <app-icon [name]="g.bench?.verdict === 'behind' ? 'arrowDownRight' : 'circleCheck'" [size]="15" [stroke]="2.6" /></span>
             <div class="grow"><div class="t">{{ g.label }}</div><div class="s">vs {{ g.bench?.label }}{{ g.bench?.xirr !== null ? ' · ' + pctV(g.bench?.xirr) : '' }}</div></div>
             <div class="r"><b>{{ pctV(g.xirr) }}</b>
               <span class="pct" [class.v-gain]="g.bench?.verdict === 'ahead'" [class.v-loss]="g.bench?.verdict === 'behind'" [class.v-mut]="g.bench?.verdict === 'same' || !g.bench?.verdict">
-                {{ g.bench?.verdict === 'same' ? '≈ same' : g.bench?.diff !== null ? pctV(g.bench?.diff, 1, true) : 'no data' }}</span></div>
-          </div>
+                {{ g.bench?.verdict === 'same' ? '≈ same' : g.bench?.diff !== null ? pts(g.bench?.diff) : 'no data' }}</span></div>
+          </button>
         }
-        <p class="v-mut foot">{{ ov()?.market?.note }}</p>
+        <p class="v-mut foot">{{ ov()?.market?.note }} Differences are in percentage points (pts): +1 pt is 1% a year more.</p>
       </section>
       </div>
     }
@@ -197,6 +199,7 @@ const PROFILES = [
     }
   </div>
   @if (holding(); as id) { <v-holding-sheet [id]="id" (closed)="holding.set(null)" /> }
+  @if (explain(); as k) { <v-group-sheet [key]="k" (closed)="explain.set(null)" /> }
   `,
   styles: [`
     .mrow { display: flex; gap: 10px; align-items: center; padding: 8px 0; }
@@ -271,6 +274,8 @@ export class AnalysisComponent {
   tab = toSignal(this.route.queryParamMap.pipe(map(q => (['mix', 'returns', 'market', 'improve'].includes(q.get('tab') ?? '') ? q.get('tab') : 'mix') as Tab)),
     { initialValue: 'mix' as Tab });
   holding = signal<number | null>(null);
+  explain = signal<string | null>(null);
+  pts = (v: number | null | undefined) => v === null || v === undefined ? '—' : (v > 0 ? '+' : '−') + Math.abs(v).toFixed(1) + ' pts';
 
   // ── mix ──
   targetSet = signal<'mine' | 'suggested'>('mine');

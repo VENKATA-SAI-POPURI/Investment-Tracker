@@ -1,4 +1,6 @@
 import { fmtDate, money, pctV, qty, usd } from './format';
+
+const monthYear = (d: string) => new Date(d + 'T00:00:00').toLocaleString('en-IN', { month: 'short', year: 'numeric' });
 import { Position } from './models';
 
 /** How one holding reads in a list: a second line, the change shown under its value and that change's tone. */
@@ -26,15 +28,23 @@ export function holdingLine(p: Position): HoldingLine {
   switch (p.asset_class) {
     case 'p2p': {
       const left = p.outstanding ?? 0;
-      const sub = (p.status || '').toLowerCase() === 'closed' ? 'Closed' : (p.overdue_days ?? 0) > 0
-        ? `${money(left)} left · ${p.overdue_days} days overdue` : `${money(left)} left · due ${fmtDate(p.maturity_date, true)}`;
-      return { sub, change: `${money(p.interest ?? 0, true)} interest`, tone: (p.overdue_days ?? 0) > 30 ? 'warn' : tone(p.interest) };
+      const status = (p.status || '').toLowerCase();
+      const ends = p.maturity_date ? ` · ends ${monthYear(p.maturity_date)}` : '';
+      let sub: string, t: HoldingLine['tone'] = tone(p.interest);
+      if (status === 'closed') sub = `Closed · ${money(p.invested)} lent`;
+      else if (status === 'defaulted') { sub = `Defaulted · ${money(left)} unpaid, counted at ${money(p.value)}`; t = 'loss'; }
+      else if ((p.emis_behind ?? 0) > 0) { sub = `${money(left)} left · ${p.emis_behind} EMI${p.emis_behind === 1 ? '' : 's'} behind (due ${fmtDate(p.next_due, false)})`; t = 'warn'; }
+      else if (p.next_due) sub = `${money(left)} left · next EMI ${fmtDate(p.next_due, false)}${ends}`;
+      else sub = `${money(left)} left${ends}`;
+      return { sub, change: `${money(p.interest ?? 0, true)} interest`, tone: t };
     }
     case 'fixed_deposit':
       return { sub: `${p.rate ?? '—'}% · ${p.days_to_maturity !== null && p.days_to_maturity !== undefined ? 'matures ' + fmtDate(p.maturity_date, true) : 'matured'}`,
         change: `${money(p.accrued_interest ?? 0, true)} interest`, tone: tone(p.accrued_interest) };
     case 'epf':
-      return { sub: `${p.rate ?? 8.25}% · ${money(p.invested)} contributed`, change: pctV(p.unrealized_pct, 1, true), tone: tone(p.unrealized) };
+      // EPF grows by interest: show the interest in rupees and the yearly rate, not a % of contributions
+      return { sub: `${p.rate ?? 8.25}% · ${money(p.invested)} contributed${p.proceeds ? ` · ${money(p.proceeds)} withdrawn` : ''}`,
+        change: `${money(p.unrealized, true)} interest`, tone: tone(p.unrealized) };
     case 'cash':
       return { sub: `${usd(p.balance_usd ?? 0)} cash · bought at ₹${(p.avg_rate ?? 0).toFixed(2)}`, change: money(p.unrealized, true), tone: tone(p.unrealized) };
     default: {

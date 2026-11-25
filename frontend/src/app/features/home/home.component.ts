@@ -11,6 +11,7 @@ import { StoreService } from '../../core/store.service';
 import { TxnDialogService } from '../../core/txn-dialog.service';
 import { IconComponent } from '../../shared/icon.component';
 import { AreaChartComponent, DonutComponent, SparkComponent } from '../../shared/v2/charts';
+import { GroupSheetComponent } from '../../shared/v2/group-sheet.component';
 
 type Range = '6M' | '1Y' | 'ALL';
 
@@ -18,7 +19,7 @@ type Range = '6M' | '1Y' | 'ALL';
 @Component({
   selector: 'app-home',
   standalone: true,
-  imports: [RouterLink, IconComponent, AreaChartComponent, DonutComponent, SparkComponent],
+  imports: [RouterLink, IconComponent, AreaChartComponent, DonutComponent, SparkComponent, GroupSheetComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
   <div class="v2">
@@ -93,18 +94,19 @@ type Range = '6M' | '1Y' | 'ALL';
 
     <!-- each part -->
     <div class="v-sec"><h2>How each part is doing</h2><a class="v-link" routerLink="/analysis" [queryParams]="{ tab: 'market' }">Details <app-icon name="chevronRight" [size]="15" [stroke]="2.4" /></a></div>
+    <p class="cap">Return a year · its total gain · points above or below the same money in its market (Nifty 500, S&amp;P 500, gold, FD or EPFO rate). Tap one to see the working.</p>
     <section class="v-card tight parts">
       @for (g of groups(); track g.key) {
-        <a class="v-row" routerLink="/portfolio" [queryParams]="{ group: g.key }" [style.--c]="meta(g.key).color">
+        <button class="v-row" (click)="explain.set(g.key)" [style.--c]="meta(g.key).color">
           <span class="v-ic"><app-icon [name]="meta(g.key).icon" [size]="17" /></span>
-          <div class="grow"><div class="t">{{ g.label }}</div><div class="s">{{ money(g.value) }}</div></div>
-          <v-spark class="hide-xs" [values]="spark(g.key)" [color]="hex(g.key)" [w]="58" [h]="24" />
-          <div class="r" style="width:96px"><b>{{ pctV(g.xirr) }}</b>
+          <div class="grow"><div class="t">{{ g.label }}</div><div class="s">{{ money(g.value) }} · {{ money(g.gain, true) }}</div></div>
+          <v-spark class="hide-xs" [values]="spark(g.key)" [color]="hex(g.key)" [w]="44" [h]="22" />
+          <div class="r" style="width:104px"><b>{{ pctV(g.xirr) }}<small class="yr"> /yr</small></b>
             @if (g.bench?.verdict; as v) {
-              <span class="v-pill" [class.ok]="v === 'ahead'" [class.no]="v === 'behind'" [class.eq]="v === 'same'">{{ v === 'same' ? '≈ market' : pctV(g.bench!.diff, 1, true) + ' vs mkt' }}</span>
-            } @else { <span class="v-pill eq">{{ money(g.gain, true) }}</span> }
+              <span class="v-pill" [class.ok]="v === 'ahead'" [class.no]="v === 'behind'" [class.eq]="v === 'same'">{{ v === 'same' ? '≈ market' : pts(g.bench!.diff) }}</span>
+            }
           </div>
-        </a>
+        </button>
       } @empty {
         @for (i of [1, 2, 3]; track i) { <div class="v-skel" style="height:44px;margin:10px 0"></div> }
       }
@@ -125,8 +127,11 @@ type Range = '6M' | '1Y' | 'ALL';
     }
     }
   </div>
+  @if (explain(); as k) { <v-group-sheet [key]="k" (closed)="explain.set(null)" /> }
   `,
   styles: [`
+    .cap { font-size: 12.5px; color: var(--muted); margin: -6px 4px 0; font-weight: 500; }
+    .yr { font-size: 11px; color: var(--muted); font-weight: 600; }
     .v-hero { min-height: 212px; }
     .v-hero .spark { top: 74px; right: 16px; opacity: .55; }
     .prices { position: absolute; top: 14px; right: 14px; display: inline-flex; align-items: center; gap: 5px; font: inherit; font-size: 11.5px;
@@ -145,7 +150,8 @@ type Range = '6M' | '1Y' | 'ALL';
     .foot .go { display: inline-flex; align-items: center; gap: 2px; }
     .gain-in { margin-left: auto; font-weight: 700; }
     .gain-in::before { display: none; }
-    .parts .v-row .s { font-weight: 600; }
+    .parts .v-row .s { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .parts .v-row .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .attention .imp { font-size: 13.5px; white-space: nowrap; }
     .attention .v-row .s { overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
     @media (max-width: 360px) { .hide-xs { display: none; } }
@@ -169,6 +175,9 @@ export class HomeComponent {
   ranges: Range[] = ['6M', '1Y', 'ALL'];
 
   range = signal<Range>('1Y');
+  explain = signal<string | null>(null);
+  pts = (v: number | null) => v === null ? '—' : (v > 0 ? '+' : '−') + Math.abs(v).toFixed(1) + ' pts';
+  short = (label: string) => label.replace(' in ₹', '').replace(' mix', '').replace('EPFO rate', 'EPFO').replace('FD rate', 'FD');
   ov = inject(OverviewService).data;
   perf = signal<Performance | null>(null);
 

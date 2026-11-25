@@ -20,24 +20,39 @@ def xirr(flows: Iterable[Flow]) -> float | None:
     if (fl[-1][0] - d0).days < 1:
         return None
 
-    lo, hi = -0.9999, 10.0
-    f_lo, f_hi = _npv(lo, fl, d0), _npv(hi, fl, d0)
-    # Expand the upper bound for very short, very profitable windows
-    while f_lo * f_hi > 0 and hi < 1e6:
-        hi *= 10
-        f_hi = _npv(hi, fl, d0)
-    if f_lo * f_hi > 0:
+    # Flows that switch between money in and money out many times (P2P lending, SIPs with redemptions) can have
+    # more than one rate that makes the NPV zero. Like Excel's XIRR (which starts its search at 10%), take the
+    # root nearest 10%: scan a grid for sign changes and refine each by bisection.
+    grid = [-0.9999, -0.99, -0.95, -0.9, -0.8, -0.6, -0.4, -0.25, -0.15, -0.1, -0.05, 0.0, 0.03, 0.06, 0.1, 0.15, 0.2,
+            0.3, 0.45, 0.7, 1.0, 1.5, 2.5, 4.0, 7.0, 10.0, 30.0, 100.0, 1e3, 1e4, 1e6]
+    vals = []
+    for r in grid:
+        try:
+            vals.append(_npv(r, fl, d0))
+        except OverflowError:
+            vals.append(None)
+    roots = []
+    for (lo, f_lo), (hi, f_hi) in zip(zip(grid, vals), zip(grid[1:], vals[1:])):
+        if f_lo is None or f_hi is None:
+            continue
+        if f_lo == 0:
+            roots.append(lo)
+            continue
+        if f_lo * f_hi > 0:
+            continue
+        for _ in range(200):  # bisection: slower than Newton but never diverges
+            mid = (lo + hi) / 2
+            f_mid = _npv(mid, fl, d0)
+            if abs(f_mid) < 1e-7 or (hi - lo) < 1e-10:
+                break
+            if f_lo * f_mid < 0:
+                hi, f_hi = mid, f_mid
+            else:
+                lo, f_lo = mid, f_mid
+        roots.append((lo + hi) / 2)
+    if not roots:
         return None
-    for _ in range(200):  # bisection: slower than Newton but never diverges
-        mid = (lo + hi) / 2
-        f_mid = _npv(mid, fl, d0)
-        if abs(f_mid) < 1e-7 or (hi - lo) < 1e-10:
-            return mid
-        if f_lo * f_mid < 0:
-            hi, f_hi = mid, f_mid
-        else:
-            lo, f_lo = mid, f_mid
-    return (lo + hi) / 2
+    return min(roots, key=lambda r: abs(r - 0.10))
 
 
 def annualise(total_return: float, days: int) -> float | None:

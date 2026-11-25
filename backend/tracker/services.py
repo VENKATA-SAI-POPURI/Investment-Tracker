@@ -295,6 +295,11 @@ class Services:
             return view
         return self._memo("overview", scope, settings, date.today(), fn=build)
 
+    def group_explain(self, scope: str | None, settings: dict, key: str) -> dict:
+        ctx = self.context(scope, settings)
+        bench, fx = self.bench_history(ctx["data"]["transactions"])
+        return overview_mod.group_explain(ctx["port"], ctx["data"]["transactions"], key, bench, fx)
+
     def group_rebalance(self, scope: str | None, settings: dict, new_money: float, allow_sell: bool,
                         target_set: str = "mine") -> dict:
         view = self.overview(scope, settings)

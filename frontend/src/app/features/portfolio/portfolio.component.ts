@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { map } from 'rxjs';
-import { money, pctV } from '../../core/format';
+import { fmtDate, money, pctV } from '../../core/format';
 import { GROUP_HEX, GroupKey, groupMeta } from '../../core/groups';
 import { holdingLine, initials, logoColor } from '../../core/holding-view';
 import { Position } from '../../core/models';
@@ -23,9 +23,10 @@ const CARDS: CardDef[] = [
 ];
 const SUB_LABEL: Partial<Record<GroupKey, string>> = { equity_india: 'India', equity_global: 'Global' };
 const SHOW = 5;
+const MARKET_CARDS = ['equity', 'mutual_funds', 'commodities'];
 
 interface Section { group: GroupKey; label: string | null; value: number; rows: Position[]; hidden: number; }
-interface Card extends CardDef { value: number; pct: number; gainPct: number | null; count: number; summary: string; sections: Section[]; }
+interface Card extends CardDef { value: number; pct: number; change: string | null; tone: 'gain' | 'loss' | 'mut'; count: number; summary: string; sections: Section[]; }
 
 /** Everything you own, grouped the same way everywhere (redesign). A holding opens in a sheet. */
 @Component({
@@ -38,8 +39,8 @@ interface Card extends CardDef { value: number; pct: number; gainPct: number | n
     <section class="v-card">
       <div class="sum">
         <div><div class="v-mut lb">Total value</div><div class="v-num big">{{ money(total()) }}</div></div>
-        <div class="right"><div class="v-mut lb">Gain</div>
-          <div class="v-num gain" [class.v-gain]="gain() >= 0" [class.v-loss]="gain() < 0">{{ money(gain(), true) }}{{ gainPct() !== null ? ' · ' + pctV(gainPct()) : '' }}</div></div>
+        <div class="right"><div class="v-mut lb">Total gain · return a year</div>
+          <div class="v-num gain" [class.v-gain]="gain() >= 0" [class.v-loss]="gain() < 0">{{ money(gain(), true) }}{{ xirr() !== null ? ' · ' + pctV(xirr()) : '' }}</div></div>
       </div>
       <div class="stack" aria-hidden="true">@for (s of stack(); track s.key) { <b [style.background]="s.color" [style.flex-grow]="s.value"></b> }</div>
     </section>
@@ -57,7 +58,7 @@ interface Card extends CardDef { value: number; pct: number; gainPct: number | n
           <span class="v-ic lg" [style.--c]="c.color"><app-icon [name]="c.icon" [size]="20" /></span>
           <span class="grow"><span class="gn">{{ c.label }}</span><span class="gs">{{ c.summary }}</span></span>
           <span class="gr"><b>{{ money(c.value) }}</b>
-            @if (c.gainPct !== null) { <span class="pct" [class.v-gain]="c.gainPct >= 0" [class.v-loss]="c.gainPct < 0">{{ pctV(c.gainPct, 1, true) }}</span> }</span>
+            @if (c.change) { <span class="pct" [class.v-gain]="c.tone === 'gain'" [class.v-loss]="c.tone === 'loss'">{{ c.change }}</span> }</span>
           <app-icon class="chev" [name]="isOpen(c.key) ? 'chevronDown' : 'chevronRight'" [size]="18" [stroke]="2.2" />
         </button>
         @if (isOpen(c.key)) {
@@ -142,7 +143,7 @@ export class PortfolioComponent {
   closedCount = computed(() => this.store.positions().filter(p => !p.is_open && p.asset_class !== 'cash').length);
   total = computed(() => this.ovs.data()?.totals.value ?? this.store.portfolio()?.totals.value ?? 0);
   gain = computed(() => this.ovs.data()?.totals.gain ?? this.store.portfolio()?.totals.total_gain ?? 0);
-  gainPct = computed(() => this.ovs.data()?.totals.gain_pct ?? null);
+  xirr = computed(() => this.ovs.data()?.totals.xirr ?? null);
   stack = computed(() => (this.ovs.data()?.groups ?? []).filter(g => g.value > 0).map(g => ({ key: g.key, value: g.value, color: GROUP_HEX[g.key] })));
 
   cardsAll = computed<Card[]>(() => {
@@ -159,10 +160,19 @@ export class PortfolioComponent {
           rows: big, hidden: rows.length - big.length };
       }).filter(s => s.rows.length || s.hidden);
       const value = pos.reduce((s, p) => s + p.value, 0);
-      const putIn = def.groups.reduce((s, g) => s + (groups.get(g)?.put_in ?? 0), 0);
-      const gval = def.groups.reduce((s, g) => s + (groups.get(g)?.value ?? 0), 0);
       const count = pos.filter(p => p.asset_class !== 'cash').length;
-      out.push({ ...def, value, pct: (value / total) * 100, count, sections, gainPct: putIn > 0 ? ((gval - putIn) / putIn) * 100 : null,
+      // Market-priced groups: gain on the cost of what you hold now (what a broker shows). Deposits, loans and EPF:
+      // the yearly return, because their "gain on money put in" shrinks its base with every repayment or withdrawal.
+      let change: string | null = null, tone: Card['tone'] = 'mut';
+      if (MARKET_CARDS.includes(def.key)) {
+        const open = pos.filter(p => p.is_open && p.asset_class !== 'cash');
+        const cost = open.reduce((s, p) => s + p.cost, 0), unr = open.reduce((s, p) => s + (p.unrealized || 0), 0);
+        if (cost > 0) { change = pctV((unr / cost) * 100, 1, true); tone = unr >= 0 ? 'gain' : 'loss'; }
+      } else {
+        const g = groups.get(def.groups[0]);
+        if (g?.xirr !== null && g?.xirr !== undefined) { change = pctV(g.xirr) + ' a yr'; tone = g.xirr >= 0 ? 'gain' : 'loss'; }
+      }
+      out.push({ ...def, value, pct: (value / total) * 100, count, sections, change, tone,
         summary: this.summary(def, pos, count, (value / total) * 100) });
     }
     return out;
@@ -197,8 +207,9 @@ export class PortfolioComponent {
       case 'equity': return `${pos.some(p => p.group === 'equity_global') ? 'India & Global' : 'India'} · ${count} stock${count === 1 ? '' : 's'}`;
       case 'mutual_funds': return `${count} fund${count === 1 ? '' : 's'}${share}`;
       case 'p2p': {
-        const late = pos.filter(p => (p.overdue_days ?? 0) > 0).length;
-        return `${count} loan${count === 1 ? '' : 's'}${late ? ` · ${late} overdue` : share}`;
+        const late = pos.filter(p => (p.emis_behind ?? 0) > 0).length;
+        const asOf = pos.find(p => p.data_as_of)?.data_as_of;
+        return `${count} loan${count === 1 ? '' : 's'}${late ? ` · ${late} behind` : ''}${asOf ? ` · repayments to ${fmtDate(asOf, false)}` : share}`;
       }
       case 'epf': return `${count} account${count === 1 ? '' : 's'}${share}`;
       case 'others': {
