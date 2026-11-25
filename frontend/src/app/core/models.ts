@@ -1158,6 +1158,7 @@ export interface GoalRow {
   id: number | 'retirement'; kind: 'goal' | 'retirement'; name: string; target: number; date: string; current: number;
   projected: number; status: 'on_track' | 'achieved' | 'at_risk' | 'off_track' | null; probability: number | null;
   monthly_now: number; monthly_needed: number | null; extra: number; progress_pct: number | null;
+  allocation?: Record<string, number>;
 }
 export interface Answers {
   as_of: string; questions: Question[]; todo: TodoItem[]; dragging: DragItem[]; goals: GoalRow[]; monthly_in: number | null;

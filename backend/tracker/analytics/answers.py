@@ -83,7 +83,8 @@ def goal_rows(goals: list[dict], retirement: dict | None) -> list[dict]:
                      "date": str(g["target_date"])[:10], "current": _f(pr.get("current")),
                      "projected": _f(pr.get("p50") if pr.get("p50") is not None else pr.get("projected")),
                      "status": status, "probability": pr.get("probability"), "monthly_now": now,
-                     "monthly_needed": need, "extra": extra, "progress_pct": pr.get("progress_pct")})
+                     "monthly_needed": need, "extra": extra, "progress_pct": pr.get("progress_pct"),
+                     "allocation": g.get("allocation") if isinstance(g.get("allocation"), dict) else {}})
     if retirement and retirement.get("corpus_needed"):
         r = retirement
         inp = r.get("inputs") or {}
