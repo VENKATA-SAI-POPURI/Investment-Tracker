@@ -35,6 +35,11 @@ def rebalance():
 @bp.get("/overview/group/<key>")
 def group_explain(key):
     from .. import domain as d
-    if key not in d.GROUPS:
+    if key != "all" and key not in d.GROUPS:
         raise ValidationError("Unknown group")
     return jsonify(S().group_explain(g.scope, S().settings(), key))
+
+
+@bp.get("/answers")
+def answers():
+    return jsonify(S().answers(g.scope, S().settings()))

@@ -18,6 +18,7 @@ from .analytics import calendar as calendar_mod
 from .analytics import forecast, optimizer, plans, quant
 from .analytics import calibration as calibration_mod
 from .analytics import goals as goals_mod
+from .analytics import answers as answers_mod
 from .analytics import overview as overview_mod
 from .analytics import trace as trace_mod
 from .analytics import scenarios as scen_mod
@@ -301,10 +302,41 @@ class Services:
             return view
         return self._memo("overview", scope, settings, date.today(), fn=build)
 
+    def answers(self, scope: str | None, settings: dict) -> dict:
+        """GET /answers: the questions on Home and Analysis, the to-do list and the goals, each answered from the
+        overview, goals, tax and checks (`analytics.answers`). Memoised like the overview."""
+        def build() -> dict:
+            ctx = self.context(scope, settings)
+            view = self.overview(scope, settings)
+            checks = trace_mod.data_checks(ctx["port"], ctx["data"]["transactions"], ctx["data"]["instruments"],
+                                           settings, date.today())
+            retirement = None
+            rp = settings.get("retirementPlan")
+            if isinstance(rp, dict) and rp.get("retire_age") and rp.get("current_age"):
+                try:
+                    retirement = self.retirement(scope, settings, {}, build_history=False)
+                except Exception as e:  # noqa: BLE001 — the goals still show without the retirement row
+                    print(f"[answers] retirement unavailable: {e!r}")
+            return answers_mod.build(view, ctx["port"], ctx["tax"], checks, ctx["goals"], retirement, date.today(),
+                                     self._slab(settings))
+        return self._memo("answers", scope, settings, date.today(), fn=build)
+
     def group_explain(self, scope: str | None, settings: dict, key: str) -> dict:
+        """How a group's (or, with key 'all', the whole portfolio's) numbers are worked out, plus the data checks
+        that touch its holdings (`issues`), so a doubt about a number and its fix sit together."""
         ctx = self.context(scope, settings)
-        bench, fx = self.bench_history(ctx["data"]["transactions"])
-        return overview_mod.group_explain(ctx["port"], ctx["data"]["transactions"], key, bench, fx)
+        port, data = ctx["port"], ctx["data"]
+        bench, fx = self.bench_history(data["transactions"])
+        res = overview_mod.group_explain(port, data["transactions"], key, bench, fx)
+        ids = {p["id"] for p in port["positions"] if key == "all" or p["group"] == key}
+        issues = []
+        for c in trace_mod.data_checks(port, data["transactions"], data["instruments"], settings, date.today()):
+            hit = [i for i in c.get("items") or [] if i.get("instrument_id") in ids]
+            if hit or (key == "all" and c.get("severity") in ("bad", "warn")):
+                issues.append({"id": c["id"], "severity": c["severity"], "title": c["title"], "detail": c.get("detail"),
+                               "items": hit[:5], "count": len(hit) or c.get("count"), "fix": c.get("fix"), "link": c.get("link")})
+        res["issues"] = issues
+        return res
 
     def group_rebalance(self, scope: str | None, settings: dict, new_money: float, allow_sell: bool,
                         target_set: str = "mine") -> dict:

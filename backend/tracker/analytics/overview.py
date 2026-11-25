@@ -263,6 +263,8 @@ def group_view(port: dict, txns: list[dict], settings: dict, bench_hist: dict | 
         })
 
     all_flows = [f for g in d.GROUPS for f in flows[g]]
+    # what the owner usually adds a month (last six months, money in only; EPF runs on its own so it is left out)
+    recent = sum(-amt for g in d.GROUPS if g != d.GRP_EPF for dt, amt in flows[g] if amt < 0 and 0 <= (today - dt).days <= 182)
     all_routed = [r for g in d.GROUPS for r in routed[g]]
     put_in = -sum(a for _, a in all_flows)
     own = xirr(all_flows + ([(today, total)] if total > EPS else []))
@@ -281,7 +283,7 @@ def group_view(port: dict, txns: list[dict], settings: dict, bench_hist: dict | 
                    "gain_pct": _r((total - put_in) / put_in * 100) if put_in > EPS else None,
                    "xirr": _pct(own), "day_change": t.get("day_change"), "day_change_pct": t.get("day_change_pct"),
                    "unrealized": t.get("unrealized"), "realized": t.get("realized"), "income": t.get("income"),
-                   "missing_prices": t.get("missing_prices") or []},
+                   "missing_prices": t.get("missing_prices") or [], "monthly_in": _r(recent / 6)},
         "market": {"xirr": _pct(bx), "end_value": _r(end),
                    "diff": _r((own - bx) * 100) if own is not None and bx is not None else None,
                    "groups_ahead": ahead, "groups_compared": compared, "series": series,
@@ -455,7 +457,7 @@ def group_explain(port: dict, txns: list[dict], key: str, bench_hist: dict | Non
     """Everything behind one group's return and its market comparison: the money put in and taken out (by year),
     the value now, the yearly return on those flows, the same flows in the group's market, and each holding."""
     today = today or (to_date(port["as_of"]) if port.get("as_of") else date.today())
-    if key not in d.GROUPS:
+    if key != "all" and key not in d.GROUPS:
         raise ValueError("Unknown group")
     by_inst: dict[int, list[dict]] = defaultdict(list)
     for t in txns:
@@ -463,7 +465,7 @@ def group_explain(port: dict, txns: list[dict], key: str, bench_hist: dict | Non
     owners = wallet_owners(port["positions"])
     prices = Prices(bench_hist or {}, fx_hist or [])
     holdings, flows, routed, years = [], [], [], defaultdict(lambda: {"put_in": 0.0, "taken_out": 0.0})
-    for p in (p for p in port["positions"] if p["group"] == key):
+    for p in (p for p in port["positions"] if key == "all" or p["group"] == key):
         fl = external_flows(p, by_inst.get(p["id"], []), owners, today)
         k = bench_key(p)
         flows += fl
@@ -475,7 +477,7 @@ def group_explain(port: dict, txns: list[dict], key: str, bench_hist: dict | Non
         holdings.append({"id": p["id"], "name": p["name"], "is_open": p.get("is_open"), "put_in": _r(pin), "taken_out": _r(pout),
                          "value": _r(val), "gain": _r(val + pout - pin), "xirr": _pct(own), "market": BENCH_LABEL[k],
                          "flows": len(fl), "first": min((dt for dt, _ in fl), default=None)})
-    value = sum(_f(p["value"]) for p in port["positions"] if p["group"] == key)
+    value = sum(_f(p["value"]) for p in port["positions"] if key == "all" or p["group"] == key)
     put_in = -sum(a for _, a in flows if a < 0)
     taken_out = sum(a for _, a in flows if a > 0)
     own = xirr(flows + ([(today, value)] if value > EPS else []))
@@ -488,7 +490,7 @@ def group_explain(port: dict, txns: list[dict], key: str, bench_hist: dict | Non
         h["first"] = h["first"].isoformat() if h["first"] else None
     holdings.sort(key=lambda h: -(h["value"] or 0) - (h["gain"] or 0) * 1e-6)
     return {
-        "key": key, "label": d.GROUP_LABELS[key], "as_of": today.isoformat(),
+        "key": key, "label": "Everything" if key == "all" else d.GROUP_LABELS[key], "as_of": today.isoformat(),
         "value": _r(value), "put_in": _r(put_in), "taken_out": _r(taken_out), "gain": _r(value + taken_out - put_in),
         "first_date": first.isoformat() if first else None, "years": round(years_held, 1), "flows": len(flows),
         "xirr": _pct(own),
