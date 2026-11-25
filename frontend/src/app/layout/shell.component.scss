@@ -201,3 +201,5 @@
 .tabbar a.on app-icon { background: rgba(165, 180, 252, .16); }
 .av, .av.fam { background: linear-gradient(135deg, #8b9cf6, #6f86e8); }
 .iconbtn, .who { background: rgba(255, 255, 255, .07); }
+/* the sidebar already carries the logo on desktop */
+@media (min-width: 1000px) { .top .brand.sm { visibility: hidden; } }
