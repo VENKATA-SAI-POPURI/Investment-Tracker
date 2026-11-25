@@ -5,6 +5,8 @@ history/benchmark analytics only fetch what is missing.
 """
 from __future__ import annotations
 
+import threading
+
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
@@ -118,6 +120,63 @@ def _amfi_history(symbol: str, start: date) -> list[tuple[str, float]]:
         if iso >= start.isoformat():
             out.append((iso, float(row["nav"])))
     return sorted(out)
+
+
+_BG_LOCK = threading.Lock()
+_BG_RUNNING: set[str] = set()
+
+
+def _stored(db: Database, symbols: list[str], start: date) -> dict[str, list[tuple[str, float]]]:
+    ph = ",".join("?" * len(symbols))
+    rows = db.query(f"SELECT symbol, date, close FROM price_history WHERE symbol IN ({ph}) AND date >= ? ORDER BY date",
+                    symbols + [start.isoformat()])
+    out: dict[str, list[tuple[str, float]]] = {s: [] for s in symbols}
+    for r in rows:
+        out[r["symbol"]].append((r["date"], r["close"]))
+    return out
+
+
+def history_fast(db: Database, symbols: list[str], start: date, max_age_hours: float = 12,
+                 on_refreshed=None) -> dict[str, list[tuple[str, float]]]:
+    """Like ensure_history, but a read never waits on the network for data it already has.
+
+    Symbols with no stored history reaching back to `start` are fetched now (the first time only). Symbols whose
+    history is merely older than `max_age_hours` are returned as stored and refreshed in a background thread
+    (one per symbol at a time); `on_refreshed()` runs when that thread has stored new closes, so cached results
+    can be dropped and the next read sees them."""
+    symbols = sorted(set(s for s in symbols if s))
+    if not symbols:
+        return {}
+    ph = ",".join("?" * len(symbols))
+    meta = {m["symbol"]: m for m in db.query(f"SELECT * FROM price_meta WHERE symbol IN ({ph})", symbols)}
+    now = datetime.now(timezone.utc)
+    missing, stale = [], []
+    for sym in symbols:
+        m = meta.get(sym)
+        covers = m and m["first_date"] and m["first_date"] <= (start + timedelta(days=7)).isoformat()
+        fresh = m and m["fetched_at"] and (now - datetime.fromisoformat(m["fetched_at"])).total_seconds() < max_age_hours * 3600
+        if not covers:
+            missing.append(sym)
+        elif not fresh:
+            stale.append(sym)
+    if missing:
+        ensure_history(db, missing, start, max_age_hours)
+    with _BG_LOCK:
+        todo = [s_ for s_ in stale if s_ not in _BG_RUNNING]
+        _BG_RUNNING.update(todo)
+    if todo:
+        def work():
+            try:
+                ensure_history(db, todo, start, max_age_hours)
+                if on_refreshed:
+                    on_refreshed()
+            except Exception as e:  # noqa: BLE001 — a background refresh must never take the app down
+                print(f"[history] background refresh failed: {e!r}")
+            finally:
+                with _BG_LOCK:
+                    _BG_RUNNING.difference_update(todo)
+        threading.Thread(target=work, name="history-refresh", daemon=True).start()
+    return _stored(db, symbols, start)
 
 
 def ensure_history(db: Database, symbols: list[str], start: date, max_age_hours: float = 12) -> dict[str, list[tuple[str, float]]]:

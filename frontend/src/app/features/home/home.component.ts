@@ -7,6 +7,7 @@ import { ago, money, monthTicks, pctV } from '../../core/format';
 import { GROUP_HEX, groupMeta } from '../../core/groups';
 import { GroupRow, Performance, Suggestion } from '../../core/models';
 import { OverviewService } from '../../core/overview.service';
+import { readSnapshot, snapshotKey, writeSnapshot } from '../../core/snapshot';
 import { StoreService } from '../../core/store.service';
 import { TxnDialogService } from '../../core/txn-dialog.service';
 import { IconComponent } from '../../shared/icon.component';
@@ -223,9 +224,14 @@ export class HomeComponent {
   }
 
   private async loadPerf(r: Range) {
+    const key = snapshotKey('perf', this.store.scopeKey(), r);
+    const snap = readSnapshot<Performance>(key);
+    if (snap) this.perf.set(snap);          // draw at once from this device's last copy
     try {
-      this.perf.set(await firstValueFrom(this.api.performance(r)));
-    } catch { this.perf.set(null); }
+      const p = await firstValueFrom(this.api.performance(r));
+      this.perf.set(p);
+      writeSnapshot(key, p);
+    } catch { if (!snap) this.perf.set(null); }
   }
 
   spark(key: string): number[] {

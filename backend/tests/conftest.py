@@ -67,6 +67,7 @@ def offline_prices(monkeypatch):
             "USDINR=X": walk(84, 800, drift=0.0, vol=0.003, seed=8), "^CRSLDX": walk(22000, 800, vol=0.009, seed=9),
             "^GSPC": walk(5000, 800, vol=0.01, seed=10), "GOLDBEES.NS": walk(60, 800, vol=0.008, seed=11)}
     monkeypatch.setattr(px, "ensure_history", lambda db, syms, start, max_age_hours=12: {s: hist.get(s, []) for s in syms})
+    monkeypatch.setattr(px, "history_fast", lambda db, syms, start, max_age_hours=12, on_refreshed=None: {s: hist.get(s, []) for s in syms})
     monkeypatch.setattr(px, "fetch_quotes", lambda syms, timeout=15: {s: None for s in syms})
     return hist
 

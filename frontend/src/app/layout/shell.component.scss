@@ -125,3 +125,10 @@
 .tabbar a app-icon { padding: 4px 12px; transition: background .15s ease; }
 .fab { transition: transform .15s ease; } .fab:active { transform: scale(.94); }
 .who, .iconbtn { border: 1px solid rgba(255, 255, 255, .9); }
+
+/* glass chrome over the colourful backdrop */
+:host { background: transparent; }
+.side { background: rgba(255, 255, 255, .5); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); border-right: 1px solid rgba(255, 255, 255, .7); }
+.tabbar { background: rgba(255, 255, 255, .78); -webkit-backdrop-filter: blur(20px) saturate(160%); backdrop-filter: blur(20px) saturate(160%); }
+.iconbtn, .who { background: rgba(255, 255, 255, .7); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+.pop { background: rgba(255, 255, 255, .95); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }

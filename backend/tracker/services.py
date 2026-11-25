@@ -258,7 +258,8 @@ class Services:
             bench_keys = ["GOLD", "NIFTY50"]
         bench_syms = {px.BENCHMARKS[k]["symbol"] for k in bench_keys}
         # USD/INR is always needed: US holdings and the S&P 500 benchmark are valued in rupees
-        hist = px.ensure_history(self.ledger.db, sorted(symbols | bench_syms | {px.USDINR}), start)
+        hist = px.history_fast(self.ledger.db, sorted(symbols | bench_syms | {px.USDINR}), start,
+                               on_refreshed=self.ledger._bump)
         bench_hist = {k: {**px.BENCHMARKS[k], "points": hist.get(px.BENCHMARKS[k]["symbol"], [])} for k in bench_keys}
         result = build_history(insts, txns, {s: hist.get(s, []) for s in symbols}, hist.get(px.USDINR, []), bench_hist,
                                rng=rng, usd_inr=self.usd_inr(), p2p_recovery=rec)
@@ -276,7 +277,7 @@ class Services:
         start = min(to_date(t["date"]) for t in txns)
         syms = [px.BENCHMARKS[k]["symbol"] for k in self.BENCH_KEYS] + [px.USDINR]
         try:
-            hist = px.ensure_history(self.ledger.db, syms, start)
+            hist = px.history_fast(self.ledger.db, syms, start, on_refreshed=self.ledger._bump)
         except Exception as e:  # noqa: BLE001 — the overview still loads without market comparison
             print(f"[overview] benchmark history unavailable: {e!r}")
             hist = {}
@@ -586,7 +587,7 @@ class Services:
             # counts from day one instead of only from its own first close
             proxy_syms = [quant.GSPC, quant.GOLDBEES]
             fetch = sorted(set(symbols) | {bench, px.USDINR, *proxy_syms})
-            hist = px.ensure_history(self.ledger.db, fetch, start) if symbols else {}
+            hist = px.history_fast(self.ledger.db, fetch, start, on_refreshed=self.ledger._bump) if symbols else {}
             proxies = {s: hist[s] for s in proxy_syms if hist.get(s)}
             res = quant.portfolio_risk(port["positions"], hist, hist.get(bench), hist.get(px.USDINR), proxies=proxies,
                                        book=self.base_book(settings))
@@ -607,7 +608,7 @@ class Services:
             bench_key = "SP500" if seg == d.SEG_EQ_US else "GOLD" if seg == d.SEG_COMMODITY else "NIFTY50"
             bench = px.BENCHMARKS[bench_key]
             start = date.today() - timedelta(days=RISK_LOOKBACK_DAYS)
-            hist = px.ensure_history(self.ledger.db, [inst["symbol"], bench["symbol"]], start)
+            hist = px.history_fast(self.ledger.db, [inst["symbol"], bench["symbol"]], start, on_refreshed=self.ledger._bump)
             # G2/H14: the cone sits on the holding's own Book row (a debt fund at MF_DEBT's 7%) of this scope's Book
             key = A.book_key(pos or {**inst, "segment": seg})
             out = quant.holding_outlook(hist.get(inst["symbol"], []), hist.get(bench["symbol"]), seg,
@@ -1630,7 +1631,7 @@ class Services:
         if not inst.get("symbol") or not txns:
             return {"symbol": inst.get("symbol"), "currency": inst.get("currency"), "points": [], "trades": []}
         start = min(to_date(t["date"]) for t in txns) - timedelta(days=30)
-        pts = px.ensure_history(self.ledger.db, [inst["symbol"]], start).get(inst["symbol"], [])
+        pts = px.history_fast(self.ledger.db, [inst["symbol"]], start, on_refreshed=self.ledger._bump).get(inst["symbol"], [])
         trades = [{"date": t["date"], "type": t["type"], "quantity": t["quantity"], "amount": t["amount"],
                    "price": (float(t["amount_fc"] or t["amount"]) / float(t["quantity"])) if t["quantity"] else None}
                   for t in txns if t["type"] in (d.BUY, d.SELL)]
