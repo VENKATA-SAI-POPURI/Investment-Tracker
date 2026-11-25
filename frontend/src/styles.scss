@@ -1016,3 +1016,140 @@ body::before { opacity: .035; }
 .v-sheet .v-seg { background: rgba(255, 255, 255, .08); border-radius: 999px; }
 .v-sheet .v-seg button { color: rgba(255, 255, 255, .7); border-radius: 999px; }
 .v-sheet .v-seg .on { background: rgba(255, 255, 255, .2); color: #fff; box-shadow: inset 0 1px 1px rgba(255, 255, 255, .45); }
+
+/* ══ v7 · Palette: midnight, periwinkle and muted group tones ════════════════════════════════════════════════
+   One calm base, one accent, seven group colours of matching brightness and softness, gentle gain/loss colours. */
+:root {
+  --g-equity_india: #7ea6e8; --g-equity_global: #a99be6; --g-mutual_funds: #6fc2ad; --g-p2p: #d996ad;
+  --g-commodities: #d9b56f; --g-epf: #e2a07c; --g-others: #93a1b8;
+}
+.v2, .v-sheet, app-shell .side, app-shell .top, app-shell .tabbar, app-shell .member-banner {
+  --accent: #a5b4fc; --accent-soft: rgba(165, 180, 252, .14); --chart-a: #a5b4fc; --chart-b: rgba(203, 213, 225, .45);
+  --pos: #6ad3a4; --pos-soft: rgba(106, 211, 164, .14); --neg: #f2858f; --neg-soft: rgba(242, 133, 143, .14);
+  --warn: #e7c27a; --warn-soft: rgba(231, 194, 122, .15); --info: #8ec5f0; --info-soft: rgba(142, 197, 240, .14);
+  --muted: rgba(214, 222, 240, .6); --text-2: rgba(232, 238, 250, .84);
+  --grad: linear-gradient(135deg, #8b9cf6 0%, #7b8ff0 100%);
+}
+html { background: #0e1424; }
+body {
+  background:
+    radial-gradient(900px 640px at 10% -14%, rgba(110, 130, 230, .22) 0%, rgba(110, 130, 230, 0) 62%),
+    radial-gradient(800px 640px at 100% 110%, rgba(80, 170, 170, .14) 0%, rgba(80, 170, 170, 0) 60%),
+    linear-gradient(170deg, #141c31 0%, #111829 55%, #0d1322 100%);
+  background-attachment: fixed;
+}
+.spatial-orbs i:nth-child(1) { background: #5b6fd6; opacity: .14; }
+.spatial-orbs i:nth-child(2) { background: #3f8f97; opacity: .12; }
+
+/* glass in the new base */
+.v2 .v-card, .v-sheet .v-card { background: radial-gradient(120% 60% at 20% -20%, rgba(255, 255, 255, .09) 0%, rgba(255, 255, 255, 0) 50%), rgba(255, 255, 255, .045); }
+.v2 .v-hero, .v2 .v-card.summary {
+  background: radial-gradient(120% 100% at 100% 0%, rgba(139, 156, 246, .32) 0%, rgba(139, 156, 246, 0) 55%),
+    linear-gradient(150deg, #27325a 0%, #1f2849 60%, #1a2240 100%) !important;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, .22), inset 0 0 0 1px rgba(165, 180, 252, .22), 0 20px 44px -24px rgba(0, 0, 0, .7) !important; }
+.v2 .v-hero::before { border-color: rgba(165, 180, 252, .06); }
+.v2 .v-hero .chipw, .v2 .v-hero .glass > div { background: rgba(255, 255, 255, .07); }
+.v2 .v-card.summary .v-gain { color: #8fe3bd; } .v2 .v-card.summary .v-loss { color: #f6a3ab; }
+.v2 .v-sec h2::before { background: #a5b4fc; }
+
+/* pills and notes in the softer tones */
+.v2 .v-pill.ok, .v-sheet .v-pill.ok { background: rgba(106, 211, 164, .14); color: #8fe3bd; }
+.v2 .v-pill.no, .v-sheet .v-pill.no { background: rgba(242, 133, 143, .15); color: #f6a3ab; }
+.v2 .v-pill.warn, .v-sheet .v-pill.warn { background: rgba(231, 194, 122, .15); color: #ecd29b; }
+.v2 .v-note.good, .v-sheet .v-note.good { background: rgba(106, 211, 164, .11); color: #b5ecd2; }
+.v2 .v-note.warn, .v-sheet .v-note.warn { background: rgba(231, 194, 122, .12); color: #f0dcae; }
+.v2 .v-note.info, .v-sheet .v-note.info { background: rgba(165, 180, 252, .12); color: #cdd5fd; }
+.v-tone.warn { background: linear-gradient(140deg, #ecd29b, #d9b56f); } .v-tone.bad { background: linear-gradient(140deg, #f6a3ab, #e5767f); }
+.v-tone.info { background: linear-gradient(140deg, #b2d8f5, #7fb4e2); } .v-tone.good { background: linear-gradient(140deg, #9be6c4, #5cc495); }
+.v-tone.brand { background: linear-gradient(140deg, #b8c3fd, #8b9cf6); }
+.v-tone.warn, .v-tone.bad, .v-tone.info, .v-tone.good, .v-tone.brand { color: #172035; box-shadow: inset 0 1px 1px rgba(255, 255, 255, .5); }
+.v2 .v-ic, .v-sheet .v-ic { background: linear-gradient(140deg, color-mix(in srgb, var(--c, #8b9cf6) 75%, white), var(--c, #8b9cf6)); color: #172035; }
+.v-sheet { background: radial-gradient(120% 50% at 20% -10%, rgba(255, 255, 255, .1), rgba(255, 255, 255, 0) 55%), linear-gradient(165deg, rgba(36, 46, 80, .94), rgba(20, 27, 48, .97)); }
+.v2 .v-btn.primary, .v-sheet .v-btn.primary { color: #10162a; box-shadow: inset 0 1px 1px rgba(255, 255, 255, .5), 0 8px 18px -10px rgba(139, 156, 246, .7); }
+
+/* ══ v8 · Older pages, dialogs and menus in the midnight palette ═══════════════════════════════════════════════
+   Tax, Reports, Settings (and the classic tools), the add/edit dialogs and the pop-up menus now use the same tokens
+   as the new screens, and the shared components below get their dark-glass versions. */
+@mixin midnight {
+  @include glass-tokens;
+  --accent: #a5b4fc; --accent-strong: #c7d2fe; --accent-soft: rgba(165, 180, 252, .14); --primary: #8b9cf6; --on-primary: #10162a;
+  --pos: #6ad3a4; --pos-soft: rgba(106, 211, 164, .14); --neg: #f2858f; --neg-soft: rgba(242, 133, 143, .14);
+  --warn: #e7c27a; --warn-soft: rgba(231, 194, 122, .15); --info: #8ec5f0; --info-soft: rgba(142, 197, 240, .12);
+  --muted: rgba(214, 222, 240, .6); --text-2: rgba(232, 238, 250, .84); --gold-2: #e7c27a; --gold-soft: rgba(231, 194, 122, .14);
+  --surface: rgba(255, 255, 255, .05); --surface-2: rgba(255, 255, 255, .04); --surface-hover: rgba(255, 255, 255, .08);
+  --border: rgba(255, 255, 255, .1); --border-strong: rgba(255, 255, 255, .18); --grid: rgba(255, 255, 255, .08);
+  --chart-a: #a5b4fc; --chart-b: rgba(203, 213, 225, .45);
+  --hero: radial-gradient(120% 100% at 100% 0%, rgba(139, 156, 246, .32) 0%, rgba(139, 156, 246, 0) 55%), linear-gradient(150deg, #27325a 0%, #1f2849 60%, #1a2240 100%);
+  --grad: linear-gradient(135deg, #8b9cf6 0%, #7b8ff0 100%);
+  --shadow: 0 14px 32px -20px rgba(0, 0, 0, .6); --shadow-md: var(--shadow); --shadow-pop: 0 24px 60px -20px rgba(0, 0, 0, .75);
+}
+.page, app-modal, app-shell .pop { @include midnight; }
+
+/* pages sit straight on the backdrop, like the new screens */
+.page { background: none; border: 0; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; border-radius: 0; }
+@media (max-width: 999px) { .page { margin: 0; padding: 4px 16px 120px; } }
+@media (min-width: 1000px) { .page { margin: 0; padding: 6px 32px 56px; max-width: 1360px; } }
+.page h1 { color: #fff; }
+
+/* cards and dialogs: the same clear glass */
+.page .card, app-modal .dialog {
+  background: radial-gradient(120% 60% at 20% -20%, rgba(255, 255, 255, .08) 0%, rgba(255, 255, 255, 0) 50%), rgba(255, 255, 255, .045);
+  border: 1px solid rgba(255, 255, 255, .1); border-radius: 22px;
+  -webkit-backdrop-filter: blur(12px) saturate(180%); backdrop-filter: blur(12px) saturate(180%);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, .18), 0 14px 32px -20px rgba(0, 0, 0, .6); }
+app-modal .dialog { background: linear-gradient(165deg, rgba(36, 46, 80, .97), rgba(20, 27, 48, .98)); }
+app-modal .backdrop { background: rgba(6, 10, 22, .6); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+app-shell .pop { background: linear-gradient(165deg, rgba(36, 46, 80, .97), rgba(20, 27, 48, .98)); border: 1px solid rgba(255, 255, 255, .12);
+  -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
+
+/* summary strips (Tax, Reports...): ink blue with a periwinkle hairline */
+.page .kpis { background: var(--hero); box-shadow: inset 0 1px 1px rgba(255, 255, 255, .2), inset 0 0 0 1px rgba(165, 180, 252, .2), 0 20px 44px -24px rgba(0, 0, 0, .7); border-radius: 22px; }
+.page .kpis::before { background: radial-gradient(circle, rgba(165, 180, 252, .14), rgba(165, 180, 252, 0) 70%); }
+.page .kpis::after { background: linear-gradient(90deg, rgba(165, 180, 252, 0), rgba(165, 180, 252, .6), rgba(165, 180, 252, 0)); height: 1px; }
+.page .kpis .value.pos, .page .kpis .meta.pos, .page .kpis b.pos { color: #8fe3bd; }
+.page .kpis .value.neg, .page .kpis .meta.neg, .page .kpis b.neg { color: #f6a3ab; }
+.page .kpis a { color: #c7d2fe; }
+
+/* small coloured chips and badges: soft tints */
+.page .chip, app-modal .chip { background: rgba(255, 255, 255, .07); color: #c7d2fe; }
+.page .chip.green, app-modal .chip.green { color: #8fe3bd; background: rgba(106, 211, 164, .13); }
+.page .chip.red, app-modal .chip.red { color: #f6a3ab; background: rgba(242, 133, 143, .13); }
+.page .chip.amber, app-modal .chip.amber { color: #ecd29b; background: rgba(231, 194, 122, .13); }
+.page .chip.blue, app-modal .chip.blue { color: #a9cdf2; background: rgba(126, 166, 232, .14); }
+.page .chip.violet, .page .chip.indigo, app-modal .chip.violet, app-modal .chip.indigo { color: #c7d2fe; background: rgba(165, 180, 252, .14); }
+.page .badge[data-type=BUY] { background: rgba(165, 180, 252, .14); color: #c7d2fe; }
+.page .badge[data-type=SELL] { background: rgba(226, 160, 124, .15); color: #f0c2a6; }
+.page .badge[data-type=REPAYMENT] { background: rgba(111, 194, 173, .15); color: #a6e0d2; }
+.page .badge[data-type=MATURITY] { background: rgba(169, 155, 230, .15); color: #d3cbf5; }
+.page .badge[data-type=FX_IN], .page .badge[data-type=FX_OUT] { background: rgba(126, 166, 232, .15); color: #b5d0f3; }
+
+/* controls */
+.page .btn, app-modal .btn, app-shell .pop .btn { background: rgba(255, 255, 255, .07); border: 1px solid rgba(255, 255, 255, .14); color: var(--text);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, .12); border-radius: 999px; }
+.page .btn:hover, app-modal .btn:hover { background: rgba(255, 255, 255, .12); }
+.page .btn.primary, app-modal .btn.primary { background: var(--grad); border: 0; color: #10162a; font-weight: 700;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, .5), 0 8px 18px -10px rgba(139, 156, 246, .7); }
+.page .btn.ghost, app-modal .btn.ghost { background: transparent; border-color: transparent; box-shadow: none; }
+.page .btn.danger.solid, app-modal .btn.danger.solid { background: #e5767f; color: #1a0f14; border: 0; }
+.page .input, .page select.input, .page textarea.input, app-modal .input, app-modal select.input, app-modal textarea.input {
+  background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .16); color: var(--text); border-radius: 12px; }
+.page .input:focus, app-modal .input:focus { border-color: #a5b4fc; outline: none; box-shadow: 0 0 0 3px rgba(165, 180, 252, .18); }
+.page select option, app-modal select option { color: #111827; background: #fff; }
+.page input[type=date], app-modal input[type=date] { color-scheme: dark; }
+.page .seg, app-modal .seg { background: rgba(255, 255, 255, .07); border-radius: 999px; }
+.page .seg button, app-modal .seg button { border-radius: 999px; color: var(--text-2); }
+.page .seg button.on, app-modal .seg button.on { background: rgba(255, 255, 255, .16); color: #fff; box-shadow: inset 0 1px 1px rgba(255, 255, 255, .3); }
+.page .tabs button.on, .page .tabs a.on, app-modal .tabs button.on { color: #c7d2fe; border-bottom-color: #a5b4fc; }
+.page .check, app-modal .check { accent-color: #8b9cf6; }
+
+/* tables, notices, loading */
+.page .table th { color: var(--muted); background: rgba(255, 255, 255, .03); }
+.page .table tr:hover td { background: rgba(255, 255, 255, .03); }
+.page .notice, app-modal .notice { background: rgba(142, 197, 240, .1); color: var(--text-2); }
+.page .notice.bad, app-modal .notice.bad { background: rgba(242, 133, 143, .12); }
+.page .notice.warn, app-modal .notice.warn { background: rgba(231, 194, 122, .12); }
+.page .skeleton, app-modal .skeleton { background: linear-gradient(90deg, rgba(255, 255, 255, .05), rgba(255, 255, 255, .11), rgba(255, 255, 255, .05)); background-size: 200% 100%; }
+.page a, app-modal a { color: #c7d2fe; }
+app-modal .dialog { background: linear-gradient(165deg, #222c4c 0%, #182038 100%) !important; border: 1px solid rgba(255, 255, 255, .12) !important;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, .14), 0 30px 70px -20px rgba(0, 0, 0, .8) !important; }
+app-modal .dialog header { border-bottom-color: rgba(255, 255, 255, .1) !important; }

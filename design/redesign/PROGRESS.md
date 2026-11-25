@@ -122,6 +122,12 @@ charges); automatic cash rules unchanged but now shown on Activity › Rules wit
   Cash rules: P2P BUY → escrow out "Loan funded"; REPAYMENT → capital out only. Migration 008 rewrites old auto rows.
   + sheet › "P2P wallet top-up / withdrawal"; Checks lists loans with no top-up recorded.
 
+- v7 palette (owner: "too flashy"): midnight blue-slate base, one periwinkle accent (#a5b4fc / #8b9cf6), muted group
+  tones of equal brightness (`--g-*` and `GROUP_HEX`), soft mint/coral for gain/loss, ink-blue hero cards.
+
+- v8: Tax, Reports, Settings, the classic tools, dialogs (`app-modal`) and pop-up menus use the same midnight tokens
+  (`@mixin midnight` on `.page`, `app-modal`, `app-shell .pop`) with dark versions of the shared components.
+
 ## Settings added to the Settings page (App & calculations)
 
 - "Show the classic tools in the menu" → `advancedFeatures`.
