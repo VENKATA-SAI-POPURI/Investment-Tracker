@@ -96,10 +96,10 @@ interface Card extends CardDef { value: number; pct: number; change: string | nu
   @if (holdingId(); as id) { <v-holding-sheet [id]="id" (closed)="closeHolding()" /> }
   `,
   styles: [`
-    .summary { background: radial-gradient(120% 120% at 100% 0%, #3b2a8c 0%, rgba(59, 42, 140, 0) 60%), linear-gradient(150deg, #1a1534, #2a2060);
-      color: #fff; border: 0; box-shadow: 0 16px 34px -14px rgba(26, 21, 52, .6); }
+    .summary { background: radial-gradient(120% 120% at 100% 0%, rgba(244, 63, 94, .55) 0%, rgba(244, 63, 94, 0) 55%), linear-gradient(135deg, #6d28d9, #a21caf) !important;
+      color: #fff; border: 1px solid rgba(255,255,255,.25) !important; box-shadow: 0 28px 60px -24px rgba(217, 70, 239, .6) !important; }
     .summary .lb { color: rgba(255,255,255,.7) !important; }
-    .summary .v-gain { color: #6ee7b7; } .summary .v-loss { color: #fca5a5; }
+    .summary .v-gain { color: #bbf7d0; } .summary .v-loss { color: #fecdd3; }
     .summary .stack { background: rgba(255,255,255,.12); padding: 2px; height: 14px; }
     .summary .stack b { border-radius: 99px; }
     .sum { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; }
@@ -128,7 +128,7 @@ interface Card extends CardDef { value: number; pct: number; change: string | nu
     .hold .r b { font-weight: 700; }
     .t-gain { color: var(--pos); } .t-loss { color: var(--neg); } .t-mut { color: var(--muted); } .t-warn { color: var(--warn); }
     .cashrow { display: flex; align-items: center; gap: 11px; margin: 12px 0 2px; padding: 10px 12px; border-radius: 14px;
-      background: color-mix(in srgb, var(--g-p2p) 9%, white); text-decoration: none; color: inherit; }
+      background: rgba(240, 96, 158, .16); border: 1px solid rgba(240, 96, 158, .3); text-decoration: none; color: inherit; }
     .cashrow .n { font-weight: 700; font-size: 13.5px; } .cashrow .s { font-size: 11.5px; color: var(--muted); }
     .cashrow b { font-weight: 800; white-space: nowrap; }
     .moreb { width: 100%; text-align: center; font: inherit; font-size: 13px; font-weight: 600; color: var(--accent); padding: 10px 0 2px; border: 0;

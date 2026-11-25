@@ -747,3 +747,118 @@ body {
 /* cards in a row share their height; a card's chart takes the spare room instead of leaving a gap */
 .v-grid > .v-card { display: flex; flex-direction: column; }
 .v-grid > .v-card > .v-legend:last-child { margin-top: 8px; }
+
+/* ══ v3 · Glass maximal ════════════════════════════════════════════════════════════════════════════════════
+   A vivid night backdrop (indigo, violet, magenta, with glowing orbs and a fine grain) and frosted-glass panels
+   with white type. The new screens, the sheets and the app frame use the dark-glass tokens below; older pages
+   (Tax, Reports, Settings) and dialogs keep the light tokens on a light glass panel, so they stay readable. */
+@mixin glass-tokens {
+  --text: #ffffff; --text-2: rgba(255, 255, 255, .84); --muted: rgba(236, 230, 255, .64);
+  --border: rgba(255, 255, 255, .14); --border-strong: rgba(255, 255, 255, .26);
+  --surface: rgba(255, 255, 255, .09); --surface-2: rgba(255, 255, 255, .06); --surface-hover: rgba(255, 255, 255, .12);
+  --bg: rgba(255, 255, 255, .09); --ink: rgba(255, 255, 255, .96);
+  --accent: #d8b4fe; --accent-strong: #f0abfc; --accent-soft: rgba(196, 181, 253, .18); --primary: #c084fc;
+  --pos: #4ade80; --pos-soft: rgba(74, 222, 128, .16); --neg: #fb7185; --neg-soft: rgba(251, 113, 133, .17);
+  --warn: #fbbf24; --warn-soft: rgba(251, 191, 36, .17); --info: #7dd3fc; --info-soft: rgba(125, 211, 252, .16);
+  --chart-grid: rgba(255, 255, 255, .12); --chart-b: rgba(255, 255, 255, .42); --chart-a: #c4b5fd;
+  --grad: linear-gradient(135deg, #8b5cf6 0%, #d946ef 55%, #fb7185 100%);
+  color: var(--text);
+}
+@mixin light-tokens {
+  --text: #1a1534; --text-2: #4b4766; --muted: #8a86a3; --border: #efedf5; --border-strong: #dad7e5;
+  --surface: #ffffff; --surface-2: #f6f5fa; --surface-hover: #f3f1fa; --bg: #f4f3f9; --ink: #1a1534;
+  --accent: #6a46f5; --accent-strong: #4b2fd8; --accent-soft: #f0ecff; --primary: #6a46f5;
+  --pos: #12a16b; --pos-soft: #e3f7ee; --neg: #e4475a; --neg-soft: #fdebee; --warn: #d9820b; --warn-soft: #fff2dc;
+  --info: #2f80ed; --info-soft: #e8f1fe; --chart-grid: rgba(106, 70, 245, .12); --chart-b: #c9c5d8; --chart-a: #6a46f5;
+  --grad: linear-gradient(135deg, #6a46f5, #a35cff);
+  color: var(--text);
+}
+
+html { background: #12082e; }
+body {
+  background:
+    radial-gradient(900px 700px at 6% -10%, rgba(139, 92, 246, .85) 0%, rgba(139, 92, 246, 0) 60%),
+    radial-gradient(820px 640px at 104% -4%, rgba(236, 72, 153, .62) 0%, rgba(236, 72, 153, 0) 58%),
+    radial-gradient(900px 800px at 92% 104%, rgba(20, 184, 166, .5) 0%, rgba(20, 184, 166, 0) 60%),
+    radial-gradient(800px 700px at -4% 104%, rgba(249, 115, 22, .42) 0%, rgba(249, 115, 22, 0) 58%),
+    radial-gradient(700px 600px at 50% 50%, rgba(99, 102, 241, .35) 0%, rgba(99, 102, 241, 0) 70%),
+    linear-gradient(160deg, #1c0f4a 0%, #2b0f62 45%, #150a3d 100%);
+  background-attachment: fixed;
+  min-height: 100vh;
+}
+/* fine grain over everything, so the glass reads as glass */
+body::before { content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0; opacity: .08; mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+app-root { position: relative; z-index: 1; display: block; }
+
+.v2, .v-sheet, app-shell .side, app-shell .top, app-shell .tabbar, app-shell .member-banner { @include glass-tokens; }
+.page, .pop, app-modal, .toast, .toasts { @include light-tokens; }
+
+/* older pages: a light glass sheet floating on the backdrop */
+.page { background: rgba(248, 245, 255, .93); border: 1px solid rgba(255, 255, 255, .6); border-radius: 28px;
+  box-shadow: 0 30px 70px -30px rgba(0, 0, 0, .55); -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px); }
+@media (max-width: 999px) { .page { margin: 0 12px 110px; } }
+@media (min-width: 1000px) { .page { margin: 0 32px 40px 32px; max-width: 1296px; } }
+
+/* glass panels */
+.v2 .v-card, .v-sheet .v-card {
+  background: linear-gradient(140deg, rgba(255, 255, 255, .17) 0%, rgba(255, 255, 255, .06) 100%);
+  border: 1px solid rgba(255, 255, 255, .2);
+  -webkit-backdrop-filter: blur(26px) saturate(170%); backdrop-filter: blur(26px) saturate(170%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .28), 0 26px 60px -26px rgba(0, 0, 0, .6);
+}
+@media (hover: hover) { .v2 .v-card:hover { border-color: rgba(255, 255, 255, .32); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .32), 0 30px 70px -26px rgba(0, 0, 0, .7); } }
+.v2 .v-row { border-top-color: rgba(255, 255, 255, .1); }
+@media (hover: hover) { .v2 button.v-row:hover, .v2 a.v-row:hover { background: linear-gradient(90deg, rgba(255, 255, 255, .08), rgba(255, 255, 255, 0)); } }
+
+/* maximal type: bigger numbers, gradient headings */
+.v2 .v-sec h2 { font-size: 20px; letter-spacing: -.03em; background: linear-gradient(90deg, #ffffff 0%, #f5d0fe 60%, #fda4af 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent; }
+.v2 .v-sec h2::before { background: linear-gradient(180deg, #f0abfc, #fb7185); width: 7px; height: 22px; }
+.v2 .v-ch h2 { font-size: 17px; }
+.v2 .v-num, .v2 .v-kpis b { letter-spacing: -.03em; }
+.v2 .v-hero .big { font-size: clamp(38px, 9vw, 50px); }
+
+/* the hero: a loud, layered gradient */
+.v2 .v-hero { background:
+    radial-gradient(120% 100% at 100% 0%, rgba(253, 164, 175, .9) 0%, rgba(253, 164, 175, 0) 50%),
+    radial-gradient(90% 90% at 0% 100%, rgba(56, 189, 248, .55) 0%, rgba(56, 189, 248, 0) 55%),
+    linear-gradient(135deg, #7c3aed 0%, #c026d3 52%, #f43f5e 100%);
+  box-shadow: 0 30px 70px -24px rgba(217, 70, 239, .65), inset 0 1px 0 rgba(255, 255, 255, .35);
+  border: 1px solid rgba(255, 255, 255, .25); }
+
+/* controls */
+.v2 .v-seg { background: rgba(255, 255, 255, .1); border: 1px solid rgba(255, 255, 255, .16); }
+.v2 .v-seg .on, .v2 .v-filters button.on { background: var(--grad); color: #fff; box-shadow: 0 10px 24px -10px rgba(217, 70, 239, .8); }
+.v2 .v-seg.soft { background: rgba(255, 255, 255, .08); }
+.v2 .v-seg.soft .on { background: rgba(255, 255, 255, .92); color: #3b1d8f; }
+.v2 .v-filters button, .v2 .v-chips { background: rgba(255, 255, 255, .1); color: var(--text-2); border: 1px solid rgba(255, 255, 255, .14); }
+.v2 .v-chips button.on { background: rgba(255, 255, 255, .92); color: #3b1d8f; }
+.v2 .v-btn { background: rgba(255, 255, 255, .12); color: #fff; border: 1px solid rgba(255, 255, 255, .16); }
+.v2 .v-btn.primary, .v-sheet .v-btn.primary { background: var(--grad); border: 0; box-shadow: 0 12px 28px -10px rgba(217, 70, 239, .75); }
+.v2 .v-btn.dark, .v-sheet .v-btn.dark { background: #fff; color: #2b0f62; }
+.v-sheet .v-btn { background: rgba(255, 255, 255, .12); color: #fff; }
+.v2 .v-input, .v-sheet .v-input { background: rgba(255, 255, 255, .1); border-color: rgba(255, 255, 255, .2); color: #fff; }
+
+/* pills, tracks, tiles */
+.v2 .v-pill.ok, .v-sheet .v-pill.ok { background: rgba(74, 222, 128, .18); color: #86efac; }
+.v2 .v-pill.no, .v-sheet .v-pill.no { background: rgba(251, 113, 133, .2); color: #fda4af; }
+.v2 .v-pill.eq, .v-sheet .v-pill.eq { background: rgba(255, 255, 255, .14); color: rgba(255, 255, 255, .86); }
+.v2 .v-pill.warn, .v-sheet .v-pill.warn { background: rgba(251, 191, 36, .2); color: #fde68a; }
+.v2 .v-track, .v2 .v-share { background: rgba(255, 255, 255, .12); }
+.v2 .v-kpis > div, .v-sheet .v-stats > div, .v2 .v-stats > div { background: rgba(255, 255, 255, .08); border: 1px solid rgba(255, 255, 255, .14); }
+.v2 .v-logo, .v-sheet .v-logo { background: linear-gradient(140deg, color-mix(in srgb, var(--c) 45%, transparent), color-mix(in srgb, var(--c) 22%, transparent));
+  color: color-mix(in srgb, var(--c) 35%, white); border: 1px solid color-mix(in srgb, var(--c) 40%, transparent); }
+.v2 .v-note.good, .v-sheet .v-note.good { background: rgba(74, 222, 128, .14); color: #bbf7d0; }
+.v2 .v-note.warn, .v-sheet .v-note.warn { background: rgba(251, 191, 36, .14); color: #fde68a; }
+.v2 .v-note.info, .v-sheet .v-note.info { background: rgba(196, 181, 253, .16); color: #e9d5ff; }
+.v2 .v-skel, .v-sheet .v-skel { background: linear-gradient(90deg, rgba(255, 255, 255, .06), rgba(255, 255, 255, .14), rgba(255, 255, 255, .06)); background-size: 200% 100%; }
+
+/* sheets: deep glass */
+.v-dim { background: rgba(8, 4, 24, .55); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+.v-sheet { background: linear-gradient(160deg, rgba(58, 30, 128, .9) 0%, rgba(28, 14, 72, .94) 100%);
+  border: 1px solid rgba(255, 255, 255, .16); -webkit-backdrop-filter: blur(30px); backdrop-filter: blur(30px); }
+.v-sheet .close { background: rgba(255, 255, 255, .12); color: #fff; }
+.v-sheet .grab { background: rgba(255, 255, 255, .3); }
+.v-sheet .v-tabs button { background: rgba(255, 255, 255, .08); color: var(--muted); }
+.v-sheet .v-tabs button.on { background: rgba(255, 255, 255, .92); color: #3b1d8f; }

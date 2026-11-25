@@ -71,7 +71,7 @@ type Range = '6M' | '1Y' | 'ALL';
           </div>
         </div>
         <v-area class="fill" [a]="growth().value" [b]="growth().invested" [labels]="growth().ticks" [h]="128" label="Value against money invested" />
-        <div class="v-legend"><span style="--c:#6a46f5">Value</span><span style="--c:#c9c5d8">Money invested</span>
+        <div class="v-legend"><span style="--c:var(--chart-a)">Value</span><span style="--c:var(--chart-b)">Money invested</span>
           @if (perf()?.metrics?.gain !== undefined && perf()?.metrics?.gain !== null) {
             <span class="gain-in" [class.v-gain]="perf()!.metrics.gain >= 0" [class.v-loss]="perf()!.metrics.gain < 0">{{ money(perf()!.metrics.gain, true) }} in this period</span>
           }
@@ -151,9 +151,9 @@ type Range = '6M' | '1Y' | 'ALL';
     .lg .nm { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
     .lg b { margin-left: auto; padding-left: 6px; font-weight: 700; }
     .dl { font-size: 10.5px; font-weight: 700; padding: 1px 5px; border-radius: 5px; margin-left: 5px; min-width: 36px; text-align: center;
-      background: #eef0f5; color: var(--text-2); }
+      background: var(--bg); color: var(--text-2); }
     .dl.u { background: var(--warn-soft); color: var(--warn); } .dl.k { background: var(--pos-soft); color: var(--pos); }
-    .foot { display: flex; align-items: center; justify-content: space-between; background: var(--accent-soft); border-radius: 14px;
+    .foot { display: flex; align-items: center; justify-content: space-between; background: var(--accent-soft); border: 1px solid var(--border); border-radius: 14px;
       padding: 10px 12px; margin-top: 12px; font-size: 13px; font-weight: 600; color: var(--accent); text-decoration: none; }
     .foot .go { display: inline-flex; align-items: center; gap: 2px; }
     .gain-in { margin-left: auto; font-weight: 700; }

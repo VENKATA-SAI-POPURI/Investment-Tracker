@@ -134,3 +134,27 @@
 .tabbar { background: rgba(255, 255, 255, .78); -webkit-backdrop-filter: blur(20px) saturate(160%); backdrop-filter: blur(20px) saturate(160%); }
 .iconbtn, .who { background: rgba(255, 255, 255, .7); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
 .pop { background: rgba(255, 255, 255, .95); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
+
+/* v3 glass maximal: the frame is dark glass on the night backdrop */
+.side { background: linear-gradient(180deg, rgba(36, 18, 92, .55), rgba(20, 10, 56, .45)); border-right: 1px solid rgba(255, 255, 255, .1);
+  -webkit-backdrop-filter: blur(24px) saturate(160%); backdrop-filter: blur(24px) saturate(160%); }
+.brand { color: #fff; }
+.si { color: rgba(255, 255, 255, .72); }
+.si:hover { background: rgba(255, 255, 255, .08); }
+.si.on { background: linear-gradient(135deg, #8b5cf6, #d946ef 60%, #fb7185); color: #fff; box-shadow: 0 12px 28px -10px rgba(217, 70, 239, .75); }
+.sep { color: rgba(236, 230, 255, .5); }
+.logo-m { background: linear-gradient(135deg, #8b5cf6, #d946ef 60%, #fb7185); box-shadow: 0 8px 20px -8px rgba(217, 70, 239, .8); }
+.title small { color: rgba(236, 230, 255, .7); }
+.title h1 { background: linear-gradient(90deg, #ffffff 0%, #f5d0fe 55%, #fda4af 100%); -webkit-background-clip: text; background-clip: text; color: transparent;
+  font-size: 28px; }
+@media (min-width: 1000px) { .title h1 { font-size: 32px; } }
+.iconbtn, .who { background: rgba(255, 255, 255, .12); border: 1px solid rgba(255, 255, 255, .2); color: #fff; box-shadow: none; }
+.av.fam, .av { box-shadow: 0 4px 10px -4px rgba(0, 0, 0, .5); }
+.bell .count { border-color: #2b0f62; }
+.tabbar { background: linear-gradient(180deg, rgba(48, 24, 112, .72), rgba(26, 12, 66, .78)); border: 1px solid rgba(255, 255, 255, .16);
+  box-shadow: 0 20px 44px -14px rgba(0, 0, 0, .7); }
+.tabbar a { color: rgba(255, 255, 255, .6); }
+.tabbar a.on { color: #fff; }
+.tabbar a.on app-icon { background: rgba(255, 255, 255, .16); }
+.fab { background: linear-gradient(135deg, #8b5cf6, #d946ef 60%, #fb7185); box-shadow: 0 14px 30px -8px rgba(217, 70, 239, .85); }
+.member-banner { background: rgba(255, 255, 255, .12); color: #fff; border: 1px solid rgba(255, 255, 255, .18); }
