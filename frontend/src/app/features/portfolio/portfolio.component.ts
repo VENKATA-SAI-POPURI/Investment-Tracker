@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { map } from 'rxjs';
-import { fmtDate, money, pctV } from '../../core/format';
+import { fmtDate, money, pctV, usd } from '../../core/format';
 import { GROUP_HEX, GroupKey, groupMeta } from '../../core/groups';
 import { holdingLine, initials, logoColor } from '../../core/holding-view';
 import { Position } from '../../core/models';
@@ -32,7 +32,7 @@ interface Card extends CardDef { value: number; pct: number; change: string | nu
 @Component({
   selector: 'app-portfolio',
   standalone: true,
-  imports: [IconComponent, HoldingSheetComponent],
+  imports: [IconComponent, HoldingSheetComponent, RouterLink],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
   <div class="v2">
@@ -62,8 +62,15 @@ interface Card extends CardDef { value: number; pct: number; change: string | nu
           <app-icon class="chev" [name]="isOpen(c.key) ? 'chevronDown' : 'chevronRight'" [size]="18" [stroke]="2.2" />
         </button>
         @if (isOpen(c.key)) {
+          @if (c.key === 'p2p') {
+            <a class="cashrow" routerLink="/cash-flows" [queryParams]="{ account: 'p2p_escrow' }">
+              <span class="v-ic sm" style="--c:var(--g-p2p)"><app-icon name="wallet2" [size]="15" /></span>
+              <span class="grow"><span class="n">Escrow balance</span><span class="s">Money on the platform not lent out yet · not counted in net worth</span></span>
+              <b>{{ money(escrow()) }}</b>
+            </a>
+          }
           @for (s of c.sections; track s.group) {
-            @if (s.label) { <div class="subhd"><span>{{ s.label }} · {{ s.rows.length + s.hidden }}</span><span>{{ money(s.value) }}</span></div> }
+            @if (s.label) { <div class="subhd"><span>{{ s.label }} · {{ s.rows.length + s.hidden }}{{ s.group === 'equity_global' && usdCash() !== null ? ' · ' + usd(usdCash()) + ' cash' : '' }}</span><span>{{ money(s.value) }}</span></div> }
             @for (p of s.rows; track p.id) {
               <button class="hold" (click)="openHolding(p.id)">
                 <span class="v-logo" [style.--c]="logo(p.name)">{{ ini(p.name) }}</span>
@@ -118,6 +125,10 @@ interface Card extends CardDef { value: number; pct: number; change: string | nu
     .hold .r { text-align: right; display: flex; flex-direction: column; flex: none; }
     .hold .r b { font-weight: 700; }
     .t-gain { color: var(--pos); } .t-loss { color: var(--neg); } .t-mut { color: var(--muted); } .t-warn { color: var(--warn); }
+    .cashrow { display: flex; align-items: center; gap: 11px; margin: 12px 0 2px; padding: 10px 12px; border-radius: 14px;
+      background: color-mix(in srgb, var(--g-p2p) 9%, white); text-decoration: none; color: inherit; }
+    .cashrow .n { font-weight: 700; font-size: 13.5px; } .cashrow .s { font-size: 11.5px; color: var(--muted); }
+    .cashrow b { font-weight: 800; white-space: nowrap; }
     .moreb { width: 100%; text-align: center; font: inherit; font-size: 13px; font-weight: 600; color: var(--accent); padding: 10px 0 2px; border: 0;
       border-top: 1px solid var(--border); background: none; cursor: pointer; }
     .closedt { align-self: center; margin-top: 4px; }
@@ -130,7 +141,7 @@ export class PortfolioComponent {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
 
-  money = money; pctV = pctV; line = holdingLine; ini = initials; logo = logoColor;
+  money = money; pctV = pctV; usd = usd; line = holdingLine; ini = initials; logo = logoColor;
 
   private qp = toSignal(this.route.queryParamMap.pipe(map(q => ({ group: q.get('group'), holding: q.get('holding') }))),
     { initialValue: { group: null as string | null, holding: null as string | null } });
@@ -147,6 +158,13 @@ export class PortfolioComponent {
 
   private positions = computed(() => this.store.positions().filter(p => this.showClosed() || p.is_open || (p.asset_class === 'cash' && p.value > 0)));
   closedCount = computed(() => this.store.positions().filter(p => !p.is_open && p.asset_class !== 'cash').length);
+  /** P2P escrow: Σ in − Σ out of the escrow account (as on the classic Cash flows page). */
+  escrow = computed(() => this.store.portfolio()?.contributions?.p2p_escrow_balance ?? 0);
+  /** Dollars in the USD wallet(s). */
+  usdCash = computed(() => {
+    const w = this.store.positions().filter(p => p.asset_class === 'cash');
+    return w.length ? w.reduce((s, p) => s + (p.balance_usd ?? 0), 0) : null;
+  });
   total = computed(() => this.ovs.data()?.totals.value ?? this.store.portfolio()?.totals.value ?? 0);
   gain = computed(() => this.ovs.data()?.totals.gain ?? this.store.portfolio()?.totals.total_gain ?? 0);
   xirr = computed(() => this.ovs.data()?.totals.xirr ?? null);
