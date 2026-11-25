@@ -9,7 +9,6 @@ import { Position } from '../../core/models';
 import { OverviewService } from '../../core/overview.service';
 import { StoreService } from '../../core/store.service';
 import { IconComponent } from '../../shared/icon.component';
-import { TiltDirective } from '../../shared/v2/spatial';
 import { HoldingSheetComponent } from '../../shared/v2/holding-sheet.component';
 
 /** A card on the page: Equity joins India and Global stocks; every other card is one group. */
@@ -33,11 +32,11 @@ interface Card extends CardDef { value: number; pct: number; change: string | nu
 @Component({
   selector: 'app-portfolio',
   standalone: true,
-  imports: [IconComponent, HoldingSheetComponent, RouterLink, TiltDirective],
+  imports: [IconComponent, HoldingSheetComponent, RouterLink],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
   <div class="v2">
-    <section class="v-card summary" [vTilt]="4">
+    <section class="v-card summary">
       <div class="sum">
         <div><div class="v-mut lb">Total value</div><div class="v-num big">{{ money(total()) }}</div></div>
         <div class="right"><div class="v-mut lb">Total gain · return a year</div>
@@ -97,8 +96,8 @@ interface Card extends CardDef { value: number; pct: number; change: string | nu
   @if (holdingId(); as id) { <v-holding-sheet [id]="id" (closed)="closeHolding()" /> }
   `,
   styles: [`
-    .summary { background: radial-gradient(120% 120% at 100% 0%, rgba(244, 63, 94, .55) 0%, rgba(244, 63, 94, 0) 55%), linear-gradient(135deg, #6d28d9, #a21caf) !important;
-      color: #fff; border: 1px solid rgba(255,255,255,.25) !important; box-shadow: 0 28px 60px -24px rgba(217, 70, 239, .6) !important; }
+    .summary { background: radial-gradient(110% 90% at 100% 0%, rgba(168, 140, 255, .5) 0%, rgba(168, 140, 255, 0) 55%), linear-gradient(140deg, #5b3fd9 0%, #6d4ae8 55%, #4f3bc4 100%) !important;
+      color: #fff; border: 0 !important; box-shadow: inset 0 1px 1px rgba(255,255,255,.45), 0 20px 44px -22px rgba(91, 63, 217, .7) !important; }
     .summary .lb { color: rgba(255,255,255,.7) !important; }
     .summary .v-gain { color: #bbf7d0; } .summary .v-loss { color: #fecdd3; }
     .summary .stack { background: rgba(255,255,255,.12); padding: 2px; height: 14px; }

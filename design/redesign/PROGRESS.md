@@ -111,6 +111,10 @@ charges); automatic cash rules unchanged but now shown on Activity › Rules wit
   only, off with reduced motion) and `startScrollDepth` (parallax orbs `.spatial-orbs` in the shell). `v-area.fill`
   takes its size from the card (absolute svg), so it can't grow the row.
 
+- v6 balanced (owner: "too much"): liquid glass is the one effect; calm deep backdrop with two soft glows, single violet
+  hero, white type (no gradient text), glass highlight for selections (gradient only on primary actions), no tilt or
+  drifting light, small press. The `vTilt` directive is kept but no longer used.
+
 ## Settings added to the Settings page (App & calculations)
 
 - "Show the classic tools in the menu" → `advancedFeatures`.
