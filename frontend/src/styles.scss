@@ -728,3 +728,22 @@ body {
 .v-sheet { background: rgba(247, 243, 255, .95); -webkit-backdrop-filter: blur(22px); backdrop-filter: blur(22px); }
 .card { background: rgba(255, 255, 255, .72); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
 .v-row { border-top-color: rgba(106, 70, 245, .1); }
+
+/* ══ v2.3: one layout scale for every screen size ══════════════════════════════════════════════════════════
+   Phones: one column. Tablets (760–999 px): two columns, phone navigation. Desktop: sidebar, and the content
+   anchored next to it at one shared width (the page header uses the same width, so titles and cards line up). */
+@media (min-width: 760px) {
+  .v2 { padding-left: 24px; padding-right: 24px; }
+  .v-grid.cols-2, .v-grid.cols-3 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .v-grid.hero-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .v-grid.hero-row > .v-hero { grid-column: 1 / -1; }
+}
+@media (min-width: 1000px) {
+  .v2 { max-width: 1360px; margin: 0; padding: 6px 32px 56px; }
+  .v-grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .v-grid.hero-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.15fr); }
+  .v-grid.hero-row > .v-hero { grid-column: auto; }
+}
+/* cards in a row share their height; a card's chart takes the spare room instead of leaving a gap */
+.v-grid > .v-card { display: flex; flex-direction: column; }
+.v-grid > .v-card > .v-legend:last-child { margin-top: 8px; }

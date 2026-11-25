@@ -52,6 +52,7 @@ interface Card extends CardDef { value: number; pct: number; change: string | nu
       }
     </div>
 
+    <div class="cards">
     @for (c of cards(); track c.key) {
       <section class="v-card grp" [class.open]="isOpen(c.key)">
         <button class="ghead" (click)="toggle(c.key)" [attr.aria-expanded]="isOpen(c.key)">
@@ -86,6 +87,7 @@ interface Card extends CardDef { value: number; pct: number; change: string | nu
       @if (!store.portfolio()) { @for (i of [1, 2, 3]; track i) { <div class="v-skel" style="height:76px"></div> } }
       @else { <div class="v-card v-empty">No holdings yet. Tap + to add your first.</div> }
     }
+    </div>
 
     @if (closedCount()) {
       <button class="v-link closedt" (click)="showClosed.set(!showClosed())">{{ showClosed() ? 'Hide' : 'Show' }} {{ closedCount() }} sold or closed holding{{ closedCount() === 1 ? '' : 's' }}</button>
@@ -132,7 +134,12 @@ interface Card extends CardDef { value: number; pct: number; change: string | nu
     .moreb { width: 100%; text-align: center; font: inherit; font-size: 13px; font-weight: 600; color: var(--accent); padding: 10px 0 2px; border: 0;
       border-top: 1px solid var(--border); background: none; cursor: pointer; }
     .closedt { align-self: center; margin-top: 4px; }
-    @media (min-width: 1000px) { .v2 { max-width: 860px; } }
+    .cards { display: block; }
+    @media (min-width: 900px) {
+      .cards { column-count: 2; column-gap: 14px; }
+      .cards > * { break-inside: avoid; margin-bottom: 14px; display: block; }
+    }
+    @media (min-width: 900px) { .cards > .grp { display: block; } }
   `],
 })
 export class PortfolioComponent {

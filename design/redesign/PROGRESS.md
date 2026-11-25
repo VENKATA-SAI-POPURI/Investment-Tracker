@@ -101,6 +101,10 @@ charges); automatic cash rules unchanged but now shown on Activity › Rules wit
 - Speed: `prices.history_fast` never blocks a read on the network for history it already has (stale symbols refresh
   in a background thread, then `ledger._bump()`); Home and Analysis draw charts from this device's last copy.
 
+- Layout scale v2.3 (end of `styles.scss`): phones one column; tablets 760–999 px two columns; desktop content
+  anchored next to the sidebar at max 1360 px (the shell header shares it). `v-area` redraws at its real width
+  (ResizeObserver) and, with class `fill`, takes its card's spare height. Portfolio cards flow in two columns ≥ 900 px.
+
 ## Settings added to the Settings page (App & calculations)
 
 - "Show the classic tools in the menu" → `advancedFeatures`.

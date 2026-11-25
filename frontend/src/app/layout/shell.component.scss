@@ -4,6 +4,7 @@
   padding: 7px 16px; background: var(--warn-soft); color: var(--text); font-size: 13px;
 }
 .member-banner {
+  max-width: 1296px;
   display: flex; align-items: center; justify-content: center; gap: 8px; margin: 0 16px 10px; padding: 7px 14px; font-size: 12.5px;
   line-height: 1.35; text-align: center; background: var(--accent-soft); color: var(--accent-strong); border-radius: 12px;
 }
@@ -36,7 +37,8 @@
 /* ── Top bar ── */
 .main { min-width: 0; }
 .top { display: flex; align-items: center; gap: 8px; padding: 14px 16px 12px; max-width: 1180px; margin: 0 auto; }
-@media (min-width: 1000px) { .top { padding: 20px 32px 14px; } }
+@media (min-width: 760px) { .top { padding: 16px 24px 12px; } }
+@media (min-width: 1000px) { .top { padding: 20px 32px 14px; max-width: 1360px; margin: 0; } }
 .top .spacer { flex: 1; }
 .title { min-width: 0; }
 .title small { display: block; color: var(--muted); font-size: 13px; font-weight: 500; }

@@ -70,7 +70,7 @@ type Range = '6M' | '1Y' | 'ALL';
             @for (r of ranges; track r) { <button role="tab" [class.on]="range() === r" [attr.aria-selected]="range() === r" (click)="range.set(r)">{{ r === 'ALL' ? 'All' : r }}</button> }
           </div>
         </div>
-        <v-area [a]="growth().value" [b]="growth().invested" [labels]="growth().ticks" [h]="128" label="Value against money invested" />
+        <v-area class="fill" [a]="growth().value" [b]="growth().invested" [labels]="growth().ticks" [h]="128" label="Value against money invested" />
         <div class="v-legend"><span style="--c:#6a46f5">Value</span><span style="--c:#c9c5d8">Money invested</span>
           @if (perf()?.metrics?.gain !== undefined && perf()?.metrics?.gain !== null) {
             <span class="gain-in" [class.v-gain]="perf()!.metrics.gain >= 0" [class.v-loss]="perf()!.metrics.gain < 0">{{ money(perf()!.metrics.gain, true) }} in this period</span>
@@ -83,7 +83,7 @@ type Range = '6M' | '1Y' | 'ALL';
         <div class="v-ch"><h2>Your mix</h2><span class="hint">{{ ov()?.targets?.has_mine ? 'vs your target' : 'share of everything' }}</span></div>
         <div class="mix">
           <v-donut [parts]="donut()" [size]="128" [thickness]="19" [top]="groups().length + ' groups'" [bottom]="money(ov()?.totals?.value)" />
-          <div class="legend">
+          <div class="mixleg">
             @for (g of groups(); track g.key) {
               <div class="lg"><span class="d" [style.background]="hex(g.key)"></span><span class="nm">{{ g.label }}</span><b>{{ g.pct.toFixed(0) }}%</b>
                 @if (g.gap !== null) { <span class="dl" [class.u]="g.gap <= -1" [class.k]="g.gap > -1 && g.gap < 1">{{ gapText(g.gap) }}</span> }
@@ -145,7 +145,7 @@ type Range = '6M' | '1Y' | 'ALL';
     .prices { position: absolute; top: 14px; right: 14px; display: inline-flex; align-items: center; gap: 5px; font: inherit; font-size: 11.5px;
       font-weight: 600; color: #fff; background: rgba(255,255,255,.14); border: 0; border-radius: 99px; padding: 4px 9px; cursor: pointer; }
     .mix { display: grid; grid-template-columns: 128px minmax(0, 1fr); gap: 14px; align-items: center; }
-    .legend { min-width: 0; }
+    .mixleg { min-width: 0; }
     .lg { display: flex; align-items: center; font-size: 12.5px; padding: 3px 0; font-weight: 500; white-space: nowrap; min-width: 0; }
     .lg .d { width: 9px; height: 9px; border-radius: 3px; margin-right: 8px; flex: none; }
     .lg .nm { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
@@ -163,7 +163,14 @@ type Range = '6M' | '1Y' | 'ALL';
     .attention .imp { font-size: 13.5px; white-space: nowrap; }
     .attention .v-row .s { overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
     @media (max-width: 360px) { .hide-xs { display: none; } }
-    @media (min-width: 1000px) {
+    @media (max-width: 420px) {
+      .mix { grid-template-columns: 96px minmax(0, 1fr); gap: 10px; }
+      .mix v-donut svg { width: 96px; height: 96px; }
+      .lg { font-size: 12px; }
+      .attention .v-row { flex-wrap: wrap; }
+      .attention .v-row .r { width: 100%; text-align: left; padding-left: 52px; margin-top: -4px; }
+    }
+    @media (min-width: 760px) {
       .parts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 28px; padding: 6px 20px; }
       .parts .v-row:nth-child(2) { border-top: 0; }
     }

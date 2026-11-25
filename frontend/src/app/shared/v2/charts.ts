@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, afterNextRender, computed, inject, input, signal } from '@angular/core';
 
 /** Points scaled into a w × h box with `pad` inside each edge. */
 function scale(vals: number[], w: number, h: number, pad: number, min: number, max: number): [number, number][] {
@@ -28,11 +28,11 @@ let uid = 0;
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (paths(); as p) {
-      <svg [attr.viewBox]="'0 0 ' + w() + ' ' + h()" width="100%" style="display:block;overflow:visible" role="img" [attr.aria-label]="label()">
+      <svg [attr.viewBox]="'0 0 ' + cw() + ' ' + ch()" [attr.width]="cw()" [attr.height]="ch()" style="display:block;overflow:visible" role="img" [attr.aria-label]="label()">
         <defs><linearGradient [attr.id]="gid" x1="0" x2="0" y1="0" y2="1">
           <stop offset="0" [attr.stop-color]="color()" stop-opacity=".26" /><stop offset="1" [attr.stop-color]="color()" stop-opacity="0" />
         </linearGradient></defs>
-        @for (f of [0.33, 0.66]; track f) { <line x1="0" [attr.x2]="w()" [attr.y1]="h() * f" [attr.y2]="h() * f" stroke="#efedf5" stroke-dasharray="3 4" /> }
+        @for (f of [0.33, 0.66]; track f) { <line x1="0" [attr.x2]="cw()" [attr.y1]="ch() * f" [attr.y2]="ch() * f" stroke="rgba(106,70,245,.12)" stroke-dasharray="3 4" /> }
         <path [attr.d]="p.area" [attr.fill]="'url(#' + gid + ')'" />
         @if (p.b) { <path [attr.d]="p.b" fill="none" [attr.stroke]="colorB()" stroke-width="2.2" [attr.stroke-dasharray]="dashB() ? '6 5' : null" /> }
         <path [attr.d]="p.a" fill="none" [attr.stroke]="color()" stroke-width="3" stroke-linecap="round" />
@@ -42,12 +42,18 @@ let uid = 0;
         <div class="xl">@for (l of labels(); track $index) { <span>{{ l }}</span> }</div>
       }
     } @else {
-      <div class="v-skel" [style.height.px]="h() * 0.55"></div>
+      <div class="v-skel" [style.height.px]="ch()"></div>
     }
   `,
-  styles: [':host{display:block}.xl{display:flex;justify-content:space-between;font-size:11px;color:#a9a5bf;font-weight:600;margin-top:4px}'],
+  styles: [':host{display:block;width:100%;min-width:0}:host(.fill){flex:1 1 auto;display:flex;flex-direction:column;justify-content:flex-end}.xl{display:flex;justify-content:space-between;font-size:11px;color:#a9a5bf;font-weight:600;margin-top:4px}'],
 })
 export class AreaChartComponent {
+  private host = inject(ElementRef<HTMLElement>);
+  /** The width the chart is drawn at: the element's own width, so lines keep their thickness at any screen size. */
+  cw = signal(360);
+  /** The height: `h`, or (with class "fill") the room the element is given, never less than `h`. */
+  ch = signal(130);
+  private fills = false;
   a = input<number[]>([]);
   b = input<number[] | null>(null);
   labels = input<string[]>([]);
@@ -59,16 +65,35 @@ export class AreaChartComponent {
   label = input('Chart');
   gid = `va${++uid}`;
 
+  constructor() {
+    const destroy = inject(DestroyRef);
+    afterNextRender(() => {
+      const el = this.host.nativeElement as HTMLElement;
+      this.fills = el.classList.contains('fill');
+      const measure = () => {
+        const r = el.getBoundingClientRect();
+        if (r.width > 0) this.cw.set(Math.round(r.width));
+        const room = this.fills ? Math.round(r.height - (this.labels().length ? 20 : 0)) : 0;
+        this.ch.set(Math.max(this.h(), room));
+      };
+      measure();
+      const ro = new ResizeObserver(() => measure());
+      ro.observe(el);
+      destroy.onDestroy(() => ro.disconnect());
+    });
+  }
+
   paths = computed(() => {
     const a = this.a(), b = this.b();
+    const W = this.cw(), H = this.ch();
     if (a.length < 2) return null;
     const all = [...a, ...(b ?? [])].filter(v => Number.isFinite(v));
     const lo = Math.min(...all), hi = Math.max(...all);
     const min = lo - (hi - lo) * 0.06, max = hi + (hi - lo) * 0.04;
-    const pa = scale(a, this.w(), this.h(), 6, min, max);
-    const pb = b && b.length > 1 ? scale(b, this.w(), this.h(), 6, min, max) : null;
+    const pa = scale(a, W, H, 6, min, max);
+    const pb = b && b.length > 1 ? scale(b, W, H, 6, min, max) : null;
     const line = smooth(pa);
-    return { a: line, b: pb ? smooth(pb) : null, area: `${line} L${pa[pa.length - 1][0]},${this.h()} L${pa[0][0]},${this.h()} Z`, last: pa[pa.length - 1] };
+    return { a: line, b: pb ? smooth(pb) : null, area: `${line} L${pa[pa.length - 1][0]},${H} L${pa[0][0]},${H} Z`, last: pa[pa.length - 1] };
   });
 }
 
