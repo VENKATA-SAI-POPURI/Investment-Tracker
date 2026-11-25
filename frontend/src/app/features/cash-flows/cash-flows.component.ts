@@ -524,7 +524,7 @@ export class CashFlowsComponent {
     { key: 'past', label: 'Past' }, { key: 'both', label: 'Past + next 12' }, { key: 'future', label: 'Next 12 months' },
   ];
 
-  account = signal<'capital' | 'p2p_escrow'>('capital');
+  account = signal<'capital' | 'p2p_escrow'>(this.route.snapshot.queryParamMap.get('account') === 'p2p_escrow' ? 'p2p_escrow' : 'capital');
   all = signal<CashMovement[]>([]);
   editing = signal<Partial<CashMovement> | null>(null);
   error = signal<string | null>(null);

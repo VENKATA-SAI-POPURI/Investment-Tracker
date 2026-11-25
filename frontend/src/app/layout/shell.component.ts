@@ -22,6 +22,8 @@ import { STATUS_META, statusFromSeverity, vitalOf, worstStatus } from '../shared
 import { TxnFormComponent } from '../shared/txn-form.component';
 import { WhatIfSaleComponent } from '../shared/what-if-sale.component';
 import { AddSheetComponent } from '../shared/v2/add-sheet.component';
+import { startScrollDepth } from '../shared/v2/spatial';
+import { NgZone } from '@angular/core';
 
 /* ── The Data vital, mirrored on the client (AMENDMENTS E20; brief.py `_freshness` and `_data_vital`) ── */
 
@@ -278,6 +280,7 @@ export class ShellComponent {
 
   constructor() {
     const destroy = inject(DestroyRef);
+    destroy.onDestroy(startScrollDepth(inject(NgZone)));
     // The router's anchor scroll (withInMemoryScrolling) calls window.scrollTo and ignores scroll-margin, so a
     // linked section (/performance#concentration, /settings#prices, /actions#deploy) would sit under the sticky
     // app bar. 80 px matches the pages' own scroll-margin-top (W4 integrator).

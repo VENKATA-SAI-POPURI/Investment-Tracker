@@ -97,9 +97,19 @@ charges); automatic cash rules unchanged but now shown on Activity › Rules wit
   `portfolio.usd_of()` converts US amounts without a USD figure at the owner's weighted-average deposit rate
   (`portfolio.deposit_rates`: Σ ₹ ÷ Σ $ of FX_IN; today's rate only when there are no deposits), in both engines.
 
-- Look v2.2: colourful backdrop (violet/pink/mint/peach) with frosted-glass cards (`styles.scss` end); no plain white.
+- Look v3 "glass maximal" (end of `styles.scss`): night backdrop with orbs + grain, dark-glass tokens on `.v2`, sheets and
+  the frame; old pages (`.page`), popovers and dialogs keep light tokens on a light glass panel. (Earlier: v2.2 colourful backdrop (violet/pink/mint/peach) with frosted-glass cards (`styles.scss` end); no plain white.
 - Speed: `prices.history_fast` never blocks a read on the network for history it already has (stale symbols refresh
   in a background thread, then `ledger._bump()`); Home and Analysis draw charts from this device's last copy.
+
+- Layout scale v2.3 (end of `styles.scss`): phones one column; tablets 760–999 px two columns; desktop content
+  anchored next to the sidebar at max 1360 px (the shell header shares it). `v-area` redraws at its real width
+  (ResizeObserver) and, with class `fill`, takes its card's spare height. Portfolio cards flow in two columns ≥ 900 px.
+
+- v4 liquid glass + v5 spatial (end of `styles.scss`): clear lens-like glass (`@mixin liquid`, masked rim ::before),
+  capsule controls, spring presses; `shared/v2/spatial.ts` `vTilt` directive (pointer tilt + light, pointer devices
+  only, off with reduced motion) and `startScrollDepth` (parallax orbs `.spatial-orbs` in the shell). `v-area.fill`
+  takes its size from the card (absolute svg), so it can't grow the row.
 
 ## Settings added to the Settings page (App & calculations)
 

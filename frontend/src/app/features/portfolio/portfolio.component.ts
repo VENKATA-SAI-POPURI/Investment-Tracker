@@ -1,14 +1,15 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { map } from 'rxjs';
-import { fmtDate, money, pctV } from '../../core/format';
+import { fmtDate, money, pctV, usd } from '../../core/format';
 import { GROUP_HEX, GroupKey, groupMeta } from '../../core/groups';
 import { holdingLine, initials, logoColor } from '../../core/holding-view';
 import { Position } from '../../core/models';
 import { OverviewService } from '../../core/overview.service';
 import { StoreService } from '../../core/store.service';
 import { IconComponent } from '../../shared/icon.component';
+import { TiltDirective } from '../../shared/v2/spatial';
 import { HoldingSheetComponent } from '../../shared/v2/holding-sheet.component';
 
 /** A card on the page: Equity joins India and Global stocks; every other card is one group. */
@@ -32,11 +33,11 @@ interface Card extends CardDef { value: number; pct: number; change: string | nu
 @Component({
   selector: 'app-portfolio',
   standalone: true,
-  imports: [IconComponent, HoldingSheetComponent],
+  imports: [IconComponent, HoldingSheetComponent, RouterLink, TiltDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
   <div class="v2">
-    <section class="v-card summary">
+    <section class="v-card summary" [vTilt]="4">
       <div class="sum">
         <div><div class="v-mut lb">Total value</div><div class="v-num big">{{ money(total()) }}</div></div>
         <div class="right"><div class="v-mut lb">Total gain · return a year</div>
@@ -52,6 +53,7 @@ interface Card extends CardDef { value: number; pct: number; change: string | nu
       }
     </div>
 
+    <div class="cards">
     @for (c of cards(); track c.key) {
       <section class="v-card grp" [class.open]="isOpen(c.key)">
         <button class="ghead" (click)="toggle(c.key)" [attr.aria-expanded]="isOpen(c.key)">
@@ -62,8 +64,15 @@ interface Card extends CardDef { value: number; pct: number; change: string | nu
           <app-icon class="chev" [name]="isOpen(c.key) ? 'chevronDown' : 'chevronRight'" [size]="18" [stroke]="2.2" />
         </button>
         @if (isOpen(c.key)) {
+          @if (c.key === 'p2p') {
+            <a class="cashrow" routerLink="/cash-flows" [queryParams]="{ account: 'p2p_escrow' }">
+              <span class="v-ic sm" style="--c:var(--g-p2p)"><app-icon name="wallet2" [size]="15" /></span>
+              <span class="grow"><span class="n">Escrow balance</span><span class="s">Money on the platform not lent out yet · not counted in net worth</span></span>
+              <b>{{ money(escrow()) }}</b>
+            </a>
+          }
           @for (s of c.sections; track s.group) {
-            @if (s.label) { <div class="subhd"><span>{{ s.label }} · {{ s.rows.length + s.hidden }}</span><span>{{ money(s.value) }}</span></div> }
+            @if (s.label) { <div class="subhd"><span>{{ s.label }} · {{ s.rows.length + s.hidden }}{{ s.group === 'equity_global' && usdCash() !== null ? ' · ' + usd(usdCash()) + ' cash' : '' }}</span><span>{{ money(s.value) }}</span></div> }
             @for (p of s.rows; track p.id) {
               <button class="hold" (click)="openHolding(p.id)">
                 <span class="v-logo" [style.--c]="logo(p.name)">{{ ini(p.name) }}</span>
@@ -79,6 +88,7 @@ interface Card extends CardDef { value: number; pct: number; change: string | nu
       @if (!store.portfolio()) { @for (i of [1, 2, 3]; track i) { <div class="v-skel" style="height:76px"></div> } }
       @else { <div class="v-card v-empty">No holdings yet. Tap + to add your first.</div> }
     }
+    </div>
 
     @if (closedCount()) {
       <button class="v-link closedt" (click)="showClosed.set(!showClosed())">{{ showClosed() ? 'Hide' : 'Show' }} {{ closedCount() }} sold or closed holding{{ closedCount() === 1 ? '' : 's' }}</button>
@@ -87,10 +97,10 @@ interface Card extends CardDef { value: number; pct: number; change: string | nu
   @if (holdingId(); as id) { <v-holding-sheet [id]="id" (closed)="closeHolding()" /> }
   `,
   styles: [`
-    .summary { background: radial-gradient(120% 120% at 100% 0%, #3b2a8c 0%, rgba(59, 42, 140, 0) 60%), linear-gradient(150deg, #1a1534, #2a2060);
-      color: #fff; border: 0; box-shadow: 0 16px 34px -14px rgba(26, 21, 52, .6); }
+    .summary { background: radial-gradient(120% 120% at 100% 0%, rgba(244, 63, 94, .55) 0%, rgba(244, 63, 94, 0) 55%), linear-gradient(135deg, #6d28d9, #a21caf) !important;
+      color: #fff; border: 1px solid rgba(255,255,255,.25) !important; box-shadow: 0 28px 60px -24px rgba(217, 70, 239, .6) !important; }
     .summary .lb { color: rgba(255,255,255,.7) !important; }
-    .summary .v-gain { color: #6ee7b7; } .summary .v-loss { color: #fca5a5; }
+    .summary .v-gain { color: #bbf7d0; } .summary .v-loss { color: #fecdd3; }
     .summary .stack { background: rgba(255,255,255,.12); padding: 2px; height: 14px; }
     .summary .stack b { border-radius: 99px; }
     .sum { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; }
@@ -118,10 +128,19 @@ interface Card extends CardDef { value: number; pct: number; change: string | nu
     .hold .r { text-align: right; display: flex; flex-direction: column; flex: none; }
     .hold .r b { font-weight: 700; }
     .t-gain { color: var(--pos); } .t-loss { color: var(--neg); } .t-mut { color: var(--muted); } .t-warn { color: var(--warn); }
+    .cashrow { display: flex; align-items: center; gap: 11px; margin: 12px 0 2px; padding: 10px 12px; border-radius: 14px;
+      background: rgba(240, 96, 158, .16); border: 1px solid rgba(240, 96, 158, .3); text-decoration: none; color: inherit; }
+    .cashrow .n { font-weight: 700; font-size: 13.5px; } .cashrow .s { font-size: 11.5px; color: var(--muted); }
+    .cashrow b { font-weight: 800; white-space: nowrap; }
     .moreb { width: 100%; text-align: center; font: inherit; font-size: 13px; font-weight: 600; color: var(--accent); padding: 10px 0 2px; border: 0;
       border-top: 1px solid var(--border); background: none; cursor: pointer; }
     .closedt { align-self: center; margin-top: 4px; }
-    @media (min-width: 1000px) { .v2 { max-width: 860px; } }
+    .cards { display: block; }
+    @media (min-width: 900px) {
+      .cards { column-count: 2; column-gap: 14px; }
+      .cards > * { break-inside: avoid; margin-bottom: 14px; display: block; }
+    }
+    @media (min-width: 900px) { .cards > .grp { display: block; } }
   `],
 })
 export class PortfolioComponent {
@@ -130,7 +149,7 @@ export class PortfolioComponent {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
 
-  money = money; pctV = pctV; line = holdingLine; ini = initials; logo = logoColor;
+  money = money; pctV = pctV; usd = usd; line = holdingLine; ini = initials; logo = logoColor;
 
   private qp = toSignal(this.route.queryParamMap.pipe(map(q => ({ group: q.get('group'), holding: q.get('holding') }))),
     { initialValue: { group: null as string | null, holding: null as string | null } });
@@ -147,6 +166,13 @@ export class PortfolioComponent {
 
   private positions = computed(() => this.store.positions().filter(p => this.showClosed() || p.is_open || (p.asset_class === 'cash' && p.value > 0)));
   closedCount = computed(() => this.store.positions().filter(p => !p.is_open && p.asset_class !== 'cash').length);
+  /** P2P escrow: Σ in − Σ out of the escrow account (as on the classic Cash flows page). */
+  escrow = computed(() => this.store.portfolio()?.contributions?.p2p_escrow_balance ?? 0);
+  /** Dollars in the USD wallet(s). */
+  usdCash = computed(() => {
+    const w = this.store.positions().filter(p => p.asset_class === 'cash');
+    return w.length ? w.reduce((s, p) => s + (p.balance_usd ?? 0), 0) : null;
+  });
   total = computed(() => this.ovs.data()?.totals.value ?? this.store.portfolio()?.totals.value ?? 0);
   gain = computed(() => this.ovs.data()?.totals.gain ?? this.store.portfolio()?.totals.total_gain ?? 0);
   xirr = computed(() => this.ovs.data()?.totals.xirr ?? null);

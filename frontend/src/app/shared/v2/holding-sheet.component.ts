@@ -45,8 +45,8 @@ const TYPE_LABEL: Record<string, string> = { BUY: 'Buy', SELL: 'Sell', DIVIDEND:
       @switch (tab()) {
         @case ('overview') {
           @if (chart(); as c) {
-            <v-area [a]="c.price" [b]="c.cost" [labels]="c.ticks" [h]="104" [color]="color()" [dashB]="true" label="Price against your average cost" />
-            <div class="v-legend"><span [style.--c]="color()">Price</span>@if (c.cost) { <span style="--c:#c9c5d8">Your avg cost</span> }</div>
+            <v-area [a]="c.price" [b]="c.cost" [labels]="c.ticks" [h]="104" [color]="color()" colorB="var(--chart-b)" [dashB]="true" label="Price against your average cost" />
+            <div class="v-legend"><span [style.--c]="color()">Price</span>@if (c.cost) { <span style="--c:var(--chart-b)">Your avg cost</span> }</div>
           }
           <div class="v-stats" style="margin:14px 0 12px">
             @for (s of stats(); track s.label) { <div><small>{{ s.label }}</small><b [class.v-gain]="s.tone === 'gain'" [class.v-loss]="s.tone === 'loss'">{{ s.value }}</b></div> }

@@ -14,6 +14,7 @@ import { readSnapshot, snapshotKey, writeSnapshot } from '../../core/snapshot';
 import { StoreService } from '../../core/store.service';
 import { ToastService } from '../../core/toast.service';
 import { IconComponent } from '../../shared/icon.component';
+import { TiltDirective } from '../../shared/v2/spatial';
 import { AreaChartComponent, DonutComponent } from '../../shared/v2/charts';
 import { HoldingSheetComponent } from '../../shared/v2/holding-sheet.component';
 import { GroupSheetComponent } from '../../shared/v2/group-sheet.component';
@@ -29,7 +30,7 @@ const PROFILES = [
 @Component({
   selector: 'app-analysis',
   standalone: true,
-  imports: [FormsModule, IconComponent, AreaChartComponent, DonutComponent, HoldingSheetComponent, GroupSheetComponent],
+  imports: [FormsModule, IconComponent, AreaChartComponent, DonutComponent, HoldingSheetComponent, GroupSheetComponent, TiltDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
   <div class="v2">
@@ -117,7 +118,7 @@ const PROFILES = [
           <div><small>Worst fall</small><b>{{ pctV(perf()?.metrics?.max_drawdown) }}</b></div>
         </div>
         <div style="margin-top:12px"><v-area [a]="growth().value" [b]="growth().invested" [labels]="growth().ticks" [h]="120" label="Value against money invested" /></div>
-        <div class="v-legend"><span style="--c:#6a46f5">Value</span><span style="--c:#c9c5d8">Money invested</span></div>
+        <div class="v-legend"><span style="--c:var(--chart-a)">Value</span><span style="--c:var(--chart-b)">Money invested</span></div>
       </section>
       <div class="v-grid cols-3">
       <section class="v-card">
@@ -150,19 +151,19 @@ const PROFILES = [
       <section class="v-card">
         @if (ov(); as o) {
           <div class="score">
-            <v-donut [parts]="[{ value: o.market.groups_ahead, color: '#12a16b' }, { value: Math.max(o.market.groups_compared - o.market.groups_ahead, 0), color: '#efedf5' }]"
+            <v-donut [parts]="[{ value: o.market.groups_ahead, color: '#4ade80' }, { value: Math.max(o.market.groups_compared - o.market.groups_ahead, 0), color: 'rgba(255,255,255,.16)' }]"
               [size]="84" [thickness]="11" [bottom]="o.market.groups_ahead + '/' + o.market.groups_compared" [bottomSize]="19" label="Groups at or above their market" />
             <div><div class="headline">You beat {{ o.market.groups_ahead }} of {{ o.market.groups_compared }} markets</div>
               <div class="v-mut sub">Overall {{ pctV(o.totals.xirr) }} a year vs {{ pctV(o.market.xirr) }} for the same money in each part's own market</div></div>
           </div>
           @if (marketChart(); as mc) {
             <div style="margin-top:14px"><v-area [a]="mc.you" [b]="mc.market" [labels]="mc.ticks" [h]="112" colorB="#f0609e" [dashB]="true" label="Your value against the same money in the market" /></div>
-            <div class="v-legend"><span style="--c:#6a46f5">You</span><span style="--c:#f0609e">Same money in the market</span></div>
+            <div class="v-legend"><span style="--c:var(--chart-a)">You</span><span style="--c:#f0609e">Same money in the market</span></div>
           }
         } @else { <div class="v-skel" style="height:180px"></div> }
       </section>
       <section class="v-card">
-        <div class="v-ch"><h2>Each group vs its market</h2><span class="hint">tap one for the working</span></div>
+        <div class="v-ch"><h2>Each group vs its market</h2></div>
         @for (g of compared(); track g.key) {
           <button class="v-row" (click)="explain.set(g.key)">
             <span class="res" [class.ok]="g.bench?.verdict !== 'behind'" [class.no]="g.bench?.verdict === 'behind'">
@@ -184,7 +185,7 @@ const PROFILES = [
         <div class="v-mut lead">{{ o.suggestions.length ? o.suggestions.length + ' idea' + (o.suggestions.length > 1 ? 's' : '') + ' · most urgent and biggest first' : '' }}</div>
         <div class="v-grid cols-2">
         @for (s of o.suggestions; track s.id; let i = $index) {
-          <section class="v-card sug">
+          <section class="v-card sug" vTilt>
             <span class="rk">#{{ i + 1 }}</span>
             <div class="top"><span class="v-tone" [class]="s.tone"><app-icon [name]="s.icon" [size]="20" /></span>
               <div><div class="t">{{ s.title }}</div><div class="s">{{ s.detail }}</div></div></div>
@@ -207,7 +208,7 @@ const PROFILES = [
     .mrow .grow { min-width: 0; flex: 1; }
     .mrow .nm { font-size: 13.5px; font-weight: 600; display: flex; justify-content: space-between; margin-bottom: 6px; gap: 6px; }
     .mrow .nm b { font-weight: 800; }
-    .gap { font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 6px; min-width: 42px; text-align: center; background: #eef0f5; color: var(--text-2); }
+    .gap { font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 6px; min-width: 42px; text-align: center; background: var(--bg); color: var(--text-2); }
     .gap.u { background: var(--warn-soft); color: var(--warn); } .gap.k { background: var(--pos-soft); color: var(--pos); }
     .mark { font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 6px; margin-top: 4px; }
     .mark span { width: 3px; height: 12px; background: var(--ink); border-radius: 2px; }

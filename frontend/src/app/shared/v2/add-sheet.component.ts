@@ -27,7 +27,7 @@ interface Tile { label: string; icon: string; color: string; kind: AddKind; mark
         @for (m of more; track m.label) { <button class="v-btn sm" (click)="dialog.add(m.kind)">{{ m.label }}</button> }
       </div>
       <button class="import" (click)="importIt()">
-        <span class="v-tone brand" style="background:#fff"><app-icon name="upload" [size]="19" /></span>
+        <span class="v-tone brand"><app-icon name="upload" [size]="19" /></span>
         <span class="grow"><b>Import a statement</b><small>CAS · Kite · EPF passbook · LenDenClub · CSV</small></span>
         <app-icon name="chevronRight" [size]="18" [stroke]="2.4" />
       </button>
@@ -38,11 +38,11 @@ interface Tile { label: string; icon: string; color: string; kind: AddKind; mark
     .sub { font-size: 13.5px; font-weight: 500; margin: 2px 0 16px; }
     .tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
     .tile { border-radius: 18px; padding: 14px 6px 12px; text-align: center; font: inherit; font-size: 12.5px; font-weight: 700; border: 0; cursor: pointer;
-      background: color-mix(in srgb, var(--c) 9%, white); color: var(--text); display: flex; flex-direction: column; align-items: center; }
+      background: color-mix(in srgb, var(--c) 20%, transparent); border: 1px solid color-mix(in srgb, var(--c) 35%, transparent); color: #fff; display: flex; flex-direction: column; align-items: center; }
     .bi { width: 42px; height: 42px; border-radius: 14px; margin-bottom: 8px; display: grid; place-items: center; color: #fff; background: var(--c);
       box-shadow: 0 6px 14px color-mix(in srgb, var(--c) 40%, transparent); }
     .more { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-    .import { display: flex; align-items: center; gap: 12px; width: 100%; background: var(--accent-soft); border-radius: 18px; padding: 13px;
+    .import { display: flex; align-items: center; gap: 12px; width: 100%; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.16) !important; border-radius: 18px; padding: 13px;
       margin-top: 12px; border: 0; cursor: pointer; font: inherit; text-align: left; color: var(--accent); }
     .import .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; color: var(--text); }
     .import small { color: var(--muted); font-size: 12.5px; font-weight: 500; }
