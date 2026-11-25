@@ -166,7 +166,7 @@ def trace_txn(t: dict, inst: dict, inst_txns: list[dict], port: dict, linked_cas
                                code="analytics/portfolio.py · external_flows"))
         else:
             why = ("it happens inside your US broker account; the rupee transfer to that account is the cash flow"
-                   if pos["segment"] == d.SEG_EQ_US and pos["owner"] in owners and typ in (d.BUY, d.SELL)
+                   if pos["segment"] == d.SEG_EQ_US and pos["owner"] in owners and typ in (d.BUY, d.SELL, d.DIVIDEND, d.INTEREST)
                    else "no money crossed into or out of the portfolio")
             steps.append(_step("xirr", "Return (XIRR)", f"Not a cash flow: {why}", tone="info", icon="repeat",
                                code="analytics/portfolio.py · external_flows"))

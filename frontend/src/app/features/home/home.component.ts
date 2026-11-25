@@ -37,7 +37,12 @@ type Range = '6M' | '1Y' | 'ALL';
     <div class="v-grid hero-row">
       <!-- hero -->
       <section class="v-hero" aria-label="Net worth">
-        @if (heroSpark().length > 1) { <v-spark class="spark" [values]="heroSpark()" color="rgba(255,255,255,.9)" [w]="120" [h]="40" [stroke]="2.2" /> }
+        @if (heroArea(); as ha) {
+          <svg class="harea" viewBox="0 0 400 100" preserveAspectRatio="none" aria-hidden="true">
+            <defs><linearGradient id="hfill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".28" /><stop offset="1" stop-color="#fff" stop-opacity="0" /></linearGradient></defs>
+            <path [attr.d]="ha.area" fill="url(#hfill)" /><path [attr.d]="ha.line" fill="none" stroke="rgba(255,255,255,.75)" stroke-width="2" vector-effect="non-scaling-stroke" />
+          </svg>
+        }
         <div class="lbl">Net worth</div>
         @if (ov(); as o) {
           <div class="big">{{ money(o.totals.value) }}</div>
@@ -99,7 +104,8 @@ type Range = '6M' | '1Y' | 'ALL';
       @for (g of groups(); track g.key) {
         <button class="v-row" (click)="explain.set(g.key)" [style.--c]="meta(g.key).color">
           <span class="v-ic"><app-icon [name]="meta(g.key).icon" [size]="17" /></span>
-          <div class="grow"><div class="t">{{ g.label }}</div><div class="s">{{ money(g.value) }} · {{ money(g.gain, true) }}</div></div>
+          <div class="grow"><div class="t">{{ g.label }}</div><div class="s">{{ money(g.value) }} · {{ money(g.gain, true) }}</div>
+            <div class="v-share"><b [style.width.%]="g.pct * 100 / maxPct()"></b></div></div>
           <v-spark class="hide-xs" [values]="spark(g.key)" [color]="hex(g.key)" [w]="44" [h]="22" />
           <div class="r" style="width:104px"><b>{{ pctV(g.xirr) }}<small class="yr"> /yr</small></b>
             @if (g.bench?.verdict; as v) {
@@ -133,7 +139,8 @@ type Range = '6M' | '1Y' | 'ALL';
     .cap { font-size: 12.5px; color: var(--muted); margin: -6px 4px 0; font-weight: 500; }
     .yr { font-size: 11px; color: var(--muted); font-weight: 600; }
     .v-hero { min-height: 212px; }
-    .v-hero .spark { top: 74px; right: 16px; opacity: .55; }
+    .harea { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 58%; z-index: 0 !important; pointer-events: none; }
+    @media (max-width: 999px) { .v-hero .glass { margin-top: 70px; } .harea { height: 62%; } }
     .prices { position: absolute; top: 14px; right: 14px; display: inline-flex; align-items: center; gap: 5px; font: inherit; font-size: 11.5px;
       font-weight: 600; color: #fff; background: rgba(255,255,255,.14); border: 0; border-radius: 99px; padding: 4px 9px; cursor: pointer; }
     .mix { display: grid; grid-template-columns: 128px minmax(0, 1fr); gap: 14px; align-items: center; }
@@ -188,6 +195,7 @@ export class HomeComponent {
   groups = computed<GroupRow[]>(() => (this.ov()?.groups ?? []).filter(g => g.value > 0.5 || (g.target ?? 0) > 0));
   donut = computed(() => this.groups().map(g => ({ value: g.value, color: this.hex(g.key), label: g.label })));
   offTarget = computed(() => this.groups().filter(g => g.gap !== null && Math.abs(g.gap) >= 1).length);
+  maxPct = computed(() => Math.max(1, ...this.groups().map(g => g.pct)));
   attention = computed<Suggestion[]>(() => (this.ov()?.suggestions ?? []).slice(0, 3));
   pricesAge = computed(() => ago(this.store.portfolio()?.prices?.last_refresh));
 
@@ -196,6 +204,15 @@ export class HomeComponent {
     return { value: s.map(p => p.value), invested: s.map(p => p.net_invested), ticks: monthTicks(s.map(p => p.date)) };
   });
   heroSpark = computed(() => this.growth().value.slice(-60));
+  /** The year's value as a soft filled curve along the bottom of the hero (decorative; the Growth card has the real chart). */
+  heroArea = computed(() => {
+    const v = this.growth().value;
+    if (v.length < 2) return null;
+    const lo = Math.min(...v), hi = Math.max(...v), span = hi - lo || 1;
+    const pts = v.map((x, i) => [(i / (v.length - 1)) * 400, 92 - ((x - lo) / span) * 62]);
+    const line = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
+    return { line, area: `${line} L400,100 L0,100 Z` };
+  });
 
   constructor() {
     effect(() => {

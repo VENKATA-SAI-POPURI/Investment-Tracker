@@ -9,7 +9,7 @@ from datetime import date, timedelta
 from .. import domain as d
 from .assumptions import RISK_FREE  # ~ Indian 1-year T-bill; one source in the Assumption Book
 from .portfolio import (EPF_DEFAULT_RATE, EPS, epf_accrued, epf_balance, fd_accrued, fd_value, p2p_repaid, p2p_write_down_from,
-                        run_fifo, to_date, _f)
+                        run_fifo, to_date, usd_of, deposit_rates, _f)
 from .xirr import xirr
 
 RANGES = {"1M": 30, "3M": 91, "6M": 182, "1Y": 365, "3Y": 1095, "5Y": 1826}
@@ -80,7 +80,8 @@ def build_history(instruments: list[dict], txns: list[dict], price_hist: dict[st
                 if not usd_internal:
                     flows_by_day[day] -= amt
             elif typ in (d.DIVIDEND, d.INTEREST, d.REPAYMENT, d.MATURITY):
-                flows_by_day[day] -= amt
+                if not usd_internal:   # a US dividend stays in the USD wallet
+                    flows_by_day[day] -= amt
         if ac in d.UNITISED:
             q, qe, ce, factors = 0.0, [], [], []
             dates = sorted({str(t["date"])[:10] for t in ts})
@@ -110,6 +111,8 @@ def build_history(instruments: list[dict], txns: list[dict], price_hist: dict[st
                 adjusted.append((day, qty * mult))
             qty_events[iid], cost_events[iid] = adjusted, ce
 
+    dep_rate = deposit_rates(instruments, txns, usd_inr or fallback_fx)
+
     def wallet_fc_events(inst):
         events = defaultdict(float)
         for t in by_inst[inst["id"]]:
@@ -121,8 +124,10 @@ def build_history(instruments: list[dict], txns: list[dict], price_hist: dict[st
             if other["owner"] == inst["owner"] and other["asset_class"] == d.EQUITY and other.get("currency") == "USD":
                 for t in by_inst.get(other["id"], []):
                     if t["type"] in (d.BUY, d.SELL):
-                        fc = _f(t["amount_fc"]) or (_f(t["amount"]) / fallback_fx if fallback_fx else 0)
+                        fc = usd_of(t, dep_rate.get(inst["owner"]))
                         events[str(t["date"])[:10]] += -fc if t["type"] == d.BUY else fc
+                    elif t["type"] in (d.DIVIDEND, d.INTEREST):
+                        events[str(t["date"])[:10]] += usd_of(t, dep_rate.get(inst["owner"]))
         bal, out = 0.0, []
         for day in sorted(events):
             bal += events[day]

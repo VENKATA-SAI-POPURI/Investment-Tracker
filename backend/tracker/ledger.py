@@ -396,6 +396,8 @@ class Ledger:
             label = "EPF" if ac == d.EPF else "NPS"
             cash("capital", "in" if typ == d.BUY else "out", label, "Deposit" if typ == d.BUY else "Withdrawal",
                  f"{name} {'contribution' if typ == d.BUY else 'withdrawal'}")
+        elif typ == d.DIVIDEND and inst.get("currency") == "USD" and self._has_wallet(owner):
+            pass   # paid into the USD wallet: it stays in the US account (the wallet balance rises)
         elif typ == d.DIVIDEND:
             cash("capital", "out", "Equity/Commodity", "Withdrawal", f"{name} dividend")
         return rows
@@ -407,6 +409,8 @@ class Ledger:
         (d.COMMODITY, d.SELL): "Like stocks: no cash entry.",
         (d.FIXED_DEPOSIT, d.INTEREST): "Interest paid out to your bank creates no cash entry (the maturity does).",
         (d.EPF, d.CREDIT): "Interest credited stays inside EPF: not money in or out.",
+        (d.EQUITY, d.DIVIDEND): "Indian dividends go to your bank (money out). US dividends are paid into the USD wallet "
+                                "and stay in the US account, so they make no cash entry and raise the wallet balance.",
         (d.P2P, d.REPAYMENT): "The whole repayment (principal and interest) counts as money taken out. The escrow "
                               "entry is made only for imported repayments.",
     }
@@ -430,6 +434,9 @@ class Ledger:
                             "import_entries": variants[1]["entries"] if len(variants) > 1 else None,
                             "note": self.CASH_RULE_NOTES.get((ac, typ))})
         return out
+
+    def _has_wallet(self, owner: str) -> bool:
+        return bool(self.db.one("SELECT 1 AS x FROM instruments WHERE owner = ? AND asset_class = ? LIMIT 1", (owner, d.CASH)))
 
     def _auto_enabled(self, owner: str) -> bool:
         s = self.get_settings(owner, "user")

@@ -569,6 +569,16 @@ def m006_sip_goal(db: Database) -> list:
     return [("ALTER TABLE sip_plans ADD COLUMN goal_id INTEGER", None)]
 
 
+def m007_us_dividends_in_wallet(db: Database) -> list:
+    """US stock dividends are paid into the USD wallet and stay in the US account. Remove the automatic
+    "money out" cash entries earlier versions made for them (only for owners who have a USD wallet; entries
+    typed by hand are kept)."""
+    return [("DELETE FROM cash_movements WHERE source = 'auto' AND transaction_id IN ("
+             "SELECT t.id FROM transactions t JOIN instruments i ON i.id = t.instrument_id "
+             "WHERE t.type = 'DIVIDEND' AND i.currency = 'USD' AND i.asset_class = 'equity' "
+             "AND i.owner IN (SELECT owner FROM instruments WHERE asset_class = 'cash'))", None)]
+
+
 MIGRATIONS = [
     (1, "core_schema", m001_core_schema),
     (2, "legacy_import", m002_legacy_import),
@@ -576,6 +586,7 @@ MIGRATIONS = [
     (4, "planning", m004_planning),
     (5, "actions_snapshots", m005_actions_snapshots),
     (6, "sip_goal", m006_sip_goal),
+    (7, "us_dividends_in_wallet", m007_us_dividends_in_wallet),
 ]
 
 

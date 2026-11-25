@@ -161,7 +161,7 @@ const PROFILES = [
         } @else { <div class="v-skel" style="height:180px"></div> }
       </section>
       <section class="v-card">
-        <div class="v-ch"><h2>Each group vs its market</h2><span class="hint">return a year · tap for the working</span></div>
+        <div class="v-ch"><h2>Each group vs its market</h2><span class="hint">tap one for the working</span></div>
         @for (g of compared(); track g.key) {
           <button class="v-row" (click)="explain.set(g.key)">
             <span class="res" [class.ok]="g.bench?.verdict !== 'behind'" [class.no]="g.bench?.verdict === 'behind'">
