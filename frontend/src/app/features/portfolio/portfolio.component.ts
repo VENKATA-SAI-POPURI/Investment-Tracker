@@ -99,8 +99,8 @@ interface Card extends CardDef { value: number; pct: number; change: string | nu
   @if (holdingId(); as id) { <v-holding-sheet [id]="id" (closed)="closeHolding()" /> }
   `,
   styles: [`
-    .summary { background: radial-gradient(110% 90% at 100% 0%, rgba(168, 140, 255, .5) 0%, rgba(168, 140, 255, 0) 55%), linear-gradient(140deg, #5b3fd9 0%, #6d4ae8 55%, #4f3bc4 100%) !important;
-      color: #fff; border: 0 !important; box-shadow: inset 0 1px 1px rgba(255,255,255,.45), 0 20px 44px -22px rgba(91, 63, 217, .7) !important; }
+    .summary { background: var(--hero) !important; color: #fff; border: 1px solid rgba(255,255,255,.12) !important;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.16), 0 24px 50px -24px rgba(76,62,200,.6) !important; }
     .summary .lb { color: rgba(255,255,255,.7) !important; }
     .summary .v-gain { color: #bbf7d0; } .summary .v-loss { color: #fecdd3; }
     .summary .stack { background: rgba(255,255,255,.12); padding: 2px; height: 14px; }
@@ -131,7 +131,7 @@ interface Card extends CardDef { value: number; pct: number; change: string | nu
     .hold .r b { font-weight: 700; }
     .t-gain { color: var(--pos); } .t-loss { color: var(--neg); } .t-mut { color: var(--muted); } .t-warn { color: var(--warn); }
     .cashrow { display: flex; align-items: center; gap: 11px; flex-wrap: wrap; margin: 12px 0 2px; padding: 10px 12px; border-radius: 14px;
-      background: rgba(240, 96, 158, .16); border: 1px solid rgba(240, 96, 158, .3); text-decoration: none; color: inherit; }
+      background: rgba(251, 113, 133, .1); border: 1px solid rgba(251, 113, 133, .25); text-decoration: none; color: inherit; }
     .cashrow .n { font-weight: 700; font-size: 13.5px; } .cashrow .s { font-size: 11.5px; color: var(--muted); }
     .cashrow b { font-weight: 800; white-space: nowrap; }
     .cashrow .v-btn { flex: none; }

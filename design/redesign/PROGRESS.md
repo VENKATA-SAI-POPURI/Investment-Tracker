@@ -128,6 +128,17 @@ charges); automatic cash rules unchanged but now shown on Activity › Rules wit
 - v8: Tax, Reports, Settings, the classic tools, dialogs (`app-modal`) and pop-up menus use the same midnight tokens
   (`@mixin midnight` on `.page`, `app-modal`, `app-shell .pop`) with dark versions of the shared components.
 
+- v9 one design system (owner: misalignment, background breaks on scroll, plain sidebar, no motion, poor colours,
+  small type). `styles.scss` keeps the base (first ~500 lines) and then one system: dark navy tokens on `:root`
+  (`--bg #0b1120`, surfaces `--surface/-2/-3`, indigo `--primary #6366f1`, `--pos/--neg/--warn`), a fixed backdrop on
+  `body::before` (continuous when scrolling), larger type (`--fs-body` 15px, 16px ≥ 1400 px), solid cards, pill
+  controls, rows ≥ 64 px. Old `.page` classes map onto the same tokens. Group colours: India #60a5fa, Global #a78bfa,
+  MF #2dd4bf, P2P #fb7185, Commodities #fbbf24, EPF #fb923c, Others #94a3b8 (`GROUP_HEX` + `--g-*`).
+  Sidebar (`shell.component.scss`, 268 px): icon tiles, gradient active tile with an indicator bar, net-worth card
+  and profile row at the foot. Motion: route View Transitions (`withViewTransitions`), fade/slide-in keyframes,
+  Home net worth counts up; all off with reduced motion. Home group rows sit on one grid
+  (`40px 1fr 64px 112px`; ≤ 480 px the sparkline hides). Settings › Your plans reads `groupTargets` and links to Analysis › Mix.
+
 ## Settings added to the Settings page (App & calculations)
 
 - "Show the classic tools in the menu" → `advancedFeatures`.

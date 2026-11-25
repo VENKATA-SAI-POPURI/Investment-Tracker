@@ -156,8 +156,8 @@ const PROFILES = [
               <div class="v-mut sub">Overall {{ pctV(o.totals.xirr) }} a year vs {{ pctV(o.market.xirr) }} for the same money in each part's own market</div></div>
           </div>
           @if (marketChart(); as mc) {
-            <div style="margin-top:14px"><v-area [a]="mc.you" [b]="mc.market" [labels]="mc.ticks" [h]="112" colorB="#d9b56f" [dashB]="true" label="Your value against the same money in the market" /></div>
-            <div class="v-legend"><span style="--c:var(--chart-a)">You</span><span style="--c:#d9b56f">Same money in the market</span></div>
+            <div style="margin-top:14px"><v-area [a]="mc.you" [b]="mc.market" [labels]="mc.ticks" [h]="112" colorB="#fbbf24" [dashB]="true" label="Your value against the same money in the market" /></div>
+            <div class="v-legend"><span style="--c:var(--chart-a)">You</span><span style="--c:#fbbf24">Same money in the market</span></div>
           }
         } @else { <div class="v-skel" style="height:180px"></div> }
       </section>

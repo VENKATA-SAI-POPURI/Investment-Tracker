@@ -43,7 +43,7 @@ const GLOBAL_OWNER = '__global__';
 const INHERIT_GROUPS = {
   cushion: ['emergencyFund'],
   tax: ['taxSlabRate'],
-  plans: ['targetAllocation', 'riskProfile', 'retirementPlan'],
+  plans: ['targetAllocation', 'groupTargets', 'riskProfile', 'retirementPlan'],
   flows: ['autoCapitalFlows'],
   alerts: ['marketAlerts'],
   assumptions: ['assumptions'],
@@ -405,7 +405,8 @@ export class SettingsComponent {
     .sort((a, b) => Number(b.is_open) - Number(a.is_open) || a.name.localeCompare(b.name)));
 
   // ── Read-only summaries ──
-  readonly targetsSet = computed(() => Object.values(this.store.settings().targetAllocation ?? {}).some(v => +v > 0));
+  readonly targetsSet = computed(() => [this.store.settings().groupTargets, this.store.settings().targetAllocation]
+    .some(t => Object.values(t ?? {}).some(v => +v > 0)));
   readonly profileLabel = computed(() => {
     const k = this.store.settings().riskProfile;
     return k ? (PROFILE_LABEL[k] ?? k) : null;

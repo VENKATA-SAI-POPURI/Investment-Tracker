@@ -46,7 +46,7 @@ type Range = '6M' | '1Y' | 'ALL';
         }
         <div class="lbl">Net worth</div>
         @if (ov(); as o) {
-          <div class="big">{{ money(o.totals.value) }}</div>
+          <div class="big">{{ money(shownValue()) }}</div>
           <span class="chipw"><app-icon [name]="o.totals.day_change < 0 ? 'arrowDownRight' : 'arrowUpRight'" [size]="14" [stroke]="2.6" />
             {{ money(o.totals.day_change) }} · {{ pctV(o.totals.day_change_pct, 2) }} today</span>
           <div class="glass">
@@ -82,7 +82,7 @@ type Range = '6M' | '1Y' | 'ALL';
       <section class="v-card">
         <div class="v-ch"><h2>Your mix</h2><span class="hint">{{ ov()?.targets?.has_mine ? 'vs your target' : 'share of everything' }}</span></div>
         <div class="mix">
-          <v-donut [parts]="donut()" [size]="128" [thickness]="19" [top]="groups().length + ' groups'" [bottom]="money(ov()?.totals?.value)" />
+          <v-donut [parts]="donut()" [size]="136" [thickness]="18" [top]="groups().length + ' groups'" [bottom]="money(ov()?.totals?.value)" />
           <div class="mixleg">
             @for (g of groups(); track g.key) {
               <div class="lg"><span class="d" [style.background]="hex(g.key)"></span><span class="nm">{{ g.label }}</span><b>{{ g.pct.toFixed(0) }}%</b>
@@ -100,22 +100,22 @@ type Range = '6M' | '1Y' | 'ALL';
 
     <!-- each part -->
     <div class="v-sec"><h2>How each part is doing</h2><a class="v-link" routerLink="/analysis" [queryParams]="{ tab: 'market' }">Details <app-icon name="chevronRight" [size]="15" [stroke]="2.4" /></a></div>
-    <p class="cap">Return a year · its total gain · points above or below the same money in its market (Nifty 500, S&amp;P 500, gold, FD or EPFO rate). Tap one to see the working.</p>
+    <p class="cap">Yearly return, total gain, and how far ahead or behind the same money in its market. Tap one for the working.</p>
     <section class="v-card tight parts">
       @for (g of groups(); track g.key) {
-        <button class="v-row" (click)="explain.set(g.key)" [style.--c]="meta(g.key).color">
-          <span class="v-ic"><app-icon [name]="meta(g.key).icon" [size]="17" /></span>
-          <div class="grow"><div class="t">{{ g.label }}</div><div class="s">{{ money(g.value) }} · {{ money(g.gain, true) }}</div>
+        <button class="v-row prow" (click)="explain.set(g.key)" [style.--c]="meta(g.key).color">
+          <span class="v-ic"><app-icon [name]="meta(g.key).icon" [size]="19" /></span>
+          <div class="nm"><div class="t">{{ g.label }}</div><div class="s">{{ money(g.value) }} · <span [class.v-gain]="g.gain > 0" [class.v-loss]="g.gain < 0">{{ money(g.gain, true) }}</span></div>
             <div class="v-share"><b [style.width.%]="g.pct * 100 / maxPct()"></b></div></div>
-          <v-spark class="hide-xs" [values]="spark(g.key)" [color]="hex(g.key)" [w]="44" [h]="22" />
-          <div class="r" style="width:104px"><b>{{ pctV(g.xirr) }}<small class="yr"> /yr</small></b>
+          <v-spark class="sp" [values]="spark(g.key)" [color]="hex(g.key)" [w]="64" [h]="26" />
+          <div class="rv"><b>{{ pctV(g.xirr) }}<small class="yr"> /yr</small></b>
             @if (g.bench?.verdict; as v) {
               <span class="v-pill" [class.ok]="v === 'ahead'" [class.no]="v === 'behind'" [class.eq]="v === 'same'">{{ v === 'same' ? '≈ market' : pts(g.bench!.diff) }}</span>
             }
           </div>
         </button>
       } @empty {
-        @for (i of [1, 2, 3]; track i) { <div class="v-skel" style="height:44px;margin:10px 0"></div> }
+        @for (i of [1, 2, 3]; track i) { <div class="v-skel" style="height:52px;margin:12px 0"></div> }
       }
     </section>
 
@@ -137,42 +137,50 @@ type Range = '6M' | '1Y' | 'ALL';
   @if (explain(); as k) { <v-group-sheet [key]="k" (closed)="explain.set(null)" /> }
   `,
   styles: [`
-    .cap { font-size: 12.5px; color: var(--muted); margin: -6px 4px 0; font-weight: 500; }
-    .yr { font-size: 11px; color: var(--muted); font-weight: 600; }
-    .v-hero { min-height: 212px; }
-    .harea { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 58%; z-index: 0 !important; pointer-events: none; }
-    @media (max-width: 999px) { .v-hero .glass { margin-top: 70px; } .harea { height: 62%; } }
-    @media (min-width: 1000px) { .v-hero { display: flex; flex-direction: column; align-items: flex-start; } .v-hero .glass { margin-bottom: 96px; align-self: stretch; } .harea { height: 30%; } }
-    .prices { position: absolute; top: 14px; right: 14px; display: inline-flex; align-items: center; gap: 5px; font: inherit; font-size: 11.5px;
-      font-weight: 600; color: #fff; background: rgba(255,255,255,.14); border: 0; border-radius: 99px; padding: 4px 9px; cursor: pointer; }
-    .mix { display: grid; grid-template-columns: 128px minmax(0, 1fr); gap: 14px; align-items: center; }
-    .mixleg { min-width: 0; }
-    .lg { display: flex; align-items: center; font-size: 12.5px; padding: 3px 0; font-weight: 500; white-space: nowrap; min-width: 0; }
-    .lg .d { width: 9px; height: 9px; border-radius: 3px; margin-right: 8px; flex: none; }
-    .lg .nm { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-    .lg b { margin-left: auto; padding-left: 6px; font-weight: 700; }
-    .dl { font-size: 10.5px; font-weight: 700; padding: 1px 5px; border-radius: 5px; margin-left: 5px; min-width: 36px; text-align: center;
-      background: var(--bg); color: var(--text-2); }
+    .cap { font-size: var(--fs-small); color: var(--muted); margin: 0 2px; font-weight: 500; }
+    .yr { font-size: 12px; color: var(--muted); font-weight: 600; }
+    .v-hero { display: flex; flex-direction: column; min-height: 240px; }
+    .v-hero .glass { margin-top: auto; }
+    .harea { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 46%; z-index: -1; pointer-events: none; opacity: .9; }
+    .chipw { align-self: flex-start; }
+    .prices { position: absolute; top: 16px; right: 16px; display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 12px;
+      font-weight: 700; color: #fff; background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.16); border-radius: 99px; padding: 5px 11px;
+      cursor: pointer; transition: background .2s ease; }
+    .prices:hover { background: rgba(255,255,255,.22); }
+    @media (max-width: 999px) { .v-hero { min-height: 260px; } .v-hero .glass { margin-top: 64px; } }
+    .mix { display: grid; grid-template-columns: 136px minmax(0, 1fr); gap: 18px; align-items: center; flex: 1; }
+    .mixleg { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+    .lg { display: grid; grid-template-columns: 10px minmax(0, 1fr) 44px 48px; gap: 8px; align-items: center; font-size: 13.5px; padding: 4px 0; font-weight: 500; min-width: 0; }
+    .lg .d { width: 10px; height: 10px; border-radius: 3px; }
+    .lg .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
+    .lg b { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .dl { font-size: 11px; font-weight: 700; padding: 2px 0; border-radius: 6px; text-align: center; background: var(--surface-3); color: var(--text-2); font-variant-numeric: tabular-nums; }
     .dl.u { background: var(--warn-soft); color: var(--warn); } .dl.k { background: var(--pos-soft); color: var(--pos); }
-    .foot { display: flex; align-items: center; justify-content: space-between; background: var(--accent-soft); border: 1px solid var(--border); border-radius: 14px;
-      padding: 10px 12px; margin-top: 12px; font-size: 13px; font-weight: 600; color: var(--accent); text-decoration: none; }
+    .foot { display: flex; align-items: center; justify-content: space-between; background: var(--accent-soft); border: 1px solid rgba(99,102,241,.3); border-radius: 14px;
+      padding: 11px 14px; margin-top: 16px; font-size: var(--fs-small); font-weight: 700; color: var(--accent-strong); text-decoration: none; transition: background .2s ease; }
+    .foot:hover { background: rgba(99,102,241,.24); text-decoration: none; }
     .foot .go { display: inline-flex; align-items: center; gap: 2px; }
     .gain-in { margin-left: auto; font-weight: 700; }
     .gain-in::before { display: none; }
-    .parts .v-row .s { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .parts .v-row .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .attention .imp { font-size: 13.5px; white-space: nowrap; }
+    /* group rows: one grid, so names, trend lines and numbers line up in columns */
+    .prow { display: grid; grid-template-columns: 40px minmax(0, 1fr) 64px 112px; column-gap: 14px; }
+    .prow .nm { min-width: 0; }
+    .prow .t, .prow .s { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .prow .s { font-weight: 600; }
+    .prow .rv { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+    .prow .rv b { font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; }
+    .attention .imp { font-size: 14px; white-space: nowrap; }
     .attention .v-row .s { overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-    @media (max-width: 360px) { .hide-xs { display: none; } }
-    @media (max-width: 420px) {
-      .mix { grid-template-columns: 96px minmax(0, 1fr); gap: 10px; }
-      .mix v-donut svg { width: 96px; height: 96px; }
-      .lg { font-size: 12px; }
+    @media (max-width: 480px) {
+      .prow { grid-template-columns: 40px minmax(0, 1fr) 100px; } .prow .sp { display: none; }
+      .mix { grid-template-columns: 104px minmax(0, 1fr); gap: 12px; }
+      .mix v-donut svg { width: 104px; height: 104px; }
+      .lg { grid-template-columns: 9px minmax(0, 1fr) 38px 44px; gap: 6px; font-size: 12.5px; }
       .attention .v-row { flex-wrap: wrap; }
-      .attention .v-row .r { width: 100%; text-align: left; padding-left: 52px; margin-top: -4px; }
+      .attention .v-row .r { width: 100%; text-align: left; padding-left: 58px; margin-top: -6px; }
     }
     @media (min-width: 760px) {
-      .parts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 28px; padding: 6px 20px; }
+      .parts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 32px; }
       .parts .v-row:nth-child(2) { border-top: 0; }
     }
   `],
@@ -205,6 +213,21 @@ export class HomeComponent {
   donut = computed(() => this.groups().map(g => ({ value: g.value, color: this.hex(g.key), label: g.label })));
   offTarget = computed(() => this.groups().filter(g => g.gap !== null && Math.abs(g.gap) >= 1).length);
   maxPct = computed(() => Math.max(1, ...this.groups().map(g => g.pct)));
+  /** The net worth as shown: counts up to the new value whenever it changes (0.8 s, eased). */
+  shownValue = signal(0);
+  private countFrom = 0;
+  private countRaf = 0;
+  private countUp(to: number) {
+    cancelAnimationFrame(this.countRaf);
+    const from = this.countFrom || to * 0.92, start = performance.now(), dur = 800;
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { this.shownValue.set(to); this.countFrom = to; return; }
+    const step = (now: number) => {
+      const k = Math.min((now - start) / dur, 1), e = 1 - Math.pow(1 - k, 3);
+      this.shownValue.set(from + (to - from) * e);
+      if (k < 1) this.countRaf = requestAnimationFrame(step); else this.countFrom = to;
+    };
+    this.countRaf = requestAnimationFrame(step);
+  }
   attention = computed<Suggestion[]>(() => (this.ov()?.suggestions ?? []).slice(0, 3));
   pricesAge = computed(() => ago(this.store.portfolio()?.prices?.last_refresh));
 
@@ -224,6 +247,7 @@ export class HomeComponent {
   });
 
   constructor() {
+    effect(() => { const v = this.ov()?.totals.value; if (v !== undefined) untracked(() => this.countUp(v)); });
     effect(() => {
       const r = this.range();
       this.store.version();
