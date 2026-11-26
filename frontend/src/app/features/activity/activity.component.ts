@@ -74,7 +74,7 @@ const ACCOUNT: Record<string, string> = { capital: 'Money invested', p2p_escrow:
     @case ('flow') {
       @if (trace(); as tr) {
         <section class="v-card head">
-          <span class="v-tone" [class]="type(tr.txn.type).tone"><app-icon [name]="type(tr.txn.type).icon" [size]="18" [stroke]="2.2" /></span>
+          <span class="v-tone" [class]="type(tr.txn.type).tone"><app-icon [name]="type(tr.txn.type).icon" [size]="16" [stroke]="2.2" /></span>
           <div class="grow"><div class="t">{{ tr.txn.type_label }} · {{ tr.instrument.name }}</div>
             <div class="s">{{ tr.txn.quantity ? qty(tr.txn.quantity) + ' · ' : '' }}{{ inr(tr.txn.amount) }} · {{ fmtDate(tr.txn.date) }} · {{ tr.txn.source }}</div></div>
           @if (auth.canWrite()) { <button class="v-link" (click)="edit(tr.txn.id)"><app-icon name="edit" [size]="14" /> Edit</button> }
@@ -117,12 +117,12 @@ const ACCOUNT: Record<string, string> = { capital: 'Money invested', p2p_escrow:
     @case ('checks') {
       @if (checks(); as cs) {
         @if (!cs.length) {
-          <section class="v-card v-empty"><span class="v-tone good"><app-icon name="circleCheck" [size]="22" /></span>
+          <section class="v-card v-empty"><span class="v-tone good"><app-icon name="circleCheck" [size]="19" /></span>
             <b style="color:var(--text)">Your data looks consistent</b><span>No unmatched sales, missing prices, stale FDs or duplicates.</span></section>
         }
         @for (c of cs; track c.id) {
           <section class="v-card chk">
-            <div class="ch-top"><span class="v-tone" [class]="c.severity === 'bad' ? 'bad' : c.severity === 'warn' ? 'warn' : 'info'"><app-icon [name]="c.severity === 'info' ? 'info' : 'triangleAlert'" [size]="19" /></span>
+            <div class="ch-top"><span class="v-tone" [class]="c.severity === 'bad' ? 'bad' : c.severity === 'warn' ? 'warn' : 'info'"><app-icon [name]="c.severity === 'info' ? 'info' : 'triangleAlert'" [size]="16" /></span>
               <div class="grow"><div class="t">{{ c.title }}</div><div class="s">{{ c.detail }}</div></div><span class="v-pill eq">{{ c.count }}</span></div>
             @for (it of c.items.slice(0, openCheck() === c.id ? 30 : 4); track $index) {
               <button class="v-row" (click)="it.txn_id ? go({ tab: 'flow', txn: it.txn_id }) : holding.set(it.instrument_id)">
@@ -170,16 +170,16 @@ const ACCOUNT: Record<string, string> = { capital: 'Money invested', p2p_escrow:
     .mhd { font-size: 11.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); padding: 14px 0 2px; }
     .v-tone.sm { width: 34px; height: 34px; border-radius: 11px; }
     .v-link.sm { font-size: 12px; }
-    .t.sm { font-size: 13.5px; }
+    .t.sm { font-size: 12.5px; }
     .head { display: flex; align-items: center; gap: 12px; }
     .head .grow, .chk .grow { min-width: 0; flex: 1; }
-    .head .t, .chk .t { font-weight: 800; font-size: 15px; }
+    .head .t, .chk .t { font-weight: 800; font-size: 14px; }
     .head .s, .chk .s { font-size: 12.5px; color: var(--muted); font-weight: 500; }
     .step { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 12px; position: relative; padding-bottom: 16px; }
     .step::before { content: ""; position: absolute; left: 17px; top: 40px; bottom: 2px; width: 2px; background: var(--border); }
     .step.last::before { display: none; }
     .sic { width: 36px; height: 36px; border-radius: 12px; z-index: 1; }
-    .st { font-weight: 800; font-size: 14px; }
+    .st { font-weight: 800; font-size: 13px; }
     .sd { font-size: 13px; color: var(--text-2); font-weight: 500; }
     .fx { display: inline-block; font-size: 12.5px; font-weight: 700; background: var(--bg); border-radius: 9px; padding: 5px 9px; margin-top: 6px; }
     .it { font-size: 12.5px; color: var(--text-2); margin-top: 4px; padding-left: 10px; border-left: 2px solid var(--border); }
@@ -190,7 +190,7 @@ const ACCOUNT: Record<string, string> = { capital: 'Money invested', p2p_escrow:
     .lead { font-size: 13px; font-weight: 500; margin: 0 4px; }
     .rule { padding: 10px 0; border-top: 1px solid var(--border); }
     .rule:first-of-type { border-top: 0; padding-top: 0; }
-    .rh { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+    .rh { display: flex; align-items: center; gap: 8px; font-size: 13px; }
     .rid { font-size: 11px; font-weight: 800; color: var(--muted); background: var(--bg); border-radius: 6px; padding: 1px 6px; }
     .re { font-size: 13px; margin-top: 5px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
     .rn { font-size: 12px; color: #8a5207; background: var(--warn-soft); border-radius: 10px; padding: 7px 9px; margin-top: 6px; }

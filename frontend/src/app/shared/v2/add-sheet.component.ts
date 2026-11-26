@@ -41,7 +41,7 @@ interface Tile { label: string; icon: string; color: string; kind: AddKind; mark
       <p class="v-mut sub">What would you like to add?</p>
       <div class="tiles">
         @for (t of tiles; track t.label) {
-          <button class="tile" [style.--c]="t.color" (click)="pick(t)"><span class="bi"><app-icon [name]="t.icon" [size]="20" [stroke]="2" /></span>{{ t.label }}</button>
+          <button class="tile" [style.--c]="t.color" (click)="pick(t)"><span class="bi"><app-icon [name]="t.icon" [size]="17" [stroke]="2" /></span>{{ t.label }}</button>
         }
       </div>
       <div class="more">
@@ -49,16 +49,16 @@ interface Tile { label: string; icon: string; color: string; kind: AddKind; mark
         @for (m of more; track m.label) { <button class="v-btn sm" (click)="dialog.add(m.kind)">{{ m.label }}</button> }
       </div>
       <button class="import" (click)="importIt()">
-        <span class="v-tone brand"><app-icon name="upload" [size]="19" /></span>
+        <span class="v-tone brand"><app-icon name="upload" [size]="16" /></span>
         <span class="grow"><b>Import a statement</b><small>CAS · Kite · EPF passbook · LenDenClub · CSV</small></span>
-        <app-icon name="chevronRight" [size]="18" [stroke]="2.4" />
+        <app-icon name="chevronRight" [size]="16" [stroke]="2.4" />
       </button>
       }
     </section>
   `,
   styles: [`
-    h2 { margin: 0; font-size: 20px; font-weight: 800; letter-spacing: -.02em; }
-    .sub { font-size: 13.5px; font-weight: 500; margin: 2px 0 16px; }
+    h2 { margin: 0; font-size: 17px; font-weight: 800; letter-spacing: -.02em; }
+    .sub { font-size: 12.5px; font-weight: 500; margin: 2px 0 16px; }
     .tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
     .tile { border-radius: 18px; padding: 14px 6px 12px; text-align: center; font: inherit; font-size: 12.5px; font-weight: 700; border: 0; cursor: pointer;
       background: color-mix(in srgb, var(--c) 10%, var(--surface-2)); border: 1px solid color-mix(in srgb, var(--c) 28%, transparent); color: var(--text); display: flex;
