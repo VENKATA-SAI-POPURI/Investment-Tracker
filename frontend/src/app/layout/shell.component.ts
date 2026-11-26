@@ -324,7 +324,11 @@ export class ShellComponent {
     let shell = false;
     while (r) { name = (r.data?.['title'] as string | undefined) ?? name; shell = (r.data?.['shellTitle'] as boolean | undefined) ?? shell; r = r.firstChild; }
     this.title.setTitle(name ? `${name} · ${APP_NAME}` : APP_NAME);
-    this.shellTitle.set(shell && name ? name : null);
+    // Every page but Home shows its name in the top bar, so all screens share one header; older pages' own h1 is
+    // hidden by styles.scss (`.page > .page-head h1`) and their subtitle and controls stay.
+    const home = this.router.url.split(/[?#]/)[0] === '/';
+    this.shellTitle.set(!home && name && name !== 'Home' ? name : null);
+    void shell;
   }
 
   /** Tab rows wider than the screen scroll so the current tab is in view (§3.2). */

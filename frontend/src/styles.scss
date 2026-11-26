@@ -783,3 +783,73 @@ app-modal .backdrop { background: rgba(4, 8, 20, .62) !important; -webkit-backdr
 .steps i.d { background: var(--accent); }
 .steps span { margin-left: 4px; }
 .v-q .grow, .v-todo .grow { min-width: 0; flex: 1; }
+
+/* ═══ v10 · Compact and consistent ═══════════════════════════════════════════════════════════════════════════
+   One step smaller everywhere (type, numbers, icons, rows, padding), one header for every page (the top bar shows
+   the page name; older pages' own h1 is hidden), and one content width shared by the header and the pages. */
+:root { --fs-body: 13.5px; --fs-small: 12px; --fs-label: 11px; --fs-h2: 15px; --fs-sec: 16px; --fs-title: 22px; --radius: 16px; --content: 1280px; }
+@media (min-width: 1400px) { :root { --fs-body: 14px; --fs-small: 12.5px; --fs-label: 11.5px; --fs-h2: 15.5px; --fs-sec: 17px; --fs-title: 24px; } }
+
+/* one content width, centred in the space next to the sidebar */
+.v2, .page { gap: 12px; padding: 2px 14px 112px; }
+@media (min-width: 760px) { .v2, .page { gap: 14px; padding: 4px 24px 56px; } }
+@media (min-width: 1000px) { .v2, .page { max-width: var(--content); margin: 0 auto; padding: 2px 28px 48px; width: 100%; } }
+@media (min-width: 1000px) { app-shell .top { max-width: var(--content); margin: 0 auto; padding: 16px 28px 12px; } }
+.v-grid { gap: 12px; }
+@media (min-width: 760px) { .v-grid { gap: 14px; } }
+
+/* page header: the top bar holds the name; the in-page h1 of older pages is hidden, their subtitle stays */
+.page > .page-head h1, .page > .page-head > div > h1 { display: none; }
+.page > .page-head { margin-top: -4px; }
+.page > .page-head .sub { margin-top: 0; font-size: var(--fs-small); }
+
+/* cards */
+.v-card { padding: 13px 14px; border-radius: var(--radius); }
+@media (min-width: 1000px) { .v-card { padding: 15px 16px; } }
+.card { padding: 15px 16px; border-radius: var(--radius); }
+.card-head { margin-bottom: 12px; }
+.v-ch { margin-bottom: 10px; }
+.v-sec { margin: 6px 2px -4px; }
+
+/* hero and summary strips */
+.v-hero { padding: 14px 15px 13px; border-radius: 18px; }
+@media (min-width: 1000px) { .v-hero { padding: 15px 17px 14px; } }
+.v-hero .big { font-size: clamp(24px, 6vw, 28px); margin: 2px 0 8px; }
+.v-hero .glass { margin-top: 10px; gap: 6px; }
+.v-hero .glass > div { padding: 6px 9px; border-radius: 10px; }
+.v-hero .glass small { font-size: 10.5px; } .v-hero .glass b { font-size: 13px; }
+.kpis { border-radius: 18px; }
+.kpi { padding: 13px 15px 12px; }
+.kpi .label, .kpi .meta { font-size: 11px; }
+.kpi .value { font-size: 18px; }
+.hero-value { font-size: 26px; }
+@media (max-width: 760px) { .hero-value { font-size: 22px; } .kpi .value { font-size: 16px; } .kpi.hero .value { font-size: 22px; } }
+
+/* icons, rows, numbers */
+.v-ic { width: 30px; height: 30px; border-radius: 9px; } .v-ic.lg { width: 34px; height: 34px; border-radius: 10px; } .v-ic.sm { width: 24px; height: 24px; border-radius: 7px; }
+.v-ic app-icon svg, .v-tone app-icon svg { width: 15px; height: 15px; }
+.v-tone { width: 30px; height: 30px; border-radius: 9px; }
+.v-logo { width: 30px; height: 30px; border-radius: 9px; font-size: 10.5px; }
+.v-row { padding: 8px 0; min-height: 46px; gap: 10px; }
+.v-row .t { font-size: 13px; } .v-row .s { font-size: var(--fs-label); }
+.v-row .r b { font-size: 13px; }
+.v-kpis { gap: 8px; } .v-kpis > div, .v-stats > div { padding: 7px 9px; border-radius: 10px; }
+.v-kpis b { font-size: 16px; } .v-stats b { font-size: 13px; }
+.v-pill { font-size: 11px; padding: 2px 7px; }
+.v-note { padding: 8px 10px; font-size: var(--fs-label); }
+.v-legend { gap: 12px; margin-top: 8px; }
+.v-q .qa { font-size: 13.5px; } .v-todo .tt { font-size: 13px; }
+
+/* controls */
+.v-btn { padding: 7px 13px; } .v-btn.sm { padding: 5px 10px; }
+.v-seg { padding: 3px; } .v-seg button, .v-seg a { padding: 6px 6px; }
+.v-filters { gap: 6px; } .v-filters button { padding: 5px 12px; }
+.v-chips button { padding: 4px 10px; }
+.v-tabs { margin: 12px 0 10px; } .v-tabs button { padding: 6px 12px; }
+.v-input, .input { padding: 8px 11px; font-size: 13px; }
+.btn { height: 32px; padding: 0 13px; font-size: 12.5px; } .btn.sm { height: 28px; padding: 0 10px; }
+.table th, .table td { padding: 9px 12px; }
+
+/* sheets */
+.v-sheet { padding: 6px 16px calc(20px + env(safe-area-inset-bottom)); }
+@media (min-width: 1000px) { .v-sheet { width: 440px; padding: 20px 22px 28px; } .v-sheet.center { width: 520px; } }
