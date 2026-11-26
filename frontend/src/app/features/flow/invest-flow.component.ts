@@ -41,7 +41,7 @@ interface Leg { row: GroupRebalanceRow; holding: number | null; done: boolean; s
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
   <div class="v2 flow">
-    <div class="bar"><button class="x" (click)="exit()" aria-label="Close"><app-icon name="close" [size]="20" [stroke]="2.2" /></button>
+    <div class="bar"><button class="x" (click)="exit()" aria-label="Close"><app-icon name="close" [size]="17" [stroke]="2.2" /></button>
       <span class="ttl">Put new money to work</span></div>
     <ol class="stepper" aria-label="Steps">
       @for (s of steps; track s.key; let i = $index) {
@@ -51,7 +51,7 @@ interface Leg { row: GroupRebalanceRow; holding: number | null; done: boolean; s
 
     @switch (step()) {
     @case ('amount') {
-      @if (fromName()) { <div class="v-note info"><app-icon name="calendarClock" [size]="18" /><span><b>{{ fromName() }}</b> pays back {{ money(+(route.snapshot.queryParamMap.get('amount') ?? 0)) }}. Put it where it fills your gaps.</span></div> }
+      @if (fromName()) { <div class="v-note info"><app-icon name="calendarClock" [size]="16" /><span><b>{{ fromName() }}</b> pays back {{ money(+(route.snapshot.queryParamMap.get('amount') ?? 0)) }}. Put it where it fills your gaps.</span></div> }
       <h1 class="q">How much are you adding?</h1>
       <label class="money"><span>₹</span><input type="number" min="0" step="1000" [(ngModel)]="amount" aria-label="Amount to invest" /></label>
       <div class="chips">@for (q of quick(); track q) { <button class="v-btn sm" [class.dark]="amount === q" (click)="amount = q">{{ money(q) }}</button> }</div>
@@ -67,13 +67,13 @@ interface Leg { row: GroupRebalanceRow; holding: number | null; done: boolean; s
       <section class="v-card tight">
         @for (r of buys(); track r.key) {
           <div class="v-row" [style.--c]="hex(r.key)">
-            <span class="v-ic"><app-icon [name]="meta(r.key).icon" [size]="18" /></span>
+            <span class="v-ic"><app-icon [name]="meta(r.key).icon" [size]="16" /></span>
             <div class="grow"><div class="t">{{ r.label }}</div><div class="s">{{ r.current_pct.toFixed(1) }}% → {{ r.after_pct.toFixed(1) }}% · target {{ r.target_pct }}%</div></div>
             <b class="v-gain amt">{{ money(r.amount) }}</b>
           </div>
         } @empty { <p class="v-empty">Everything is already on target. Nothing to buy.</p> }
       </section>
-      @if (epfOver()) { <div class="v-note info"><app-icon name="info" [size]="18" /><span>EPF stays over target: it can't be sold, and its share shrinks as you add elsewhere.</span></div> }
+      @if (epfOver()) { <div class="v-note info"><app-icon name="info" [size]="16" /><span>EPF stays over target: it can't be sold, and its share shrinks as you add elsewhere.</span></div> }
       @if (!plan()?.target_set || plan()?.target_set === 'suggested') { <p class="v-mut hint">No targets of your own yet, so this uses the suggested mix. <a routerLink="/analysis" [queryParams]="{ q: 'mix' }">Set yours</a></p> }
       @if (buys().length) { <button class="v-btn primary big" (click)="toRecord()">Next: record the buys <app-icon name="chevronRight" [size]="16" [stroke]="2.4" /></button> }
     }
@@ -84,7 +84,7 @@ interface Leg { row: GroupRebalanceRow; holding: number | null; done: boolean; s
       <section class="v-card tight">
         @for (l of legs(); track l.row.key) {
           <div class="v-row leg" [class.done]="l.done" [class.skip]="l.skipped" [style.--c]="hex(l.row.key)">
-            <span class="v-ic">@if (l.done) { <app-icon name="check" [size]="18" [stroke]="2.6" /> } @else { <app-icon [name]="meta(l.row.key).icon" [size]="18" /> }</span>
+            <span class="v-ic">@if (l.done) { <app-icon name="check" [size]="16" [stroke]="2.6" /> } @else { <app-icon [name]="meta(l.row.key).icon" [size]="16" /> }</span>
             <div class="grow"><div class="t">{{ l.row.label }} · {{ money(l.row.amount) }}</div>
               <div class="s">{{ l.done ? 'Recorded' : l.skipped ? 'Skipped' : how(l.row.key) }}</div>
               @if (!l.done && !l.skipped && options(l.row.key).length) {
@@ -121,14 +121,14 @@ interface Leg { row: GroupRebalanceRow; holding: number | null; done: boolean; s
       }
       @if (next(); as n) {
         <div class="v-sec"><h2>Next</h2></div>
-        <section class="v-card tight"><div class="v-row v-todo"><span [class]="toneClass(n.tone)"><app-icon [name]="n.icon" [size]="20" /></span>
+        <section class="v-card tight"><div class="v-row v-todo"><span [class]="toneClass(n.tone)"><app-icon [name]="n.icon" [size]="17" /></span>
           <div class="grow"><div class="tt">{{ n.title }}</div>@if (n.detail) { <div class="td">{{ n.detail }}</div> }</div>
           <a class="v-btn sm" [routerLink]="path(n.link)" [queryParams]="query(n.link)">{{ n.cta }}</a></div></section>
       }
       <a class="v-btn big" routerLink="/">Back to Home</a>
     }
     }
-    @if (error()) { <div class="v-note warn"><app-icon name="alert" [size]="18" /><span>{{ error() }}</span></div> }
+    @if (error()) { <div class="v-note warn"><app-icon name="alert" [size]="16" /><span>{{ error() }}</span></div> }
   </div>
   `,
   styles: [`
@@ -142,21 +142,21 @@ interface Leg { row: GroupRebalanceRow; holding: number | null; done: boolean; s
     .stepper li::before { content: ""; display: block; height: 5px; border-radius: 3px; background: var(--surface-3); margin-bottom: 6px; transition: background .3s ease; }
     .stepper li.d { color: var(--text-2); } .stepper li.d::before { background: var(--accent); }
     .stepper li.c { color: var(--text); } .stepper li.c::before { background: linear-gradient(90deg, #6366f1, #a78bfa); }
-    .q { font-size: clamp(22px, 3vw, 26px); font-weight: 800; letter-spacing: -.025em; margin: 6px 2px 0; line-height: 1.2; }
-    .sub { color: var(--text-2); margin: 0 2px; font-size: 15px; }
+    .q { font-size: clamp(19px, 2.6vw, 22px); font-weight: 800; letter-spacing: -.025em; margin: 6px 2px 0; line-height: 1.2; }
+    .sub { color: var(--text-2); margin: 0 2px; font-size: 14px; }
     .hint { font-size: var(--fs-small); margin: 0 2px; }
-    .money { display: flex; align-items: center; gap: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 14px 18px; font-size: 30px; font-weight: 800; }
+    .money { display: flex; align-items: center; gap: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 14px 18px; font-size: 24px; font-weight: 800; }
     .money:focus-within { border-color: var(--accent); }
     .money input { font: inherit; color: var(--text); background: none; border: 0; outline: none; width: 100%; min-width: 0; }
     .chips { display: flex; gap: 8px; flex-wrap: wrap; }
-    .big { width: 100%; padding: 15px 18px; font-size: 15.5px; }
+    .big { width: 100%; padding: 15px 18px; font-size: 14.5px; }
     .picked { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 12px 16px; }
     .picked .ck { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--pos-soft); color: var(--pos); }
-    .picked small { display: block; color: var(--muted); font-size: 12.5px; font-weight: 600; } .picked b { font-size: 18px; }
+    .picked small { display: block; color: var(--muted); font-size: 12.5px; font-weight: 600; } .picked b { font-size: 16px; }
     .picked .grow { flex: 1; }
-    .amt { font-size: 16px; white-space: nowrap; }
+    .amt { font-size: 14.5px; white-space: nowrap; }
     .leg { align-items: flex-start; }
-    .leg .pick { margin-top: 8px; padding: 8px 10px; font-size: 13.5px; max-width: 100%; }
+    .leg .pick { margin-top: 8px; padding: 8px 10px; font-size: 12.5px; max-width: 100%; }
     .leg .acts { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: none; }
     .leg.done .v-ic { background: var(--pos-soft); color: var(--pos); border-color: transparent; }
     .leg.done .t, .leg.skip .t { color: var(--text-2); }
@@ -165,11 +165,11 @@ interface Leg { row: GroupRebalanceRow; holding: number | null; done: boolean; s
     .okay > span { width: 68px; height: 68px; border-radius: 50%; margin: 0 auto 10px; display: grid; place-items: center; background: var(--pos-soft); color: var(--pos); animation: pop .5s cubic-bezier(.2,.9,.3,1.3); }
     @keyframes pop { from { transform: scale(.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
     @media (prefers-reduced-motion: reduce) { .okay > span { animation: none; } }
-    .chrow { display: grid; grid-template-columns: 110px minmax(0, 1fr) 96px; gap: 12px; align-items: center; padding: 7px 0; font-size: 14px; }
+    .chrow { display: grid; grid-template-columns: 110px minmax(0, 1fr) 96px; gap: 12px; align-items: center; padding: 7px 0; font-size: 13px; }
     .chrow .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-2); font-weight: 600; }
     .chrow .v { text-align: right; font-weight: 700; white-space: nowrap; } .chrow small { font-size: 12px; margin-left: 2px; }
     .gap { display: flex; flex-direction: row; align-items: center; gap: 10px; }
-    .gap .grow { flex: 1; } .gap small { display: block; color: var(--muted); font-size: 13px; font-weight: 600; } .gap b { font-size: 18px; }
+    .gap .grow { flex: 1; } .gap small { display: block; color: var(--muted); font-size: 13px; font-weight: 600; } .gap b { font-size: 16px; }
   `],
 })
 export class InvestFlowComponent {

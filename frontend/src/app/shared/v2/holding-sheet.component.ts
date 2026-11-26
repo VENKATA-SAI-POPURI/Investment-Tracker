@@ -51,7 +51,7 @@ const TYPE_LABEL: Record<string, string> = { BUY: 'Buy', SELL: 'Sell', DIVIDEND:
           <div class="v-stats" style="margin:14px 0 12px">
             @for (s of stats(); track s.label) { <div><small>{{ s.label }}</small><b [class.v-gain]="s.tone === 'gain'" [class.v-loss]="s.tone === 'loss'">{{ s.value }}</b></div> }
           </div>
-          @if (note(); as n) { <div class="v-note" [class.good]="n.tone === 'good'" [class.warn]="n.tone === 'warn'"><app-icon [name]="n.tone === 'good' ? 'circleCheck' : 'alert'" [size]="18" [stroke]="2.2" /> {{ n.text }}</div> }
+          @if (note(); as n) { <div class="v-note" [class.good]="n.tone === 'good'" [class.warn]="n.tone === 'warn'"><app-icon [name]="n.tone === 'good' ? 'circleCheck' : 'alert'" [size]="16" [stroke]="2.2" /> {{ n.text }}</div> }
           @if (auth.canWrite()) {
             <div class="btns">
               @for (b of buttons(); track b.label; let i = $index) { <button class="v-btn" [class.primary]="i === 0" (click)="b.run()">{{ b.label }}</button> }
@@ -87,19 +87,19 @@ const TYPE_LABEL: Record<string, string> = { BUY: 'Buy', SELL: 'Sell', DIVIDEND:
   `,
   styles: [`
     .head { display: flex; align-items: center; gap: 12px; padding-right: 40px; }
-    .v-logo.lg { width: 46px; height: 46px; border-radius: 15px; font-size: 15px; }
+    .v-logo.lg { width: 46px; height: 46px; border-radius: 15px; font-size: 14px; }
     .grow { min-width: 0; flex: 1; }
-    .nm { font-weight: 800; font-size: 18px; letter-spacing: -.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .nm { font-weight: 800; font-size: 16px; letter-spacing: -.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .sub { font-size: 12.5px; font-weight: 600; }
     .val { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
-    .val b { font-size: 26px; font-weight: 800; letter-spacing: -.03em; }
+    .val b { font-size: 22px; font-weight: 800; letter-spacing: -.03em; }
     .btns { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
     .more { margin-top: 14px; }
     .acts { font-size: 12px; color: var(--muted); }
     .acts .v-link { font-size: 12px; }
     .calc { padding: 11px 0; border-top: 1px solid var(--border); }
     .calc:first-child { border-top: 0; }
-    .calc .t { font-weight: 700; font-size: 13.5px; }
+    .calc .t { font-weight: 700; font-size: 12.5px; }
     .calc .fx { display: inline-block; font-size: 12.5px; font-weight: 700; background: var(--bg); border-radius: 9px; padding: 5px 9px; margin-top: 6px; }
     .calc .s { font-size: 12px; color: var(--muted); margin-top: 4px; }
   `],

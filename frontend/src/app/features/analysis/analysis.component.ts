@@ -43,17 +43,17 @@ const PROFILES = [
       <div class="v-grid cols-2 hub">
         @for (x of hub(); track x.id) {
           <a class="v-card qc" [routerLink]="path(x.link)" [queryParams]="query(x.link)">
-            <span [class]="toneClass(x.tone)"><app-icon [name]="x.icon" [size]="20" /></span>
+            <span [class]="toneClass(x.tone)"><app-icon [name]="x.icon" [size]="17" /></span>
             <div class="grow"><div class="qq">{{ x.q }}</div><div class="qa">{{ x.answer }}</div><div class="qd">{{ x.detail }}</div></div>
             @if (x.badge) { <span class="v-pill" [class.ok]="x.tone === 'good'" [class.warn]="x.tone === 'warn'" [class.no]="x.tone === 'bad'" [class.brand]="x.tone === 'muted'">{{ x.badge }}</span> }
-            <app-icon class="chev" name="chevronRight" [size]="18" [stroke]="2.2" />
+            <app-icon class="chev" name="chevronRight" [size]="16" [stroke]="2.2" />
           </a>
         } @empty {
           @for (i of [1, 2, 3, 4, 5, 6]; track i) { <div class="v-skel" style="height:104px"></div> }
         }
       </div>
     } @else {
-    <a class="back" routerLink="/analysis"><app-icon name="chevronLeft" [size]="18" [stroke]="2.4" /> All questions</a>
+    <a class="back" routerLink="/analysis"><app-icon name="chevronLeft" [size]="16" [stroke]="2.4" /> All questions</a>
     <header class="ans">
       <div class="qq">{{ current()?.q ?? titles[tab()!] }}</div>
       @if (current(); as c) { <h1 class="qa">{{ c.answer }}</h1><p class="qd">{{ c.detail }}</p> }
@@ -72,7 +72,7 @@ const PROFILES = [
             <button [class.on]="targetSet() === 'suggested'" (click)="targetSet.set('suggested')">Suggested · {{ profileLabel() }}</button>
           </div>
           @if (targetSet() === 'mine' && !ov()?.targets?.has_mine) {
-            <div class="v-note info"><app-icon name="target2" [size]="18" /> You haven't set a target mix yet. Start from the suggested one, or set your own.</div>
+            <div class="v-note info"><app-icon name="target2" [size]="16" /> You haven't set a target mix yet. Start from the suggested one, or set your own.</div>
           }
           @for (r of mixRows(); track r.key) {
             <div class="mrow" [style.--c]="r.hex">
@@ -94,7 +94,7 @@ const PROFILES = [
             </div>
           }
         } @else {
-          <p class="v-mut" style="margin:0 0 8px;font-size:13px">Share of everything you own, per group. EPF counts too.</p>
+          <p class="v-mut" style="margin:0 0 8px;font-size: 13px">Share of everything you own, per group. EPF counts too.</p>
           @for (g of groups; track g.key) {
             <label class="erow" [style.--c]="hex(g.key)"><span class="v-ic sm"><app-icon [name]="g.icon" [size]="15" /></span><span class="grow">{{ g.label }}</span>
               <input class="v-input" type="number" min="0" max="100" step="0.5" [(ngModel)]="draft[g.key]" (ngModelChange)="draftTick.set(draftTick() + 1)" /><span>%</span></label>
@@ -118,7 +118,7 @@ const PROFILES = [
               <span class="amt" [class.buy]="r.action === 'buy'" [class.sell]="r.action === 'sell'">{{ r.action === 'buy' ? '+ ' : '− ' }}{{ money(r.amount) }}</span>
             </div>
           } @empty { <p class="v-empty">{{ newMoney() || allowSell() ? 'Already on target.' : 'Enter an amount to see where it should go.' }}</p> }
-          @if (rb.tax_total) { <div class="v-note warn" style="margin-top:8px"><app-icon name="receipt" [size]="18" /> Estimated tax on these sales: {{ money(rb.tax_total) }}</div> }
+          @if (rb.tax_total) { <div class="v-note warn" style="margin-top:8px"><app-icon name="receipt" [size]="16" /> Estimated tax on these sales: {{ money(rb.tax_total) }}</div> }
         } @else if (rbError()) { <p class="v-empty">{{ rbError() }}</p> }
         <label class="toggle"><span><b>Also sell what's over target</b><small class="v-mut">Lowest tax first; shows the tax on each sale</small></span>
           <input type="checkbox" [ngModel]="allowSell()" (ngModelChange)="allowSell.set($event)" /><span class="sw" aria-hidden="true"></span></label>
@@ -208,13 +208,13 @@ const PROFILES = [
       <section class="v-card tight">
         @for (d of dragging(); track d.kind + d.name) {
           <div class="v-row drag" [style.--c]="hex(d.group)">
-            <span class="v-ic"><app-icon [name]="d.kind === 'group' ? meta(d.group).icon : d.kind === 'p2p' ? 'handshake' : 'arrowDownRight'" [size]="18" /></span>
+            <span class="v-ic"><app-icon [name]="d.kind === 'group' ? meta(d.group).icon : d.kind === 'p2p' ? 'handshake' : 'arrowDownRight'" [size]="16" /></span>
             <div class="grow"><div class="t">{{ d.name }}</div><div class="s">{{ d.text }}</div>
               <div class="lost"><b class="v-loss">−{{ money(d.amount) }}</b> {{ d.why }}</div></div>
             <button class="v-btn sm" (click)="open(d)">{{ d.cta }}</button>
           </div>
         } @empty {
-          <div class="v-empty"><span class="v-tone good"><app-icon name="circleCheck" [size]="22" /></span><b style="color:var(--text)">Nothing stands out</b>
+          <div class="v-empty"><span class="v-tone good"><app-icon name="circleCheck" [size]="19" /></span><b style="color:var(--text)">Nothing stands out</b>
             <span>No group is behind its market and no holding is down 10% or more.</span></div>
         }
       </section>
@@ -241,23 +241,23 @@ const PROFILES = [
     .hub .qc:hover { border-color: var(--border-strong); transform: translateY(-1px); text-decoration: none; }
     .hub .grow { flex: 1; min-width: 0; }
     .qq { font-size: var(--fs-small); color: var(--muted); font-weight: 600; }
-    .qa { font-size: 17px; font-weight: 750; color: var(--text); letter-spacing: -.01em; margin: 2px 0; }
+    .qa { font-size: 15px; font-weight: 750; color: var(--text); letter-spacing: -.01em; margin: 2px 0; }
     .qd { font-size: var(--fs-small); color: var(--text-2); margin: 0; }
     .chev { color: var(--muted); flex: none; }
-    .back { display: inline-flex; align-items: center; gap: 4px; color: var(--text-2); font-weight: 600; font-size: 14px; text-decoration: none; margin: 0 2px; align-self: flex-start; }
+    .back { display: inline-flex; align-items: center; gap: 4px; color: var(--text-2); font-weight: 600; font-size: 13px; text-decoration: none; margin: 0 2px; align-self: flex-start; }
     .back:hover { color: var(--text); text-decoration: none; }
     .ans { margin: 0 4px 4px; }
-    .ans h1.qa { font-size: clamp(22px, 2.4vw, 28px); font-weight: 800; letter-spacing: -.025em; line-height: 1.2; margin: 4px 0 6px; }
-    .ans .qd { font-size: 15px; }
+    .ans h1.qa { font-size: clamp(19px, 2vw, 23px); font-weight: 800; letter-spacing: -.025em; line-height: 1.2; margin: 4px 0 6px; }
+    .ans .qd { font-size: 14px; }
     .related { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
     .related .v-mut { font-size: var(--fs-small); font-weight: 700; margin-right: 4px; }
     .drag .lost { font-size: var(--fs-small); color: var(--muted); margin-top: 3px; }
-    .drag .lost b { font-size: 15px; margin-right: 2px; }
+    .drag .lost b { font-size: 14px; margin-right: 2px; }
     .drag .v-btn { flex: none; }
     a.go { margin-top: 12px; width: 100%; }
     .mrow { display: flex; gap: 10px; align-items: center; padding: 8px 0; }
     .mrow .grow { min-width: 0; flex: 1; }
-    .mrow .nm { font-size: 13.5px; font-weight: 600; display: flex; justify-content: space-between; margin-bottom: 6px; gap: 6px; }
+    .mrow .nm { font-size: 12.5px; font-weight: 600; display: flex; justify-content: space-between; margin-bottom: 6px; gap: 6px; }
     .mrow .nm b { font-weight: 800; }
     .gap { font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 6px; min-width: 42px; text-align: center; background: var(--bg); color: var(--text-2); }
     .gap.u { background: var(--warn-soft); color: var(--warn); } .gap.k { background: var(--pos-soft); color: var(--pos); }
@@ -267,15 +267,15 @@ const PROFILES = [
     .profiles { display: flex; gap: 6px; flex-wrap: wrap; }
     .age { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 13px; }
     .age .v-input { width: 90px; padding: 8px 10px; }
-    .erow { display: flex; align-items: center; gap: 10px; padding: 6px 0; font-weight: 600; font-size: 14px; }
+    .erow { display: flex; align-items: center; gap: 10px; padding: 6px 0; font-weight: 600; font-size: 13px; }
     .erow .grow { flex: 1; }
     .erow .v-input { width: 86px; text-align: right; padding: 8px 10px; }
     .etotal { font-weight: 700; margin: 10px 0; color: var(--pos); } .etotal.bad { color: var(--neg); }
     .money { display: flex; align-items: center; justify-content: space-between; background: var(--bg); border-radius: 16px; padding: 10px 14px; font-weight: 600; }
-    .money .inp { display: flex; align-items: center; font-size: 22px; font-weight: 800; }
+    .money .inp { display: flex; align-items: center; font-size: 19px; font-weight: 800; }
     .money input { font: inherit; min-width: 3ch; max-width: 12ch; border: 0; background: none; text-align: left; outline: none; color: var(--text); margin-left: 2px; }
     .quick { display: flex; gap: 6px; margin: 10px 0 4px; flex-wrap: wrap; }
-    .amt { margin-left: auto; font-weight: 800; border-radius: 10px; padding: 5px 9px; font-size: 13.5px; white-space: nowrap; }
+    .amt { margin-left: auto; font-weight: 800; border-radius: 10px; padding: 5px 9px; font-size: 12.5px; white-space: nowrap; }
     .amt.buy { color: var(--pos); background: var(--pos-soft); } .amt.sell { color: var(--neg); background: var(--neg-soft); }
     .toggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 0 4px; border-top: 1px solid var(--border); margin-top: 6px; cursor: pointer; }
     .toggle span:first-child { display: flex; flex-direction: column; } .toggle small { font-size: 12px; font-weight: 500; }
@@ -292,7 +292,7 @@ const PROFILES = [
     .rn { width: 26px; height: 26px; border-radius: 9px; display: grid; place-items: center; font-size: 12px; font-weight: 800; flex: none; }
     .rn.up { background: var(--pos-soft); color: var(--pos); } .rn.down { background: var(--neg-soft); color: var(--neg); }
     .score { display: flex; align-items: center; gap: 14px; }
-    .headline { font-size: 18px; font-weight: 800; letter-spacing: -.02em; }
+    .headline { font-size: 16px; font-weight: 800; letter-spacing: -.02em; }
     .sub { font-size: 13px; font-weight: 500; }
     .res { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; flex: none; }
     .res.ok { background: var(--pos-soft); color: var(--pos); } .res.no { background: var(--neg-soft); color: var(--neg); }
@@ -301,7 +301,7 @@ const PROFILES = [
     .sug { position: relative; }
     .sug .rk { position: absolute; right: 14px; top: 12px; font-size: 11px; font-weight: 800; color: var(--muted); }
     .sug .top { display: flex; gap: 12px; padding-right: 22px; }
-    .sug .t { font-weight: 800; font-size: 15px; letter-spacing: -.01em; }
+    .sug .t { font-weight: 800; font-size: 14px; letter-spacing: -.01em; }
     .sug .s { font-size: 13px; color: var(--muted); margin-top: 2px; font-weight: 500; }
     .sug .ft { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; gap: 8px; }
     .imp { font-size: 12.5px; font-weight: 800; padding: 6px 10px; border-radius: 10px; }

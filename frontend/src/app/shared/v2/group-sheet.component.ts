@@ -22,7 +22,7 @@ import { IconComponent } from '../icon.component';
     <section class="v-sheet" role="dialog" aria-modal="true" [attr.aria-label]="meta().label">
       <div class="grab"></div>
       <button class="close" (click)="closed.emit()" aria-label="Close"><app-icon name="close" [size]="16" /></button>
-      <div class="head"><span class="v-ic lg" [style.--c]="meta().color"><app-icon [name]="meta().icon" [size]="20" /></span>
+      <div class="head"><span class="v-ic lg" [style.--c]="meta().color"><app-icon [name]="meta().icon" [size]="17" /></span>
         <div><div class="nm">{{ meta().label }}</div><div class="v-mut sub">How the numbers are worked out</div></div></div>
 
       @if (e(); as x) {
@@ -34,7 +34,7 @@ import { IconComponent } from '../icon.component';
 
         @for (i of x.issues ?? []; track i.id) {
           <div class="v-note" [class.warn]="i.severity !== 'info'" [class.info]="i.severity === 'info'">
-            <app-icon name="triangleAlert" [size]="18" />
+            <app-icon name="triangleAlert" [size]="16" />
             <span><b>{{ i.title }}</b>{{ i.items.length ? ' · ' + names(i) : '' }}. {{ i.fix ?? '' }}
               @if (fixLink(i); as l) { <a [routerLink]="path(l)" [queryParams]="query(l)" (click)="closed.emit()">Fix it →</a> }</span>
           </div>
@@ -87,10 +87,10 @@ import { IconComponent } from '../icon.component';
   `,
   styles: [`
     .head { display: flex; align-items: center; gap: 12px; padding-right: 40px; }
-    .nm { font-weight: 800; font-size: 18px; letter-spacing: -.02em; }
+    .nm { font-weight: 800; font-size: 16px; letter-spacing: -.02em; }
     .sub { font-size: 12.5px; font-weight: 600; }
-    h3 { font-size: 14px; font-weight: 800; margin: 18px 0 6px; }
-    .ln { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; padding: 7px 0; border-top: 1px solid var(--border); font-size: 13.5px; }
+    h3 { font-size: 13px; font-weight: 800; margin: 18px 0 6px; }
+    .ln { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; padding: 7px 0; border-top: 1px solid var(--border); font-size: 12.5px; }
     .ln span { display: flex; flex-direction: column; } .ln small { font-size: 11.5px; color: var(--muted); }
     .ln b { white-space: nowrap; }
     .ln.yr span { flex: 1; } .ln.yr span:first-child { flex: 0 0 60px; font-weight: 700; }
@@ -99,7 +99,7 @@ import { IconComponent } from '../icon.component';
     .yr2 { font-size: 11.5px; font-weight: 600; }
     .v-note { margin-top: 12px; } .v-note a { font-weight: 700; white-space: nowrap; }
     .steps4 { list-style: none; margin: 4px 0 0; padding: 0; background: var(--surface-2); border: 1px solid var(--border); border-radius: 16px; padding: 4px 14px; }
-    .steps4 li { display: grid; grid-template-columns: 28px 1fr; gap: 10px; padding: 10px 0; border-top: 1px solid var(--border); font-size: 13.5px; color: var(--text-2); }
+    .steps4 li { display: grid; grid-template-columns: 28px 1fr; gap: 10px; padding: 10px 0; border-top: 1px solid var(--border); font-size: 12.5px; color: var(--text-2); }
     .steps4 li:first-child { border-top: 0; }
     .steps4 b { color: var(--text); }
     .steps4 .n { width: 28px; height: 28px; border-radius: 50%; background: var(--surface-3); color: var(--accent); display: grid; place-items: center; font-weight: 800; font-size: 13px; }

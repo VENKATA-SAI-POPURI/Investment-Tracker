@@ -60,11 +60,11 @@ interface Card extends CardDef { value: number; pct: number; change: string | nu
     @for (c of cards(); track c.key) {
       <section class="v-card grp" [class.open]="isOpen(c.key)">
         <button class="ghead" (click)="toggle(c.key)" [attr.aria-expanded]="isOpen(c.key)">
-          <span class="v-ic lg" [style.--c]="c.color"><app-icon [name]="c.icon" [size]="20" /></span>
+          <span class="v-ic lg" [style.--c]="c.color"><app-icon [name]="c.icon" [size]="17" /></span>
           <span class="grow"><span class="gn">{{ c.label }}</span><span class="gs">{{ c.summary }}</span></span>
           <span class="gr"><b>{{ money(c.value) }}</b>
             @if (c.change) { <span class="pct" [class.v-gain]="c.tone === 'gain'" [class.v-loss]="c.tone === 'loss'">{{ c.change }}</span> }</span>
-          <app-icon class="chev" [name]="isOpen(c.key) ? 'chevronDown' : 'chevronRight'" [size]="18" [stroke]="2.2" />
+          <app-icon class="chev" [name]="isOpen(c.key) ? 'chevronDown' : 'chevronRight'" [size]="16" [stroke]="2.2" />
         </button>
         @if (isOpen(c.key)) {
           @if (c.key === 'p2p') {
@@ -116,17 +116,17 @@ interface Card extends CardDef { value: number; pct: number; change: string | nu
     .summary .stack b { border-radius: 99px; }
     .sum { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; }
     .lb { font-size: 12.5px; font-weight: 600; }
-    .big { font-size: 28px; }
+    .big { font-size: 24px; }
     .right { text-align: right; }
-    .gain { font-size: 18px; }
+    .gain { font-size: 16px; }
     .stack { display: flex; height: 12px; border-radius: 99px; overflow: hidden; gap: 2px; margin-top: 14px; }
     .stack b { flex-basis: 0; min-width: 3px; }
     .grp { padding: 13px 16px; }
     .ghead { display: flex; align-items: center; gap: 12px; width: 100%; background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; text-align: left; }
     .grow { min-width: 0; flex: 1; display: flex; flex-direction: column; }
-    .gn { font-weight: 700; font-size: 15px; } .gs { font-size: 12.5px; color: var(--muted); font-weight: 500; }
+    .gn { font-weight: 700; font-size: 14px; } .gs { font-size: 12.5px; color: var(--muted); font-weight: 500; }
     .gr { text-align: right; display: flex; flex-direction: column; }
-    .gr b { font-size: 15px; font-weight: 800; }
+    .gr b { font-size: 14px; font-weight: 800; }
     .pct { font-size: 12.5px; font-weight: 700; }
     .chev { color: var(--muted); }
     .subhd { font-size: 11.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); margin: 16px 0 4px;
@@ -141,7 +141,7 @@ interface Card extends CardDef { value: number; pct: number; change: string | nu
     .t-gain { color: var(--pos); } .t-loss { color: var(--neg); } .t-mut { color: var(--muted); } .t-warn { color: var(--warn); }
     .cashrow { display: flex; align-items: center; gap: 11px; flex-wrap: wrap; margin: 12px 0 2px; padding: 10px 12px; border-radius: 14px;
       background: rgba(251, 113, 133, .1); border: 1px solid rgba(251, 113, 133, .25); text-decoration: none; color: inherit; }
-    .cashrow .n { font-weight: 700; font-size: 13.5px; } .cashrow .s { font-size: 11.5px; color: var(--muted); }
+    .cashrow .n { font-weight: 700; font-size: 12.5px; } .cashrow .s { font-size: 11.5px; color: var(--muted); }
     .cashrow b { font-weight: 800; white-space: nowrap; }
     .cashrow .v-btn { flex: none; }
     .moreb { width: 100%; text-align: center; font: inherit; font-size: 13px; font-weight: 600; color: var(--accent); padding: 10px 0 2px; border: 0;

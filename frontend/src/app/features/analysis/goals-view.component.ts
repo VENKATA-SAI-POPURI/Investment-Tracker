@@ -25,7 +25,7 @@ const ON = ['on_track', 'achieved'];
     @for (g of rows(); track g.id) {
       <section class="v-card goal" [class.short]="!isOn(g)">
         <div class="top">
-          <span class="v-tone" [class.good]="isOn(g)" [class.warn]="!isOn(g)"><app-icon [name]="g.kind === 'retirement' ? 'piggy' : isOn(g) ? 'flag' : 'house'" [size]="20" /></span>
+          <span class="v-tone" [class.good]="isOn(g)" [class.warn]="!isOn(g)"><app-icon [name]="g.kind === 'retirement' ? 'piggy' : isOn(g) ? 'flag' : 'house'" [size]="17" /></span>
           <div class="grow"><div class="nm">{{ g.name }}</div><div class="v-mut sm">{{ money(g.target) }} by {{ when(g.date) }}</div></div>
           <span class="v-pill" [class.ok]="isOn(g)" [class.warn]="g.status === 'at_risk'" [class.no]="g.status === 'off_track'">{{ label(g) }}</span>
           @if (auth.canWrite() && g.kind === 'goal') { <button class="ib" (click)="edit(g)" [attr.aria-label]="'Edit ' + g.name"><app-icon name="edit" [size]="15" /></button> }
@@ -40,7 +40,7 @@ const ON = ['on_track', 'achieved'];
         <div class="legend"><span>Have {{ money(g.current) }} · expect {{ money(g.projected) }}</span>
           <span>{{ isOn(g) ? (g.projected > g.target ? '+' + money(g.projected - g.target) + ' spare' : 'on target') : 'need ' + money(g.target) }}</span></div>
         @if (!isOn(g) && g.extra > 0) {
-          <div class="v-note warn"><app-icon name="triangleAlert" [size]="18" />
+          <div class="v-note warn"><app-icon name="triangleAlert" [size]="16" />
             <span>Put in <b>{{ money(g.monthly_needed) }} a month</b> ({{ money(g.extra) }} more than now) to reach it in 3 of 4 futures.</span></div>
           @if (auth.canWrite()) {
             <button class="v-btn primary wide" [disabled]="busy() === g.id" (click)="fix(g)">{{ busy() === g.id ? 'Saving…' : 'Fix it: ' + money(g.monthly_needed) + ' a month' }}</button>
@@ -85,7 +85,7 @@ const ON = ['on_track', 'achieved'];
   styles: [`
     .goal .top { display: flex; gap: 12px; align-items: center; }
     .goal .grow { flex: 1; min-width: 0; }
-    .nm { font-weight: 750; font-size: 16px; color: var(--text); }
+    .nm { font-weight: 750; font-size: 14.5px; color: var(--text); }
     .sm { font-size: var(--fs-small); }
     .track { position: relative; height: 10px; border-radius: 6px; background: var(--surface-3); margin: 16px 0 8px; overflow: hidden; }
     .track i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 6px; max-width: 100%; }
@@ -101,7 +101,8 @@ const ON = ['on_track', 'achieved'];
     .zero { margin-top: 10px; } .zero .v-link { font-size: inherit; }
     .hint { margin: -4px 0 12px; font-size: 12px; }
     .v-btn.danger { margin-left: auto; color: var(--neg); }
-    .add h3 { margin: 0 0 10px; font-size: 16px; }
+    .add { align-self: start; }
+    .add h3 { margin: 0 0 10px; font-size: 14.5px; }
     .add label { display: flex; flex-direction: column; gap: 6px; font-size: var(--fs-small); font-weight: 600; color: var(--text-2); margin-bottom: 10px; }
     .add .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .add .three { display: grid; grid-template-columns: 1fr 1fr 1.4fr; gap: 10px; }
