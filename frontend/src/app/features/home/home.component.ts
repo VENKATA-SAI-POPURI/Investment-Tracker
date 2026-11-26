@@ -36,7 +36,7 @@ type Range = '6M' | '1Y' | 'ALL';
         }
       </div>
     } @else {
-    <div class="top">
+    <div class="topgrid">
       <!-- hero -->
       <section class="v-hero" aria-label="Net worth"><span class="lg-rim" aria-hidden="true"></span>
         @if (heroArea(); as ha) {
@@ -141,24 +141,24 @@ type Range = '6M' | '1Y' | 'ALL';
   @if (explain(); as k) { <v-group-sheet [key]="k" (closed)="explain.set(null)" /> }
   `,
   styles: [`
-    .top { display: grid; gap: 20px; }
+    .topgrid { display: grid; gap: 14px; }
     @media (min-width: 1000px) {
-      .top { grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); }
-      .top .growth { grid-column: 1 / -1; }
-      .top .growth v-area { min-height: 150px; }
+      .topgrid { grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); }
+      .topgrid .growth { grid-column: 1 / -1; }
+      .topgrid .growth v-area { min-height: 150px; }
     }
     @media (min-width: 1500px) {
-      .top { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.15fr); }
-      .top .growth { grid-column: auto; }
+      .topgrid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.15fr); }
+      .topgrid .growth { grid-column: auto; }
     }
-    .top > .v-card { display: flex; flex-direction: column; }
+    .topgrid > .v-card { display: flex; flex-direction: column; }
     .cols { display: grid; gap: 4px; }
-    @media (min-width: 1000px) { .cols { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; } }
-    .col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+    @media (min-width: 1000px) { .cols { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: start; } }
+    .col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
     /* phone and tablet: one column in the order hero, questions, mix, to do, growth */
     @media (max-width: 999px) {
       .v2 { display: flex; flex-direction: column; }
-      .top, .cols { display: contents; }
+      .topgrid, .cols { display: contents; }
       .v-hero { order: 1; } .qcol { order: 2; } .mixcard { order: 3; } .tcol { order: 4; } .growth { order: 5; }
     }
     .mix { display: grid; grid-template-columns: 116px minmax(0, 1fr); gap: 16px; align-items: center; flex: 1; }
